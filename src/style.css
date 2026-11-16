@@ -51,7 +51,7 @@ button { font: inherit; color: inherit; }
 .app {
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr) 340px;
-  height: 100vh;
+  height: 100%;
   gap: 10px;
   padding: 10px;
 }
@@ -215,7 +215,7 @@ kbd {
 .help { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(15, 20, 28, .32); animation: fade .15s; z-index: 10; }
 .help[hidden] { display: none; }
 @keyframes fade { from { opacity: 0; } }
-.help-card { width: min(860px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; background: var(--desk); border-radius: 16px; padding: 22px 26px 24px; box-shadow: 0 20px 60px rgba(10, 20, 40, .3); animation: rise .2s var(--ease); }
+.help-card { width: min(860px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; background: var(--desk); border-radius: 16px; padding: 22px 26px 24px; box-shadow: 0 20px 60px rgba(10, 20, 40, .3); animation: rise .2s var(--ease); }
 .help-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .help-head h2 { margin: 0; font-size: 18px; }
 .help-head button { background: var(--bg); border: 0; border-radius: 6px; padding: 4px 9px; cursor: pointer; color: var(--muted); font-size: 12px; }
