@@ -1,11 +1,12 @@
 // Legal moves. Each one is a small, explicit rewrite; `applyMove` then checks it
 // numerically and refuses anything that isn't provably the same equation.
 import {
-  Node, Eq, Mul, Frac, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
-  evaluate, Env, symbols, hasSymbols, allIds, key, newId,
+  Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
+  evaluate, Env, symbols, hasSymbols, allIds, key,
 } from './ast';
-import { negate, isNeg, coefOf, termInfo, buildTerm, gcd, rat, rdiv } from './terms';
+import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
+import { distributeNode, factorize } from './rewrite';
 import { toText } from './print';
 import { parseExpr } from './parse';
 
@@ -126,42 +127,9 @@ function multiplyBoth(e: Eq, sel: string | null): MoveResult {
 /* ---------- distribute / split a fraction ---------- */
 function distribute(e: Eq, sel: string | null): MoveResult {
   const n = sel && sel !== 'eq' ? find(e, sel) : null;
-  if (!n) return { error: 'Pick a product with a bracket, like 2(x + 3).' };
   const h = newHints();
-  let out: Node;
-  if (n.k === 'mul' && n.factors.some(f => f.k === 'add')) {
-    const ai = n.factors.findIndex(f => f.k === 'add');
-    const A = n.factors[ai] as Extract<Node, { k: 'add' }>;
-    const outer = n.factors.filter((_, i) => i !== ai);
-    const terms = A.terms.map((term, j) => {
-      const outs = j === 0 ? outer : outer.map(cloneFresh);
-      const neg = isNeg(term);
-      const body = neg ? negate(term) : term;
-      const bodyFs = body.k === 'mul' ? body.factors : [body];
-      // numbers fold into the term's own coefficient; a copy of the outer number flies into it
-      const outerNums = outs.filter(f => f.k === 'num') as Extract<Node, { k: 'num' }>[];
-      const innerNum = bodyFs.find(f => f.k === 'num') as Extract<Node, { k: 'num' }> | undefined;
-      let fs: Node[] = [...outs, ...bodyFs];
-      if (outerNums.length && innerNum) {
-        const v = [...outerNums, innerNum].reduce((p, x) => p * x.v, 1);
-        outerNums.forEach(x => (j === 0 ? h.absorbs.set(x.id, innerNum.id) : h.flights.push({ from: x.from!, to: innerNum.id })));
-        fs = [num(v, innerNum.id), ...fs.filter(f => f.k !== 'num')];
-      } else if (innerNum) {
-        fs = [innerNum, ...fs.filter(f => f !== innerNum)];
-      }
-      const built: Node = fs.length === 1 ? fs[0] : mul(fs, body.k === 'mul' ? body.id : j === 0 ? n.id : newId());
-      return neg ? negate(built) : built;
-    });
-    out = add(terms, A.id);
-  } else if (n.k === 'neg' && n.arg.k === 'add') {
-    out = { ...n.arg, terms: n.arg.terms.map(negate) };
-  } else if (n.k === 'frac' && n.num.k === 'add') {
-    const F = n as Frac;
-    out = add((F.num as Extract<Node, { k: 'add' }>).terms.map((term, j) =>
-      frac(term, j === 0 ? F.den : cloneFresh(F.den), j === 0 ? F.id : newId())), F.num.id);
-  } else {
-    return { error: 'Nothing to distribute. Select a product with a bracket, like 2(x + 3), or a sum over a denominator.' };
-  }
+  const out = n ? distributeNode(n, h) : null;
+  if (!n || !out) return { error: 'Nothing to distribute. Select a product with a bracket, like 2(x + 3), or a sum over a denominator.' };
   return { eq: replace(e, n.id, out), label: n.k === 'frac' ? 'split fraction' : 'distribute', hints: h, factor: one, select: out.id };
 }
 
@@ -177,54 +145,14 @@ function simplifyMove(e: Eq, sel: string | null): MoveResult {
   return { eq: next, label: 'simplify', hints: h, factor: one, select: target ? keep : null };
 }
 
-/* ---------- factor out a common factor ---------- */
-function factorOut(e: Eq, sel: string | null): MoveResult {
+/* ---------- factor: as far as it goes (common factor, quadratics, difference of squares) ---------- */
+function factorMove(e: Eq, sel: string | null): MoveResult {
   const n = sel && sel !== 'eq' ? find(e, sel) : null;
-  if (!n || n.k !== 'add') return { error: 'Select a sum to factor.' };
-  const infos = n.terms.map(termInfo);
-  let g = infos.every(i => i.coef.q === 1) ? infos.reduce((a, i) => gcd(a, i.coef.p), 0) : 1;
-  if (isNeg(n.terms[0]) && g > 0) g = -g;
-  // common symbols with their smallest power
-  const powerOf = (mono: Node[], name: string) => mono.reduce((s, f) =>
-    s + (f.k === 'sym' && f.name === name ? 1 : f.k === 'pow' && f.base.k === 'sym' && f.base.name === name && f.exp.k === 'num' ? f.exp.v : 0), 0);
-  const common: { name: string; p: number }[] = [];
-  for (const name of symbols(n)) {
-    const p = Math.min(...infos.map(i => powerOf(i.mono, name)));
-    if (p > 0) common.push({ name, p });
-  }
-  if ((g === 1 || g === 0) && common.length === 0) return { error: 'These terms share no common factor.' };
+  if (!n || (n.k !== 'add' && n.k !== 'mul')) return { error: 'Aim at a sum to factor it, like x² + 5x + 6.' };
   const h = newHints();
-  const first = n.terms[0];
-  const firstMono = infos[0].mono;
-  const outer: Node[] = [];
-  if (g !== 1 && g !== 0) {
-    const c = coefOf(first) ?? (first.k === 'num' ? first : null);
-    const o = num(g); if (c) o.from = c.id;
-    outer.push(o);
-  }
-  for (const c of common) {
-    const src = firstMono.find(f => (f.k === 'sym' && f.name === c.name) || (f.k === 'pow' && f.base.k === 'sym' && f.base.name === c.name));
-    const base = src ? cloneFresh(src.k === 'pow' ? src.base : src) : { k: 'sym' as const, id: newId(), name: c.name };
-    outer.push(c.p === 1 ? base : { k: 'pow', id: newId(), base, exp: num(c.p) });
-  }
-  const inner = n.terms.map((term, i) => {
-    const mono: Node[] = [];
-    let left = new Map(common.map(c => [c.name, c.p]));
-    for (const f of infos[i].mono) {
-      const name = f.k === 'sym' ? f.name : f.k === 'pow' && f.base.k === 'sym' && f.exp.k === 'num' ? f.base.name : null;
-      const have = name ? (f.k === 'sym' ? 1 : (f as any).exp.v as number) : 0;
-      const take = name ? Math.min(left.get(name) ?? 0, have) : 0;
-      if (name && take) left.set(name, (left.get(name) ?? 0) - take);
-      const remain = have - take;
-      if (!name || take === 0) mono.push(f);
-      else if (remain === 0) h.absorbs.set(f.id, outer[0]?.id ?? n.id);
-      else if (remain === 1) mono.push(f.k === 'pow' ? f.base : f);
-      else mono.push({ ...(f as any), exp: num(remain, (f as any).exp.id) });
-    }
-    return buildTerm(g ? rdiv(infos[i].coef, rat(g)) : infos[i].coef, mono, term);
-  });
-  const out = mul([...outer, { ...n, terms: inner }]);
-  return { eq: replace(e, n.id, out), label: `factor out ${outer.map(t).join('')}`, hints: h, factor: one, select: out.id };
+  const out = factorize(n, h);
+  if (!out) return { error: `${t(n)} doesn't factor over whole numbers.` };
+  return { eq: replace(e, n.id, out), label: `factor`, hints: h, factor: one, select: out.id };
 }
 
 /* ---------- reorder inside a sum or product ---------- */
@@ -246,7 +174,7 @@ function swapSides(e: Eq, sel: string | null): MoveResult {
 
 const MOVES: Record<MoveName, (e: Eq, sel: string | null) => MoveResult> = {
   move: moveAcross, divide: divideBoth, multiply: multiplyBoth, distribute, simplify: simplifyMove,
-  factor: factorOut, slideL: (e, s) => slide(e, s, -1), slideR: (e, s) => slide(e, s, 1), swap: swapSides,
+  factor: factorMove, slideL: (e, s) => slide(e, s, -1), slideR: (e, s) => slide(e, s, 1), swap: swapSides,
 };
 
 /* ---------- apply an operation to both sides ---------- */

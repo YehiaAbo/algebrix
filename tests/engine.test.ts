@@ -148,3 +148,51 @@ describe('fuzz: random legal moves never break the equation', () => {
     expect(applied).toBeGreaterThan(10);
   });
 });
+
+import { formsFor } from '../src/engine/forms';
+import { factorize, expandAll, combineFractions } from '../src/engine/rewrite';
+import { newHints } from '../src/engine/simplify';
+import { parseExpr } from '../src/engine/parse';
+
+describe('rewrites', () => {
+  const F = (s: string) => { const r = factorize(parseExpr(s), newHints()); return r ? T(r) : null; };
+  it.each([
+    ['x^2 + 5x + 6', '(x + 2)(x + 3)'],
+    ['x^2 - 5x + 6', '(x − 2)(x − 3)'],
+    ['2x^2 + 7x + 3', '(2x + 1)(x + 3)'],
+    ['x^2 - 9', '(x − 3)(x + 3)'],
+    ['4x^2 - 25', '(2x − 5)(2x + 5)'],
+    ['x^2 + 6x + 9', '(x + 3)^2'],
+    ['2x^2 + 10x + 12', '2(x + 2)(x + 3)'],
+    ['6x^2 + 4x', '2x(3x + 2)'],
+    ['x^2 + 1', null],
+  ])('factor %s', (src, want) => expect(F(src)).toBe(want));
+  it.each([
+    ['(x + 2)(x + 3)', 'x^2 + 5x + 6'],
+    ['(x - 1)^2', 'x^2 − 2x + 1'],
+    ['2(x + 1) - 3(x - 2)', '−x + 8'],
+  ])('expand %s', (src, want) => expect(T(expandAll(parseExpr(src), newHints()))).toBe(want));
+  it('combines fractions over the least common denominator', () => {
+    expect(T(combineFractions(parseExpr('x/2 + x/3'), newHints())!)).toBe('5x/6');
+    expect(T(combineFractions(parseExpr('1/x + 1/2'), newHints())!)).toBe('(x + 2)/(2x)');
+  });
+});
+
+describe('forms strip', () => {
+  it('offers factored and expanded forms for a sum', () => {
+    const e = parseEquation('x^2 + 5x + 6 = 0');
+    const names = formsFor(e, e.lhs.id).map(f => `${f.name}: ${T(f.eq)}`);
+    expect(names).toContain('factored: (x + 2)(x + 3) = 0');
+  });
+  it('offers equation-level forms', () => {
+    const e = parseEquation('x/2 + 1 = x/3');
+    const names = formsFor(e, null).map(f => `${f.name}: ${T(f.eq)}`);
+    expect(names).toContain('clear fractions (× 6): 3x + 6 = 2x');
+  });
+  it('every form is verified', () => {
+    for (const src of ['(x+1)(x-1) = 3', 'x/2 + x/3 = 5', '2(x+3)/4 = y', '(x^2 - 4)/(x - 2) = 1']) {
+      const e = parseEquation(src);
+      for (const id of [null, e.lhs.id, e.rhs.id]) for (const f of formsFor(e, id)) expect(verify(e, f)).toBeNull();
+    }
+  });
+});
