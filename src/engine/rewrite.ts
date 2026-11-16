@@ -196,6 +196,8 @@ function findExpandable(n: Node): Node | null {
   return null;
 }
 
+export const hasExpandable = (n: Node) => findExpandable(n) !== null;
+
 /** Multiply everything out and collect like terms. */
 export function expandAll(n: Node, h: Hints): Node {
   let cur = n;

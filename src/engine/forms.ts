@@ -3,7 +3,7 @@
 import { Node, Eq, find, replace, eq, num, add, mul, walk, key, Env } from './ast';
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
-import { distributeNode, expandAll, factorize, combineFractions, standardOrder } from './rewrite';
+import { distributeNode, expandAll, factorize, combineFractions, standardOrder, hasExpandable } from './rewrite';
 import { verify, MoveOk } from './moves';
 import { gcd } from './terms';
 
@@ -46,9 +46,9 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     const r = build(h);
     if (r) push(name, replace(e, target.id, r), h, one, r.id);
   };
+  at('one fraction', h => combineFractions(target, h));
   at('factored', h => factorize(target, h));
-  at('expanded', h => { const r = expandAll(target, h); return key(r) === key(target) ? null : r; });
-  at('one fraction', h => combineFractions(simplify(target, h), h));
+  at('expanded', h => (hasExpandable(target) ? expandAll(target, h) : null));
   at('split into terms', h => {
     const s = target.k === 'frac' ? distributeNode(target, h) : null;
     return s && s.k === 'add' ? { ...s, terms: s.terms.map(t => simplify(t, h)) } : null;

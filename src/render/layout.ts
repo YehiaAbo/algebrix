@@ -82,6 +82,12 @@ function sign(minus: boolean, s: number, key: string, owners: string[]): Box {
 }
 
 function parens(b: Box, s: number, id: string, owners: string[], from?: string): Box {
+  if (b.asc <= 0.82 * s && b.desc <= 0.3 * s) {
+    // short content: the font's own parentheses look best
+    const l = text('(', s, `(${id}`, owners, false, from && `(${from}`);
+    const r = text(')', s, `)${id}`, owners, false, from && `)${from}`);
+    return row([l, 0.03 * s, b, 0.03 * s, r]);
+  }
   const top = Math.max(b.asc, ASC * s) + 0.08 * s, bot = Math.max(b.desc, DESC * s) + 0.08 * s;
   const w = 0.33 * s;
   const mk = (right: boolean): Glyph => ({ key: `${right ? ')' : '('}${id}`, from: from && `${right ? ')' : '('}${from}`, kind: 'paren', right, x: 0, y: -top, w, h: top + bot, s, owners });
@@ -168,7 +174,8 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const e = L(n.exp, es, me, c);
       const rise = Math.max(0.44 * s, b.asc - 0.5 * es * ASC);
       const eb = { ...e, gs: shift(e, 0, -rise) };
-      return { w: b.w + 0.04 * s + e.w, asc: Math.max(b.asc, rise + e.asc), desc: b.desc, gs: [...b.gs, ...shift(eb, b.w + 0.04 * s, 0)] };
+      const gap = n.base.k === 'sym' ? 0.015 * s : 0.04 * s;
+      return { w: b.w + gap + e.w, asc: Math.max(b.asc, rise + e.asc), desc: b.desc, gs: [...b.gs, ...shift(eb, b.w + gap, 0)] };
     }
     case 'sqrt': {
       const a = L(n.arg, s, me, c);

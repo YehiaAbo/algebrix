@@ -23,6 +23,10 @@
       </section>
       <div class="rail-foot">
         <div class="progress"><span id="step-count">Start</span><span id="redo-count"></span></div>
+        <button id="theme" class="sound" title="Theme (t)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.2"/><path class="half" d="M10 3.8a6.2 6.2 0 0 1 0 12.4z"/></svg>
+          <span>Theme</span>
+        </button>
         <button id="sound" class="sound" aria-pressed="true" title="Sound (M)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3v10l-4-3H3z"/><path class="wave" d="M13 7.5a3.5 3.5 0 0 1 0 5M15 5.5a6.3 6.3 0 0 1 0 9"/></svg>
           <span>Sound</span>
@@ -33,8 +37,8 @@
     <main class="desk">
       <header class="topbar">
         <div class="field">
-          <input id="input" spellcheck="false" autocomplete="off" placeholder="Type an equation, like 7y + 3x = 20" aria-label="Equation">
-          <button id="original" class="original" title="Edit (e)"></button>
+          <input id="input" spellcheck="false" autocomplete="off" placeholder="Type an equation, like x^2 + 5x + 6 = 0" aria-label="Equation">
+          <button id="original" class="original" title="Type over it (i)"></button>
         </div>
         <p id="input-error" class="input-error" aria-live="polite"></p>
       </header>
@@ -42,6 +46,7 @@
         <div id="trail" class="trail"></div>
         <div id="sel" class="sel"></div>
         <div id="labels" class="labels"></div>
+        <div id="forms" class="forms" hidden></div>
       </div>
       <div id="op" class="op" hidden>
         <span>Both sides</span>
@@ -64,14 +69,15 @@
         <section>
           <h3>Aim</h3>
           <dl>
-            <dt><kbd>f</kbd> then a letter</dt><dd>jump to any piece</dd>
-            <dt><kbd>h</kbd> <kbd>l</kbd></dt><dd>previous / next piece</dd>
-            <dt><kbd>k</kbd></dt><dd>grow to the bigger piece</dd>
-            <dt><kbd>j</kbd></dt><dd>shrink back inside</dd>
+            <dt><kbd class="wide">Space</kbd> then a letter</dt><dd>jump to any piece</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next piece</dd>
+            <dt><kbd>↑</kbd></dt><dd>grow to the bigger piece</dd>
+            <dt><kbd>↓</kbd></dt><dd>shrink back inside</dd>
             <dt><kbd>Tab</kbd></dt><dd>other side</dd>
             <dt><kbd>a</kbd></dt><dd>whole equation</dd>
             <dt><kbd>Esc</kbd></dt><dd>clear</dd>
           </dl>
+          <p class="help-note"><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> work like the arrows.</p>
         </section>
         <section>
           <h3>Move</h3>
@@ -80,24 +86,30 @@
             <dt><kbd>/</kbd></dt><dd>divide both sides by a factor</dd>
             <dt><kbd>*</kbd></dt><dd>multiply away a denominator</dd>
             <dt><kbd>d</kbd></dt><dd>distribute, split a fraction</dd>
+            <dt><kbd>f</kbd></dt><dd>factor</dd>
             <dt><kbd>s</kbd></dt><dd>simplify (all if nothing aimed)</dd>
-            <dt><kbd>F</kbd></dt><dd>factor out</dd>
-            <dt><kbd>H</kbd> <kbd>L</kbd></dt><dd>slide a term left / right</dd>
+            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>slide a term</dd>
             <dt><kbd>x</kbd></dt><dd>swap sides</dd>
             <dt><kbd>o</kbd></dt><dd>do anything to both sides</dd>
           </dl>
         </section>
         <section>
-          <h3>Work</h3>
+          <h3>Forms</h3>
+          <dl>
+            <dt>hold <kbd>e</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>browse, release to apply</dd>
+            <dt>tap <kbd>e</kbd> or <kbd>Enter</kbd></dt><dd>open forms to browse</dd>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>pick a form directly</dd>
+          </dl>
+          <h3 class="gap">Work</h3>
           <dl>
             <dt><kbd>u</kbd> <kbd>U</kbd></dt><dd>undo / redo</dd>
-            <dt><kbd>e</kbd></dt><dd>edit this equation</dd>
+            <dt><kbd>i</kbd></dt><dd>type over this equation</dd>
             <dt><kbd>n</kbd></dt><dd>new equation</dd>
-            <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>zoom graph</dd>
+            <dt><kbd>t</kbd></dt><dd>light / dark</dd>
             <dt><kbd>M</kbd></dt><dd>sound on / off</dd>
-            <dt><kbd>?</kbd></dt><dd>this sheet</dd>
+            <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>zoom graph</dd>
           </dl>
-          <p class="help-note">Every move is checked. If it wouldn't keep the equation true, it doesn't happen.</p>
+          <p class="help-note">Every move and form is checked. If it wouldn't keep the equation true, it doesn't happen.</p>
         </section>
       </div>
     </div>

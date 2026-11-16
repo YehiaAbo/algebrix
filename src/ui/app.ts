@@ -2,13 +2,14 @@ import { Eq, Node, find, findPath, children, bumpIds, symbols } from '../engine/
 import { parseEquation, ParseError } from '../engine/parse';
 import { toText } from '../engine/print';
 import { applyMove, applyBothChecked, isErr, MoveName, MoveOk, solvedFor } from '../engine/moves';
+import { formsFor, Form } from '../engine/forms';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition } from '../render/stage';
 import { Graph } from './graph';
 import { sound } from './sound';
 
 interface Step { eq: Eq; label: string; conditions: string[] }
-type Mode = 'write' | 'solve' | 'labels' | 'op';
+type Mode = 'write' | 'solve' | 'labels' | 'op' | 'forms';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -18,7 +19,7 @@ const MOVE_KEYS: { key: string; name: MoveName; verb: string; pitch: number }[] 
   { key: '*', name: 'multiply', verb: 'multiply both', pitch: 0.95 },
   { key: 'd', name: 'distribute', verb: 'distribute', pitch: 1.1 },
   { key: 's', name: 'simplify', verb: 'simplify', pitch: 1.2 },
-  { key: 'F', name: 'factor', verb: 'factor out', pitch: 0.85 },
+  { key: 'f', name: 'factor', verb: 'factor', pitch: 0.85 },
   { key: 'H', name: 'slideL', verb: 'slide left', pitch: 1.3 },
   { key: 'L', name: 'slideR', verb: 'slide right', pitch: 1.3 },
   { key: 'x', name: 'swap', verb: 'swap sides', pitch: 0.8 },
@@ -39,6 +40,8 @@ export class App {
   private message: { text: string; bad: boolean } | null = null;
   private messageTimer = 0;
   private preview: Eq | null = null;
+  private peek: Eq | null = null;
+  private forms: { list: Form[]; i: number; sticky: boolean; moved: boolean; t0: number } | null = null;
   private typingTimer = 0;
 
   constructor() {
@@ -51,15 +54,18 @@ export class App {
       if (next !== size) { size = next; this.renderMain(null); }
     }).observe($('stage'));
     if (!this.restore()) this.commit('7y + 3x = 20', true);
+    this.themeLabel();
   }
 
   get eq(): Eq { return this.preview ?? this.steps[this.at]?.eq; }
+  /** what the stage shows: the typed preview, a form being browsed, or the current step */
+  get shown(): Eq { return this.peek ?? this.eq; }
   get step(): Step { return this.steps[this.at]; }
 
   /* ---------------- rendering ---------------- */
 
   renderMain(tr: Transition | null) {
-    const eq = this.eq;
+    const eq = this.shown;
     if (!eq) { this.stage.clear(); return; }
     const host = $('stage');
     const W = host.clientWidth, H = host.clientHeight;
@@ -80,7 +86,8 @@ export class App {
 
   renderSelection() {
     const el = $('sel');
-    const r = this.sel ? this.stage.box(this.sel) : null;
+    const id = this.forms ? this.forms.list[this.forms.i].select ?? 'eq' : this.sel;
+    const r = id ? this.stage.box(id) : null;
     if (!r || this.mode === 'write') { el.classList.remove('on'); return; }
     const S = this.stage.layout ? this.stage.layout.glyphs[0]?.s ?? 60 : 60;
     const p = Math.max(5, S * 0.1);
@@ -93,7 +100,7 @@ export class App {
     this.renderTrail();
     this.renderRail();
     this.renderHints();
-    if (this.eq) this.graph.draw(this.eq, graphAnim);
+    if (this.shown) this.graph.draw(this.shown, graphAnim);
     document.body.dataset.mode = this.mode;
   }
 
@@ -168,18 +175,19 @@ export class App {
       return;
     }
     if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
+    if (this.mode === 'forms') { host.innerHTML = `<span class="aside">Browsing other forms. Nothing changes until you apply one.</span>`; return; }
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Start with + − * or /. <kbd>Enter</kbd> applies to both sides.</span>`; return; }
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     parts.push(`<span class="what">${node ? escapeHtml(toText(node)) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
     if (!this.sel) {
-      parts.push(`<span class="hint"><kbd>f</kbd> aim</span><span class="hint"><kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd> walk</span><span class="hint"><kbd>s</kbd> simplify all</span><span class="hint"><kbd>o</kbd> both sides</span>`);
+      parts.push(`<span class="hint"><kbd class="wide">Space</kbd> aim</span><span class="hint"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> walk</span><span class="hint"><kbd>e</kbd> forms</span><span class="hint"><kbd>s</kbd> simplify all</span><span class="hint"><kbd>o</kbd> both sides</span>`);
     } else {
       for (const m of MOVE_KEYS) {
         const ok = !isErr(applyMove(m.name, this.eq, this.sel));
         if (ok) parts.push(`<span class="hint"><kbd>${m.key}</kbd> ${m.verb}</span>`);
       }
-      parts.push(`<span class="hint dim"><kbd>o</kbd> both sides</span>`);
+      parts.push(`<span class="hint"><kbd>e</kbd> forms</span>`);
     }
     parts.push(`<span class="spacer"></span><span class="hint dim"><kbd>u</kbd> undo</span><span class="hint dim"><kbd>?</kbd> keys</span>`);
     host.innerHTML = parts.join('');
@@ -194,7 +202,7 @@ export class App {
 
   refuse(text: string) {
     sound.refuse();
-    this.say(text, true);
+    this.bubble(text, true);
     const target = this.sel && this.stage.box(this.sel) ? $('sel') : $('stage');
     target.animate([{ translate: '0' }, { translate: '-6px' }, { translate: '5px' }, { translate: '-3px' }, { translate: '0' }], { duration: 260, easing: 'ease-out' });
     $('sel').classList.add('refused');
@@ -219,7 +227,7 @@ export class App {
     this.renderAll(null);
     if (!quiet) this.entrance();
     this.save();
-    if (quiet) this.say('Press f to aim at a term, then a move key. ? shows every key.');
+    if (quiet) this.say('Press Space to aim, then a move key. Hold e to browse other forms. ? shows every key.');
   }
 
   private entrance() {
@@ -238,6 +246,7 @@ export class App {
     this.sel = r.select !== undefined ? (r.select && find(r.eq, r.select) ? r.select : null) : this.sel && find(r.eq, this.sel) ? this.sel : null;
     sound.move(pitch);
     this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
+    this.bubble(r.label, false, r.focus ?? this.sel);
     const now = solvedFor(r.eq);
     if (now && now !== wasSolved) { setTimeout(() => sound.solved(), 140); this.say(`Solved for ${now}.`); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); }
     if (r.conditions?.length) this.say(`Assuming ${r.conditions.join(', ')}. Noted on the left.`);
@@ -490,6 +499,17 @@ export class App {
     $('help-close').addEventListener('click', () => this.toggleHelp(false));
     $('sound').addEventListener('click', () => this.toggleSound());
     window.addEventListener('keydown', e => this.key(e));
+    window.addEventListener('keyup', e => {
+      if (e.key.toLowerCase() !== 'e' || this.mode !== 'forms' || !this.forms || this.forms.sticky) return;
+      if (this.forms.moved || performance.now() - this.forms.t0 > 280) this.applyForm();
+      else { this.forms.sticky = true; this.renderForms(); }
+    });
+    $('theme').addEventListener('click', () => this.toggleTheme());
+    $('forms').addEventListener('mousedown', e => {
+      e.stopPropagation();
+      const card = (e.target as HTMLElement).closest<HTMLElement>('.form-card');
+      if (card && this.forms) { this.forms.i = Number(card.dataset.i); this.applyForm(); }
+    });
   }
 
   click(e: MouseEvent) {
@@ -522,9 +542,10 @@ export class App {
     if (!$('help').hidden) { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); } return; }
     const k = e.key;
     const ctrl = e.ctrlKey || e.metaKey;
+    if (this.mode === 'forms') { e.preventDefault(); return this.formsKey(e); }
     if (this.mode === 'labels') {
       e.preventDefault();
-      if (k === 'Escape') { this.setMode('solve'); this.renderHints(); return; }
+      if (k === 'Escape' || k === ' ') { this.setMode('solve'); this.renderHints(); return; }
       if (/^[a-z]$/.test(k)) this.labelKey(k);
       else { this.setMode('solve'); this.renderHints(); }
       return;
@@ -538,7 +559,7 @@ export class App {
     const handled = () => e.preventDefault();
     if (move) { handled(); return this.apply(applyMove(move.name, this.eq, this.sel), move.pitch); }
     switch (k) {
-      case 'f': handled(); return this.showLabels();
+      case ' ': handled(); return this.showLabels();
       case 'h': case 'ArrowLeft': handled(); return e.shiftKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : this.sideways(-1);
       case 'l': case 'ArrowRight': handled(); return e.shiftKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : this.sideways(1);
       case 'k': case 'ArrowUp': handled(); return this.grow();
@@ -549,13 +570,143 @@ export class App {
       case 'u': handled(); return this.undo();
       case 'U': handled(); return this.redo();
       case 'o': handled(); return this.openOp();
-      case 'e': case 'Enter': handled(); return this.edit(false);
+      case 'e': handled(); if (!e.repeat) this.openForms(false); return;
+      case 'Enter': handled(); return this.openForms(true);
+      case 'i': handled(); return this.edit(false);
+      case 't': handled(); return this.toggleTheme();
       case 'n': handled(); return this.edit(true);
       case '?': handled(); return this.toggleHelp();
       case 'M': handled(); return this.toggleSound();
       case '[': handled(); return this.graph.zoom(1.25);
       case ']': handled(); return this.graph.zoom(0.8);
     }
+  }
+
+  /* ---------------- forms strip ---------------- */
+
+  openForms(sticky: boolean) {
+    const list = formsFor(this.eq, this.sel);
+    if (!list.length) {
+      this.refuse(this.sel && this.sel !== 'eq' ? 'No other forms for this piece. Press ↑ to aim at something bigger.' : 'No other forms for the whole equation.');
+      return;
+    }
+    this.forms = { list, i: 0, sticky, moved: false, t0: performance.now() };
+    this.setMode('forms');
+    sound.labels();
+    this.peekAt(0);
+  }
+
+  peekAt(i: number) {
+    const f = this.forms!;
+    f.i = (i + f.list.length) % f.list.length;
+    const form = f.list[f.i];
+    this.peek = form.eq;
+    this.renderMain({ quick: true, absorbs: form.hints.absorbs, flights: form.hints.flights });
+    this.graph.draw(this.peek, true);
+    this.renderForms();
+    this.renderHints();
+  }
+
+  formsKey(e: KeyboardEvent) {
+    const f = this.forms!;
+    const k = e.key;
+    if (k === 'Escape') return this.closeForms(true);
+    if (k === 'Enter' || (f.sticky && k.toLowerCase() === 'e' && !e.repeat)) return this.applyForm();
+    const step = ['ArrowRight', 'ArrowDown', 'l', 'j', 'Tab'].includes(k) ? 1 : ['ArrowLeft', 'ArrowUp', 'h', 'k'].includes(k) ? -1 : 0;
+    if (step) { f.moved = true; sound.tick(1); return this.peekAt(f.i + (e.shiftKey && k === 'Tab' ? -1 : step)); }
+    if (/^[1-9]$/.test(k) && Number(k) <= f.list.length) { f.i = Number(k) - 1; return this.applyForm(); }
+  }
+
+  applyForm() {
+    const f = this.forms;
+    if (!f) return;
+    const form = f.list[f.i];
+    this.closeForms(false);
+    this.apply(form, 1.15);
+  }
+
+  closeForms(animateBack: boolean) {
+    this.forms = null;
+    this.peek = null;
+    $('forms').hidden = true;
+    this.setMode('solve');
+    if (animateBack) { sound.undo(); this.renderAll({ quick: true }, true); }
+  }
+
+  renderForms() {
+    const f = this.forms!;
+    const host = $('forms');
+    host.replaceChildren();
+    f.list.forEach((form, i) => {
+      const card = document.createElement('button');
+      card.className = 'form-card' + (i === f.i ? ' on' : '');
+      card.dataset.i = String(i);
+      const piece = form.select ? find(form.eq, form.select) : null;
+      const lay = layout(piece ?? form.eq, 17);
+      const mini = document.createElement('div');
+      mini.className = 'mini';
+      mini.style.width = lay.w + 'px';
+      mini.style.height = lay.asc + lay.desc + 'px';
+      const name = document.createElement('span');
+      name.className = 'form-name';
+      name.innerHTML = `<kbd>${i + 1}</kbd>${form.name}`;
+      card.append(name, mini);
+      host.append(card);
+      new Stage(mini).show(lay, 0, 0, null);
+    });
+    const tip = document.createElement('div');
+    tip.className = 'forms-tip';
+    tip.innerHTML = f.sticky ? '<kbd>←</kbd><kbd>→</kbd> browse <kbd>Enter</kbd> apply <kbd>Esc</kbd> back' : 'tap <kbd>←</kbd><kbd>→</kbd>, release <kbd>E</kbd> to apply';
+    host.append(tip);
+    host.hidden = false;
+    // sit above the aimed piece (as it was before the preview), else above the equation
+    const anchor = (this.sel && this.sel !== 'eq' ? this.stage.box(this.sel) : null) ?? this.stage.box('eq');
+    const W = $('stage').clientWidth;
+    const hw = host.offsetWidth, hh = host.offsetHeight;
+    let x = anchor ? anchor.x + anchor.w / 2 - hw / 2 : (W - hw) / 2;
+    x = Math.max(12, Math.min(W - hw - 12, x));
+    let y = anchor ? anchor.y - hh - 26 : 40;
+    if (y < 8) y = anchor ? anchor.y + anchor.h + 22 : 8;
+    host.style.left = `${x}px`;
+    host.style.top = `${y}px`;
+    host.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /* ---------------- pop-ups and theme ---------------- */
+
+  bubble(text: string, bad: boolean, id: string | null = this.sel) {
+    const r = (id ? this.stage.box(id) : null) ?? this.stage.box('eq');
+    if (!r) return;
+    const b = document.createElement('div');
+    b.className = 'bubble' + (bad ? ' bad' : '');
+    b.textContent = text;
+    $('stage').append(b);
+    const W = $('stage').clientWidth;
+    const x = Math.max(12 + b.offsetWidth / 2, Math.min(W - 12 - b.offsetWidth / 2, r.x + r.w / 2));
+    b.style.left = `${x}px`;
+    b.style.top = `${r.y - 14}px`;
+    const life = bad ? 2600 : 1100;
+    b.animate([{ opacity: 0, transform: 'translate(-50%, -80%) scale(.92)' }, { opacity: 1, transform: 'translate(-50%, -100%)' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
+    setTimeout(() => {
+      const a = b.animate([{ opacity: 1 }, { opacity: 0, transform: 'translate(-50%, -130%)' }], { duration: 260, fill: 'forwards' });
+      a.onfinish = () => b.remove();
+    }, life);
+  }
+
+  toggleTheme() {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('algebrix.theme', root.dataset.theme); } catch { /* storage blocked */ }
+    this.themeLabel();
+    sound.tick(2);
+    if (this.shown) this.graph.draw(this.shown, false);
+  }
+
+  themeLabel() {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    $('theme').querySelector('span')!.textContent = dark ? 'Light mode' : 'Dark mode';
   }
 
   /* ---------------- persistence ---------------- */

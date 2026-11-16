@@ -4,6 +4,11 @@ import { toText } from './engine/print';
 import { clearMeasureCache } from './render/layout';
 import { resetMetrics } from './render/stage';
 
+try {
+  const t = localStorage.getItem('algebrix.theme');
+  if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+} catch { /* storage blocked */ }
+
 async function start() {
   try {
     await Promise.race([

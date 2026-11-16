@@ -48,7 +48,15 @@ export class Graph {
       const N = Math.ceil(W / 2);
       const sample = (n: Node) => Array.from({ length: N + 1 }, (_, i) => evaluate(n, { [v]: ux((i / N) * W) }));
       const l = sample(eq.lhs), r = sample(eq.rhs);
-      const roots = findRoots(i => l[i] - r[i], N).map(i => ux((i / N) * W));
+      const f = (x: number) => evaluate(eq.lhs, { [v]: x }) - evaluate(eq.rhs, { [v]: x });
+      const roots: number[] = [];
+      for (const i of findRoots(i => l[i] - r[i], N)) {
+        let a = ux((Math.floor(i) / N) * W), b = ux((Math.ceil(i + 1e-9) / N) * W);
+        if (f(a) === 0) b = a;
+        for (let k = 0; k < 50 && b - a > 1e-12; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
+        const x0 = Math.round(((a + b) / 2) * 1e9) / 1e9;
+        if (!roots.some(x => Math.abs(x - x0) < 1e-6)) roots.push(x0);
+      }
       this.note.innerHTML = roots.length
         ? `Sides cross at <b>${v} ≈ ${roots.slice(0, 3).map(fmt).join(', ')}</b>${roots.length > 3 ? '…' : ''}. That point never moves.`
         : 'The two sides never cross in view.';

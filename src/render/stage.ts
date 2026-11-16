@@ -54,6 +54,30 @@ export class Stage {
     const focusOwned = (g: Glyph) => !!tr?.focus && g.owners.includes(tr.focus);
     const dur = tr?.quick ? 200 : 260;
 
+    // Pieces that vanish can be "reused" by new pieces showing the same symbol, so a
+    // rewrite like factoring reads as symbols rearranging instead of fading in and out.
+    const pool = new Map<string, { key: string; r: Rect }[]>();
+    const claimed = new Set<string>();
+    if (tr) {
+      const next = new Set(lay.glyphs.map(g => g.key));
+      for (const [k, e] of prev) {
+        if (next.has(k) || !visual.has(k)) continue;
+        if (e.g.owners.some(id => tr.absorbs?.has(id))) continue;
+        const sg = sig(e.g);
+        if (!pool.has(sg)) pool.set(sg, []);
+        pool.get(sg)!.push({ key: k, r: visual.get(k)! });
+      }
+    }
+    const reuse = (g: Glyph, target: Rect): Rect | null => {
+      const list = pool.get(sig(g));
+      if (!list?.length) return null;
+      let best = 0, bestD = Infinity;
+      list.forEach((c, i) => { const d = Math.hypot(c.r.x - target.x, c.r.y - target.y); if (d < bestD) { bestD = d; best = i; } });
+      const [hit] = list.splice(best, 1);
+      claimed.add(hit.key);
+      return hit.r;
+    };
+
     for (const g0 of lay.glyphs) {
       const g = { ...g0, x: g0.x + ox, y: g0.y + oy, base: g0.base === undefined ? undefined : g0.base + oy };
       const old = prev.get(g.key);
@@ -74,9 +98,12 @@ export class Stage {
         this.flip(el, from, target, dur, focusOwned(g) && !tr.quick, oldText !== undefined && oldText !== g.text);
       } else {
         const src = g.from ? visual.get(g.from) : null;
+        const same = src ? null : reuse(g, target);
         if (src) {
           this.flip(el, src, target, dur + 60, !tr.quick, false);
           el.animate([{ color: 'var(--copy)' }, { color: 'var(--copy)', offset: 0.55 }, { color: 'currentColor' }], { duration: dur + 300, easing: 'ease-out' });
+        } else if (same) {
+          this.flip(el, same, target, dur + 40, false, false);
         } else {
           el.animate([{ opacity: 0, transform: 'scale(.55)' }, { opacity: 1, transform: 'none' }],
             { duration: dur * 0.8, delay: dur * 0.3, easing: EASE, fill: 'backwards' });
@@ -86,7 +113,7 @@ export class Stage {
 
     // whatever is left disappeared
     for (const [k, e] of prev) {
-      if (!tr) { e.el.remove(); continue; }
+      if (!tr || claimed.has(k)) { e.el.remove(); continue; }
       this.ghosts.add(e.el);
       const r = visual.get(k)!;
       const absorbId = [...e.g.owners].reverse().find(id => tr.absorbs?.has(id));
@@ -160,6 +187,12 @@ export class Stage {
     for (const g of this.ghosts) g.remove();
     this.entries.clear(); this.ghosts.clear(); this.layout = null;
   }
+}
+
+function sig(g: Glyph): string {
+  if (g.kind === 'text') return `t${g.italic ? 'i' : ''}:${g.text}`;
+  if (g.kind === 'paren') return g.right ? 'p)' : 'p(';
+  return g.kind;
 }
 
 function elTag(g: Glyph) { return g.kind === 'paren' || g.kind === 'rad' ? 'svg' : 'DIV'; }

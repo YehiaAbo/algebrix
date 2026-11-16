@@ -73,3 +73,12 @@ Superpowers (plan, test-first for the engine), Karpathy guidelines (simplicity f
 
 ## Left to the builder
 Exact label alphabet, timing constants, sound recipes, graph range and zoom keys.
+
+## Round 2 (after first play-test)
+Liked: sound, animation, smoothness, arrow navigation. Changes:
+- Keys: `Space` aims (jump labels), `f` factors, `i` types over the equation, `t` switches theme. Arrows are the primary walk keys; `hjkl` still work.
+- Forms strip: `e` on the aimed piece (or the whole equation) shows equivalent forms above it: one fraction, factored, expanded, split into terms, simplified, highest power first; for the whole equation: everything on one side, clear fractions, expanded, simplified, sides swapped. Hold `e` + arrows and release to apply (edit-on-release); tap `e` or `Enter` for a sticky strip; `1`–`9` picks directly. The main equation previews each form live. Every form passes the same numeric check as a move.
+- Factoring: common factor, integer quadratics, difference of squares, perfect squares.
+- Pop-ups above the aimed piece for refusals and for the name of each move.
+- New pieces fly in from a matching symbol already on screen, so factoring/expanding read as rearrangement.
+- Themes: dark modeled on Claude Code (warm charcoal, orange selection) and a cool light theme; follows the system until chosen.
