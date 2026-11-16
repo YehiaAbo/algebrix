@@ -9,3 +9,33 @@ describe('forms with nothing aimed', () => {
     expect(f && toText(f.eq)).toBe('(x − 2)(x − 3) = 0');
   });
 });
+
+import { moveAny, eliminate } from '../src/engine/techniques';
+import { applyBothChecked, isErr, MoveOk } from '../src/engine/moves';
+import { relOf, walk, Node } from '../src/engine/ast';
+
+describe('inequalities keep their sign', () => {
+  it('m (move across) on every piece keeps or flips the relation, never "="', () => {
+    for (const src of ['x + y > z', '2x - 3 <= y', 'x/2 + y >= 1', '-x < 3']) {
+      const e = parseEquation(src);
+      const ids: string[] = []; walk(e, (n: Node) => { if (n.k !== 'eq') ids.push(n.id); });
+      for (const id of ids) {
+        const r = moveAny(e, id);
+        if (!isErr(r)) expect(['<', '>', '≤', '≥']).toContain(relOf((r as MoveOk).eq));
+      }
+    }
+  });
+  it('adding an equation to an inequality keeps the inequality', () => {
+    const e = parseEquation('x + y > z'), o = parseEquation('y = 2x');
+    const r = applyBothChecked(e, '-#2', [e, o]) as MoveOk;
+    expect(toText(r.eq)).toBe('x + y − y > z − 2x');
+  });
+  it('an inequality can’t be added like an equation', () => {
+    const e = parseEquation('x + y = 3'), o = parseEquation('x > 1');
+    expect(isErr(applyBothChecked(e, '+#2', [e, o]))).toBe(true);
+  });
+  it('elimination picks the variable that cancels most simply', () => {
+    const r = eliminate(parseEquation('y = 2x + 1'), parseEquation('y = x - 3'), 2) as MoveOk;
+    expect(toText(r.eq)).toBe('y − y = 2x + 1 − x + 3');
+  });
+});

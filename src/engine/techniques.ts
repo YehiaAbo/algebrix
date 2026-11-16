@@ -184,6 +184,12 @@ export function peel(e: Eq, sel: string | null): MoveResult {
 
 /** "Move it across": the engine picks the inverse operation from what is aimed. */
 export function moveAny(e: Eq, sel: string | null): MoveResult {
+  // every path goes through checked(), which also carries an inequality's sign (flipping it when needed)
+  const r = moveAnyRaw(e, sel);
+  return isErr(r) ? r : checked(e, r);
+}
+
+function moveAnyRaw(e: Eq, sel: string | null): MoveResult {
   if (!sel || sel === 'eq') return { error: 'Aim at a piece first (Space), then m moves it across the =.' };
   const path = findPath(e, sel);
   if (!path) return { error: 'Aim at a piece first.' };
@@ -501,7 +507,14 @@ const ratText = (x: number): string | null => {
 
 export function eliminate(e: Eq, other: Eq, j: number, v?: string): MoveResult {
   const shared = symbols(e).filter(s => symbols(other).includes(s));
-  const vars = v ? [v] : shared;
+  // the variable that cancels most simply goes first: a ratio of 1, then whole numbers
+  const cost = (name: string) => {
+    const a = linearCoef(e, name), b = linearCoef(other, name);
+    if (!a || !b) return 9;
+    const k = Math.abs(a / b);
+    return k === 1 ? 0 : Number.isInteger(k) ? 1 : 2;
+  };
+  const vars = v ? [v] : [...shared].sort((p, q) => cost(p) - cost(q));
   for (const name of vars) {
     const a = linearCoef(e, name), b = linearCoef(other, name);
     if (!a || !b) continue;

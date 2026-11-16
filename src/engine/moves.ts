@@ -226,16 +226,21 @@ function addEquation(e: Eq, op: string, coefText: string, j: number, others: Eq[
   if (op !== '+' && op !== '-') return { error: 'Equations can be added or subtracted, like “-2#2”.' };
   const o = others[j - 1];
   if (!o) return { error: `There is no equation ${j}.` };
+  if (relOf(o) !== '=') return { error: `Equation ${j} isn’t an equation (it’s ${relOf(o) === 'expr' ? 'an expression' : 'an inequality or a definition'}), so it can’t be added to both sides.` };
   let k: Node;
   try { k = coefText.trim() ? parseExpr(coefText) : num(1); } catch (err) { return { error: (err as Error).message }; }
   if (hasSymbols(k)) return { error: 'Use a plain number to multiply the other equation by.' };
   const kv = evaluate(k, {});
   if (!Number.isFinite(kv) || kv === 0) return { error: 'Multiplying an equation by 0 adds nothing.' };
-  const scaled = (side: Node) => { const c = cloneFresh(side); return kv === 1 ? c : mul([cloneFresh(k), c]); };
-  const signed = (n: Node) => (op === '-' ? negate(n) : n);
+  // the other equation's terms come in one by one, already scaled (2·(x − y) arrives as −2x + 2y),
+  // so what cancels sits next to what it cancels
+  const h0 = newHints();
   const spread = (n: Node) => (n.k === 'add' ? n.terms : [n]);
-  const lj = scaled(o.lhs), rj = scaled(o.rhs);
-  const L = appendTerms(e.lhs, spread(signed(lj))), R = appendTerms(e.rhs, spread(signed(rj)));
+  const scaledTerms = (side: Node) => spread(cloneFresh(side)).map(t => {
+    const c = kv === 1 ? t : simplify(mul([cloneFresh(k), t]), h0);
+    return op === '-' ? negate(c) : c;
+  });
+  const L = appendTerms(e.lhs, scaledTerms(o.lhs)), R = appendTerms(e.rhs, scaledTerms(o.rhs));
   const sgn = op === '-' ? -1 : 1;
   return {
     eq: eq(L, R), label: `${op === '-' ? '−' : '+'} ${kv === 1 ? '' : t(k) + '× '}equation ${j}`, hints: newHints(), factor: one, select: null, rule: 'eliminate',
@@ -308,6 +313,8 @@ export function relAfter(before: Eq, r: MoveOk): Rel | { error: string } {
     return !r.check && same(r.eq.lhs, before.lhs) && same(r.eq.rhs, before.rhs) ? '≟'
       : { error: 'In a proof, rewrite one side at a time. Doing the same thing to both sides assumes what you are proving.' };
   }
+  // adding equal amounts (both sides of an equation) to both sides keeps the order
+  if (r.rule === 'eliminate') return rel;
   if (r.check) {
     // functions on both sides etc.: the new inequality must be true exactly where the old one was
     for (const cand of [rel, flipRel(rel)]) {

@@ -82,6 +82,8 @@ export class App {
   /** the workspace (card) being worked on */
   workId = '';
   private resetArmed = 0;
+  /** a key was pressed while Tab or f was held: letting go then closes the menu instead of pinning it open */
+  private chordUsed = false;
 
   constructor() {
     this.stage = new Stage($('stage'));
@@ -176,6 +178,12 @@ export class App {
     const p = Math.max(5, S * 0.1);
     Object.assign(el.style, { left: `${r.x - p}px`, top: `${r.y - p * 0.6}px`, width: `${r.w + 2 * p}px`, height: `${r.h + p * 1.2}px`, borderRadius: `${Math.max(6, S * 0.12)}px` });
     el.classList.add('on');
+    // a run of several terms (Ctrl + arrows, or the mouse box) reads as one piece with a softer fill
+    el.classList.toggle('run', !!this.grouped && id === this.grouped.id);
+    // while Ctrl is held: arrows on the sides that can still grow
+    const edges = id && id !== 'eq' && !browsing ? this.growable(id) : { l: false, r: false };
+    el.dataset.l = edges.l ? '1' : '';
+    el.dataset.r = edges.r ? '1' : '';
   }
 
   renderAll(tr: Transition | null, graphAnim = false) {
@@ -607,6 +615,19 @@ export class App {
     this.select(g.id, quiet);
   }
 
+  /** which sides a highlight could still grow toward (Ctrl + ← →) */
+  private growable(id: string): { l: boolean; r: boolean } {
+    const g = this.grouped && id === this.grouped.id ? this.grouped : null;
+    const first = g ? g.anchor : id;
+    const path = findPath(this.base, first);
+    const parent = path && path.length > 2 ? path[path.length - 2] : null;
+    if (!parent || (parent.k !== 'add' && parent.k !== 'mul')) return { l: false, r: false };
+    const sibs = this.visibleKids(parent);
+    const ends = (g ? [g.anchor, g.head] : [id]).map(x => sibs.findIndex(k => k.id === x));
+    if (ends.some(i => i < 0)) return { l: false, r: false };
+    return { l: Math.min(...ends) > 0, r: Math.max(...ends) < sibs.length - 1 };
+  }
+
   /** Ctrl + ← →: add the next neighbour on that side to the highlight */
   growEdge(dir: -1 | 1) {
     if (!this.sel || this.sel === 'eq') return this.sideways(dir);
@@ -620,8 +641,9 @@ export class App {
     let lo = Math.min(...ends), hi = Math.max(...ends);
     if (dir < 0) lo--; else hi++;
     if (lo < 0 || hi >= sibs.length) return this.refuse(dir > 0 ? 'Nothing further right in this sum.' : 'Nothing further left in this sum.');
-    sound.tick(2);
+    sound.tick(2 + (hi - lo));
     this.selectRange(sibs[lo].id, sibs[hi].id);
+    $('sel').animate([{ boxShadow: `${dir < 0 ? '-6px' : '6px'} 0 0 -1px var(--sel), 0 0 0 1.5px var(--sel)` }, { boxShadow: '0 0 0 1.5px var(--sel)' }], { duration: ms(260), easing: 'ease-out' });
   }
 
   /** e: solve. Aimed at a variable (or only one variable): straight to the answer; otherwise pick one */
@@ -942,6 +964,7 @@ export class App {
     this.flush();
     const forms = formsFor(this.eq, this.sel);
     this.hub = { forms, techs: this.techniques(), i: 0, sticky, moved: false, awaitVar: false };
+    this.chordUsed = false;
     this.setMode('hub');
     sound.labels();
     this.renderHub();
@@ -985,6 +1008,7 @@ export class App {
       this.closeHub(false);
       return tech.run();
     }
+    if (/^[1-9]$/.test(k)) return this.refuse(Number(k) - 1 === this.cur ? 'That’s this equation. Hold Tab and press another equation’s number.' : `There is no equation ${k}.`);
     const form = h.forms.find(f => f.chord === k);
     if (form) { h.i = h.forms.indexOf(form); return this.applyForm(); }
     if (k === 'f') { this.closeHub(false); return this.apply(applyMove('factor', this.eq, this.sel), 0.85); }
@@ -1077,6 +1101,7 @@ export class App {
     const inv = inverseOf(this.peelSide());
     const tab = inv ? FN_TABS.findIndex(t => t.items.some(x => x.f === inv.f)) : -1;
     this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null };
+    this.chordUsed = false;
     this.setMode('fnpal');
     sound.labels();
     this.renderPal();
@@ -1396,11 +1421,17 @@ export class App {
     $('lib-btn').addEventListener('click', () => this.library.open());
     $('settings-btn').addEventListener('click', () => this.settings.open());
     $('flash').addEventListener('click', () => this.toggleFlash());
-    window.addEventListener('keydown', e => this.key(e));
+    window.addEventListener('keydown', e => { if (e.key === 'Control' || e.key === 'Meta') document.body.classList.add('ctrl'); this.key(e); });
+    window.addEventListener('keyup', e => { if (e.key === 'Control' || e.key === 'Meta') document.body.classList.remove('ctrl'); });
+    window.addEventListener('blur', () => document.body.classList.remove('ctrl'));
     window.addEventListener('keyup', e => {
-      if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') { this.palRelease(); return; }
+      if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') {
+        if (this.chordUsed && !this.pal.moved && !this.pal.sticky && !this.pal.ask) { this.closePal(true); return; }
+        this.palRelease(); return;
+      }
       if (e.key !== 'Tab' || this.mode !== 'hub' || !this.hub || this.hub.sticky) return;
       if (this.hub.moved) this.applyForm();
+      else if (this.chordUsed && !this.hub.awaitVar) this.closeHub(true);
       else { this.hub.sticky = true; this.renderHub(); }
     });
     $('theme').addEventListener('click', () => this.toggleTheme());
@@ -1487,8 +1518,8 @@ export class App {
     if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
     const k = e.key;
     const ctrl = e.ctrlKey || e.metaKey;
-    if (this.mode === 'hub') { e.preventDefault(); return this.hubKey(e); }
-    if (this.mode === 'fnpal') { e.preventDefault(); return this.palKey(e); }
+    if (this.mode === 'hub') { e.preventDefault(); if (k !== 'Tab') this.chordUsed = true; return this.hubKey(e); }
+    if (this.mode === 'fnpal') { e.preventDefault(); if (k.toLowerCase() !== 'f') this.chordUsed = true; return this.palKey(e); }
     if (this.mode === 'labels') {
       e.preventDefault();
       if (k === 'Escape' || k === ' ') { this.setMode('solve'); this.renderHints(); return; }
@@ -1500,6 +1531,12 @@ export class App {
     if (ctrl) {
       // hold Ctrl: ← grows the highlight to the left, → to the right; let go and it stays
       if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); return this.growEdge(k === 'ArrowLeft' ? -1 : 1); }
+      // Ctrl + ↑ ↓: previous / next equation
+      if (k === 'ArrowUp' || k === 'ArrowDown') {
+        e.preventDefault();
+        if (this.slots.length < 2) return this.refuse('Only one equation. Press n to add another.');
+        return this.switchTo((this.cur + (k === 'ArrowUp' ? -1 : 1) + this.slots.length) % this.slots.length);
+      }
       if (k.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
       else if ((k.toLowerCase() === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); this.redo(); }
       return;

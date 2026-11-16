@@ -141,11 +141,11 @@ describe('elimination', () => {
   it('subtracts k times another equation', () => {
     const e = parseEquation('2x + y = 8');
     const r = ok(applyBothChecked(e, '-2#2', [e, two]));
-    expect(T(r.eq)).toBe('2x + y − 2(x − y) = 8 − 2·1');
+    expect(T(r.eq)).toBe('2x + y − 2x + 2y = 8 − 2');
   });
   it('picks the multiple that cancels a variable', () => {
     const r = ok(eliminate(parseEquation('2x + 3y = 12'), parseEquation('x - y = 1'), 2, 'x'));
-    expect(T(r.eq)).toBe('2x + 3y − 2(x − y) = 12 − 2·1');
+    expect(T(r.eq)).toBe('2x + 3y − 2x + 2y = 12 − 2');
   });
   it('refuses a missing equation', () => {
     expect('error' in applyBothChecked(parseEquation('x = 1'), '+#3', [two, two])).toBe(true);
