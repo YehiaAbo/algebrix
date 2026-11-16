@@ -63,6 +63,7 @@
         </div>
         <p id="input-error" class="input-error" aria-live="polite"></p>
       </header>
+      <div id="board" class="board">
       <div id="stage" class="stage">
         <div id="trail" class="trail"></div>
         <div id="hover" class="hover"></div>
@@ -82,6 +83,7 @@
           <input id="op-input" spellcheck="false" autocomplete="off" aria-label="Operation for both sides">
           <span id="op-note" class="op-note"></span>
         </div>
+      </div>
       </div>
       <footer class="bar">
         <div id="hints" class="hints" aria-live="polite"></div>
@@ -115,7 +117,7 @@
           <section><h3>4. Simplify when you want</h3><p>Nothing tidies itself. A dashed box marks what could simplify; press <kbd>s</kbd> to take it, or leave it if you want that form.</p></section>
           <section><h3>5. Hold Tab for algebra</h3><p>Factor, expand, combine fractions, clear denominators, split into cases, solve for a variable (<kbd>i</kbd>), substitute from another equation (<kbd>1</kbd>–<kbd>9</kbd>). Arrows browse; release <kbd>Tab</kbd> (or tap it again) to apply. <kbd>e</kbd> on its own solves straight away.</p></section>
           <section><h3>6. Hold f for functions</h3><p>Put a function on both sides, or press <kbd>i</kbd> to undo the outer one. <kbd>←</kbd> <kbd>→</kbd> pick a family (powers, roots, exp and log, trig), <kbd>↓</kbd> steps in, release <kbd>f</kbd> to apply.</p></section>
-          <section><h3>7. Many equations</h3><p><kbd>n</kbd> adds one, <kbd>1</kbd>–<kbd>9</kbd> switch. Answers are checked against the equation you started with; extraneous ones are flagged.</p></section>
+          <section><h3>7. Many equations</h3><p>Every equation gets its own lane on the sheet. <kbd>n</kbd> adds one; <kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd> or <kbd>1</kbd>–<kbd>9</kbd> move between them. Aim at a variable and the lanes that share it light up: hold <kbd>Tab</kbd> + their number to bring it in. Extraneous answers are flagged.</p></section>
           <section><h3>8. The graph</h3><p>One variable: both sides as curves, and the answers are where they cross. Two: the solution curve, or the shaded region for an inequality. Three: the solution surface in 3D. Drag, scroll, double-click to reset.</p></section>
           <section><h3>9. Pick part of a side</h3><p>Drag a box with the mouse around the pieces you want, or hold <kbd>Ctrl</kbd> and tap <kbd>←</kbd> <kbd>→</kbd> to grow it left or right. <i>3 + 5</i> out of <i>2x + 3 + 5 + y</i> works like any single piece: <kbd>s</kbd>, <kbd>m</kbd>, and the rest.</p></section>
           <section><h3>10. More than equations</h3><p>Type <i>x^2 − 4 &lt; 0</i> for an inequality (moves flip the sign when they must; <kbd>e</kbd> solves it with a sign chart). Type just an expression to rewrite it. An identity like <i>(a+b)^2 = a^2+2ab+b^2</i> becomes a proof. <i>f(x) = x^2 + 1</i> defines a function.</p></section>
@@ -141,7 +143,7 @@
           <h3 class="gap">Equations</h3>
           <dl>
             <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>switch equation</dd>
-            <dt><kbd>Ctrl</kbd> + <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>previous / next equation</dd>
+            <dt><kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next equation</dd>
             <dt><kbd>n</kbd></dt><dd>add an equation</dd>
             <dt><kbd>i</kbd></dt><dd>type over this one</dd>
             <dt><kbd>Delete</kbd> twice</dt><dd>remove this one</dd>
@@ -190,6 +192,8 @@
             <dt><kbd>u</kbd> <kbd>r</kbd></dt><dd>undo / redo</dd>
             <dt><kbd>w</kbd> <kbd>,</kbd></dt><dd>your work / settings</dd>
             <dt><kbd>z</kbd></dt><dd>⚡ flash mode</dd>
+            <dt><kbd>Shift</kbd>+<kbd>G</kbd></dt><dd>graph right / below / hidden</dd>
+            <dt>drag a gap</dt><dd>resize panels (double-click resets)</dd>
             <dt><kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>reset all to the start</dd>
             <dt><kbd>t</kbd> <kbd>M</kbd></dt><dd>theme / sound</dd>
             <dt><kbd>g</kbd> <kbd>?</kbd></dt><dd>tour / this manual</dd>

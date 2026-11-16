@@ -155,3 +155,12 @@ App:
 - `g` opens a tour menu with six short tours: basics, picking pieces, the algebra menu, systems, beyond equations, and your work and settings. A tour you finish gets a ✓, and the closing message points to the next one. A script plays every tour end to end.
 - Fix: tapping Tab with nothing aimed now offers "factored", which factors either side.
 - Fix: the tour card sits above the library and settings, so the steps that use them stay readable.
+
+### Round 7: the sheet
+
+- Equations sit side by side in lanes on the main screen. The one you're working on is the wide, live lane; the others are smaller columns in order. The rail no longer lists equations.
+- Alt+←→ (or 1-9) moves between lanes, and the lanes slide to their new places.
+- Aiming at a variable lights up the lanes that contain it ("Tab + 3 puts in z from here"). With nothing aimed, lanes show which variables they share with the current equation.
+- Substituting, eliminating, or `#j` in a both-sides operation flies a copy of the source lane into the work.
+- Typing previews the equation live: unclosed brackets are closed and a trailing operator is left off, so the preview shows faded while what you've typed is unfinished.
+- Panels can be resized by dragging the gaps (double-click resets). The graph can sit on the right, below, or be hidden (Shift+G or Settings). Layout is saved in prefs.

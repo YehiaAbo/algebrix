@@ -3,7 +3,7 @@ import { solveInequality } from '../engine/inequality';
 import { isIdentity, isProved, unfold, inverseFunction } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
 import { setDomains, Domain } from '../engine/moves';
-import { parseEquation, ParseError } from '../engine/parse';
+import { parseEquation } from '../engine/parse';
 import { toText } from '../engine/print';
 import { applyMove, applyBothChecked, checked, direction, isErr, MoveName, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { absOf, coefOf, negate } from '../engine/terms';
@@ -21,6 +21,7 @@ import { sound } from './sound';
 import { prefs, setPref, onPrefs, ms } from './prefs';
 import { applyTheme, applyLook, applySpeed, isDark } from './appearance';
 import { works } from './works';
+import { initPanels, applyPanels, cycleGraph } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
 
@@ -105,6 +106,7 @@ export class App {
     });
     this.settings = new Settings({ tour: () => this.tour.menu() });
     onPrefs((_, k) => this.prefsChanged(k));
+    initPanels();
     if (!this.restore()) {
       this.writing = 'new';
       this.commit('7y + 3x = 20', true);
@@ -139,6 +141,7 @@ export class App {
 
   renderMain(tr: Transition | null) {
     $('hover').classList.remove('on');
+    if (!this.preview) $('stage').classList.remove('preview');
     const eq = this.shown;
     if (!eq) { this.stage.clear(); return; }
     const host = $('stage');
@@ -186,8 +189,99 @@ export class App {
     el.dataset.r = edges.r ? '1' : '';
   }
 
+  /** the status tag an equation carries: its answer, ✓, ∎, or a warning */
+  private slotTag(i: number, e: Eq): { text: string; cls: string } | null {
+    const sl = this.slots[i], st = sl.steps[sl.at];
+    if (relOf(e) === '≟') return isProved(e) ? { text: '∎', cls: 'solved' } : { text: 'prove', cls: 'goal' };
+    if (relOf(e) === 'def') return { text: 'definition', cls: 'goal' };
+    if (st.answer) return { text: st.answer, cls: 'solved ans' };
+    if (solvedFor(e)) return sl.bad ? { text: 'not a solution', cls: 'solved no' } : { text: '✓', cls: 'solved' };
+    return null;
+  }
+
+  /** The sheet: every other equation in its own lane beside the one you work on,
+   *  in order, so a system reads left to right like columns on a board. */
+  renderLanes() {
+    const board = $('board'), stage = $('stage');
+    const before = new Map<string, DOMRect>();
+    board.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => before.set(el.dataset.lane!, el.getBoundingClientRect()));
+    board.querySelectorAll('.lane').forEach(l => l.remove());
+    const adding = this.mode === 'write' && this.writing === 'new' && this.slots.length > 0;
+    const active = adding ? this.slots.length : this.cur;
+    const n = this.slots.length + (adding ? 1 : 0);
+    board.classList.toggle('multi', n > 1);
+    stage.dataset.lane = String(active);
+    stage.dataset.n = String(active + 1);
+    if (n < 2) return;
+    // variables the aimed piece (or the whole equation) uses: lanes that share them are linked
+    const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
+    const mine = this.shown ? symbols(aimed ?? this.shown) : [];
+    for (let i = 0; i < this.slots.length; i++) {
+      if (i === active) continue;
+      const e = this.eqOf(i);
+      const lane = document.createElement('div');
+      lane.className = 'lane';
+      lane.dataset.lane = String(i);
+      const head = document.createElement('div');
+      head.className = 'lane-head';
+      head.innerHTML = `<kbd>${i + 1}</kbd>`;
+      const tag = this.slotTag(i, e);
+      if (tag) { const t = document.createElement('span'); t.className = 'lane-tag ' + tag.cls; t.textContent = tag.text; head.append(t); }
+      const math = document.createElement('div');
+      math.className = 'lane-math';
+      const shared = symbols(e).filter(v => mine.includes(v));
+      const foot = document.createElement('div');
+      foot.className = 'lane-foot';
+      if (shared.length && !adding) {
+        lane.classList.add(aimed ? 'linked' : 'shares');
+        foot.innerHTML = aimed?.k === 'sym'
+          ? `<kbd>Tab</kbd>+<kbd>${i + 1}</kbd> puts in ${escapeHtml(aimed.name)} from here`
+          : `shares <i>${shared.map(escapeHtml).join(', ')}</i>`;
+      }
+      lane.append(head, math, foot);
+      lane.addEventListener('mousedown', ev => { ev.stopPropagation(); this.switchTo(i); });
+      if (i < active) board.insertBefore(lane, stage); else board.append(lane);
+      requestAnimationFrame(() => {
+        const W = math.clientWidth - 12, H = math.clientHeight - 8;
+        let lay = layout(e, 26);
+        const f = Math.min(1, W / lay.w, H / (lay.asc + lay.desc));
+        if (f < 1) lay = layout(e, Math.max(9, 26 * f));
+        const box = document.createElement('div');
+        box.className = 'mini';
+        box.style.width = lay.w + 'px';
+        box.style.height = lay.asc + lay.desc + 'px';
+        math.append(box);
+        new Stage(box).show(lay, 0, 0, null);
+      });
+    }
+    // lanes and the stage slide to their new places (FLIP)
+    board.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => {
+      const was = before.get(el.dataset.lane!);
+      if (!was) return;
+      const now = el.getBoundingClientRect();
+      const dx = was.left - now.left;
+      if (Math.abs(dx) > 1) el.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: ms(280), easing: 'cubic-bezier(.2,.8,.16,1)' });
+    });
+  }
+
+  /** a copy of another equation flies into this one (substitute, add an equation) */
+  private flyFrom(j: number) {
+    const src = $('board').querySelector<HTMLElement>(`.lane[data-lane="${j}"] .lane-math .mini`);
+    const dst = this.stage.box('eq');
+    if (!src || !dst) return;
+    const a = src.getBoundingClientRect(), host = $('stage').getBoundingClientRect();
+    const ghost = src.cloneNode(true) as HTMLElement;
+    ghost.classList.add('fly');
+    Object.assign(ghost.style, { position: 'fixed', left: `${a.left}px`, top: `${a.top}px`, margin: '0', zIndex: '6' });
+    document.body.append(ghost);
+    const tx = host.left + dst.x + dst.w / 2 - (a.left + a.width / 2), ty = host.top + dst.y + dst.h / 2 - (a.top + a.height / 2);
+    ghost.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${tx}px, ${ty}px) scale(1.25)`, opacity: 0 }], { duration: ms(420), easing: 'cubic-bezier(.3,.6,.2,1)', fill: 'forwards' }).onfinish = () => ghost.remove();
+    src.closest('.lane')?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: ms(700), easing: 'ease-out' });
+  }
+
   renderAll(tr: Transition | null, graphAnim = false) {
     this.syncDefs();
+    this.renderLanes();
     this.renderMain(tr);
     this.renderTrail();
     this.renderRail();
@@ -272,7 +366,7 @@ export class App {
       new Stage(mini).show(lay, 0, 0, null);
       btn.addEventListener('click', () => this.switchTo(i));
     });
-    $('eqs-tip').innerHTML = this.slots.length > 1 ? `<kbd>1</kbd>–<kbd>${Math.min(9, this.slots.length)}</kbd> switch, hold <kbd>Tab</kbd> + number to substitute` : `<kbd>n</kbd> adds another equation`;
+    $('eqs-tip').innerHTML = this.slots.length > 1 ? `<kbd>1</kbd>–<kbd>${Math.min(9, this.slots.length)}</kbd> or <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> switch, hold <kbd>Tab</kbd> + number to substitute` : `<kbd>n</kbd> adds another equation`;
 
     const eq = this.eq;
     const vars = $('vars');
@@ -484,6 +578,7 @@ export class App {
     this.sel = id;
     if (!quiet) sound.tick(id ? (findPath(this.eq, id)?.length ?? 1) - 1 : 0);
     this.renderSelection();
+    if (this.slots.length > 1) this.renderLanes();
     this.renderHints();
     this.tour.check();
   }
@@ -613,6 +708,14 @@ export class App {
     this.sel = null;
     this.renderMain(null);
     this.select(g.id, quiet);
+  }
+
+  /** Alt + ← →: the equation to the left / right on the sheet */
+  stepEquation(d: -1 | 1) {
+    if (this.slots.length < 2) return this.refuse('Only one equation. Press n to add another.');
+    const j = this.cur + d;
+    if (j < 0 || j >= this.slots.length) return this.refuse(d < 0 ? 'This is the first equation.' : 'This is the last equation. Press n to add one.');
+    this.switchTo(j);
   }
 
   /** which sides a highlight could still grow toward (Ctrl + ← →) */
@@ -853,17 +956,19 @@ export class App {
     const src = $<HTMLInputElement>('input').value;
     clearTimeout(this.typingTimer);
     const err = $('input-error');
-    try {
-      this.preview = parseEquation(src);
-      err.textContent = '';
-      this.renderMain(null);
-      this.graph.draw(this.preview, false);
-      this.renderRail();
-    } catch (e) {
-      if (!(e instanceof ParseError)) throw e;
-      this.typingTimer = window.setTimeout(() => { err.textContent = src.trim() ? (e as Error).message : ''; }, 700);
-      $('stage').classList.add('preview');
+    err.textContent = '';
+    const got = livePreview(src);
+    $('stage').classList.toggle('preview', !!got && got.partial);
+    if (!got) {
+      // nothing readable yet: keep what was there, explain only if you stop typing
+      if (src.trim()) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 900);
+      return;
     }
+    this.preview = got.eq;
+    this.renderMain(null);
+    this.graph.draw(this.preview, false);
+    this.renderRail();
+    if (got.partial) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 1400);
   }
 
   /* ---------------- both sides: type an operator, see it live, Enter ---------------- */
@@ -953,7 +1058,7 @@ export class App {
     if (this.slots.length > 1) out.push({
       key: 'k', label: partner >= 0 ? `eliminate${aimVar ? ' ' + aimVar : ''} with (${partner + 1})` : 'eliminate with another equation', ok: partner >= 0,
       run: () => {
-        document.querySelectorAll('.eq-slot')[partner]?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 700, easing: 'ease-out' });
+        this.flyFrom(partner);
         this.apply(eliminate(this.eq, this.eqOf(partner), partner + 1, aimVar ?? undefined), 1.1);
       },
     });
@@ -1376,8 +1481,7 @@ export class App {
   substituteFrom(j: number) {
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     const r = substitute(this.eq, this.eqOf(j), aimed?.k === 'sym' ? aimed.name : null, `Equation ${j + 1}`);
-    const rail = document.querySelectorAll('.eq-slot')[j];
-    rail?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 700, easing: 'ease-out' });
+    if (!isErr(r)) this.flyFrom(j);
     this.applyTidy(r, 1.2);
   }
 
@@ -1401,7 +1505,9 @@ export class App {
         e.preventDefault();
         const r = this.opResult();
         if (isErr(r)) { this.refuse(r.error); return; }
+        const ref = /#(\d)/.exec($<HTMLInputElement>('op-input').value);
         this.closeOp();
+        if (ref) this.flyFrom(Number(ref[1]) - 1);
         this.apply(r, 1.05);
       }
     });
@@ -1532,11 +1638,7 @@ export class App {
       // hold Ctrl: ← grows the highlight to the left, → to the right; let go and it stays
       if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); return this.growEdge(k === 'ArrowLeft' ? -1 : 1); }
       // Ctrl + ↑ ↓: previous / next equation
-      if (k === 'ArrowUp' || k === 'ArrowDown') {
-        e.preventDefault();
-        if (this.slots.length < 2) return this.refuse('Only one equation. Press n to add another.');
-        return this.switchTo((this.cur + (k === 'ArrowUp' ? -1 : 1) + this.slots.length) % this.slots.length);
-      }
+      if (k === 'ArrowUp' || k === 'ArrowDown') { e.preventDefault(); return this.stepEquation(k === 'ArrowUp' ? -1 : 1); }
       if (k.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
       else if ((k.toLowerCase() === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); this.redo(); }
       return;
@@ -1553,8 +1655,8 @@ export class App {
     }
     switch (k) {
       case ' ': handled(); return this.showLabels();
-      case 'h': case 'ArrowLeft': handled(); return e.altKey || e.shiftKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : this.sideways(-1);
-      case 'l': case 'ArrowRight': handled(); return e.altKey || e.shiftKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : this.sideways(1);
+      case 'h': case 'ArrowLeft': handled(); return e.altKey ? this.stepEquation(-1) : e.shiftKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : this.sideways(-1);
+      case 'l': case 'ArrowRight': handled(); return e.altKey ? this.stepEquation(1) : e.shiftKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : this.sideways(1);
       case 'H': handled(); return this.apply(applyMove('slideL', this.eq, this.sel));
       case 'L': handled(); return this.apply(applyMove('slideR', this.eq, this.sel));
       case 'k': case 'ArrowUp': handled(); return this.grow();
@@ -1578,6 +1680,7 @@ export class App {
       case 'w': handled(); this.closeModes(); return this.library.open();
       case ',': handled(); this.closeModes(); return this.settings.open();
       case 'z': handled(); return this.toggleFlash();
+      case 'G': handled(); { const at = cycleGraph(); sound.tick(2); return this.say(at === 'right' ? 'Graph on the right.' : at === 'below' ? 'Graph under the work.' : 'Graph hidden. Shift+G brings it back.'); }
       case 'R': handled(); return this.resetWork();
       case '[': handled(); return this.graph.zoom(1.25);
       case ']': handled(); return this.graph.zoom(0.8);
@@ -1644,6 +1747,7 @@ export class App {
     if (k === 'theme') { applyTheme(); this.themeLabel(); }
     if (k === 'look') applyLook();
     if (k === 'speed') { applySpeed(); this.flashLabel(); }
+    if (k === 'graphAt') applyPanels();
     if (k === 'muted') { $('sound').classList.toggle('off', prefs.muted); $('sound').setAttribute('aria-pressed', String(!prefs.muted)); }
     if (['theme', 'look', 'size', 'hints'].includes(k) && this.shown) { this.stage.clear(); this.renderAll(null); }
   }
@@ -1736,6 +1840,26 @@ export class App {
     this.say('Back to the start. Press r to replay your steps.');
     this.save();
   }
+}
+
+/** what you've typed so far, drawn even when unfinished: unclosed brackets are closed and a
+ *  dangling operator at the end is left off, so "3(x + 2" or "2x + 5 =" still shows */
+function livePreview(src: string): { eq: Eq; partial: boolean } | null {
+  if (!src.trim()) return null;
+  const close = (t: string) => {
+    let depth = 0;
+    for (const c of t) { if (c === '(') depth++; else if (c === ')') depth = Math.max(0, depth - 1); }
+    const bars = (t.match(/\|/g) ?? []).length % 2;
+    return t + ')'.repeat(depth) + (bars ? '|' : '');
+  };
+  let t = src;
+  for (let i = 0; i < 16 && t.trim(); i++) {
+    for (const cand of i === 0 ? [t, close(t)] : [close(t)]) {
+      try { return { eq: parseEquation(cand, true), partial: cand !== src }; } catch { /* keep trimming */ }
+    }
+    t = t.trimEnd().slice(0, -1);
+  }
+  return null;
 }
 
 function escapeHtml(s: string) {

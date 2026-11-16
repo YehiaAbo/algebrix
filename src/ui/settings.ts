@@ -16,6 +16,7 @@ export class Settings {
     this.rows = [
       { key: 'theme', label: 'Theme', options: [{ v: 'system', name: 'System' }, { v: 'dark', name: 'Dark' }, { v: 'light', name: 'Light' }] },
       { key: 'look', label: 'Look', options: LOOKS.map(l => ({ v: l.id, name: l.name, blurb: l.blurb })) },
+      { key: 'graphAt', label: 'Graph', options: [{ v: 'right', name: 'Right' }, { v: 'below', name: 'Below', blurb: 'Under the work, with a wide sheet. Shift+G cycles. Drag the gaps between panels to resize.' }, { v: 'hidden', name: 'Hidden' }] },
       { key: 'size', label: 'Math size', options: [{ v: 0.85, name: 'Small' }, { v: 1, name: 'Normal' }, { v: 1.15, name: 'Large' }, { v: 1.3, name: 'Huge' }] },
       { key: 'speed', label: 'Speed', options: [{ v: 'calm', name: 'Calm', blurb: 'Slower, easy to follow.' }, { v: 'standard', name: 'Standard' }, { v: 'flash', name: '⚡ Flash', blurb: 'About three times faster. Also z.' }] },
       { key: 'sounds', label: 'Sounds', options: SOUND_PACKS.map(p => ({ v: p.id, name: p.name, blurb: p.blurb })) },
