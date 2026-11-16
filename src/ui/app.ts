@@ -1,16 +1,12 @@
-import { Eq, Node, find, findPath, children, bumpIds, symbols, relOf, isIneq, DEFS, add, key } from '../engine/ast';
+import { Eq, Node, find, findPath, children, symbols, relOf, isIneq, key } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
-import { isIdentity, isProved, unfold, inverseFunction } from '../engine/goals';
-import { polyOf } from '../engine/rewrite';
-import { setDomains, Domain } from '../engine/moves';
+import { isIdentity, isProved } from '../engine/goals';
+import { Domain } from '../engine/moves';
 import { parseEquation } from '../engine/parse';
 import { toText } from '../engine/print';
-import { applyMove, applyBothChecked, checked, direction, isErr, MoveName, MoveOk, MoveResult, solvedFor } from '../engine/moves';
-import { absOf, coefOf, negate } from '../engine/terms';
-import { formsFor, Form } from '../engine/forms';
-import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, isolate, substitute, splitCases, simplifySpot, Spot, eliminate, tidy, quadraticFormula, Cases } from '../engine/techniques';
-import { parseExpr } from '../engine/parse';
-import { evaluate } from '../engine/ast';
+import { applyMove, direction, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
+import { formsFor } from '../engine/forms';
+import { moveAny, WrapItem, simplifySpot, Spot } from '../engine/techniques';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition } from '../render/stage';
 import { Graph } from './graph';
@@ -21,71 +17,55 @@ import { sound } from './sound';
 import { prefs, setPref, onPrefs, ms } from './prefs';
 import { applyTheme, applyLook, applySpeed, isDark } from './appearance';
 import { works } from './works';
-import { initPanels, applyPanels, cycleGraph } from './panels';
+import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml } from './shared';
+import * as opsPart from './ops';
+import * as hubPart from './hub';
+import * as fnpalPart from './fnpal';
+import * as solvingPart from './solving';
+import * as keysPart from './keys';
+import * as persistPart from './persist';
 
-/** one step of work: what it is, the rule it used, and whether it is reversible (⇔) or one-way (⇒) */
-interface Step { eq: Eq; label: string; conditions: string[]; auto?: boolean; rule?: string; dir?: '⇔' | '⇒'; answer?: string }
-/** origin: the equation a case came from, to check answers against. bad: why its answer fails */
-export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string }
-type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
-
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-
-/** single keys that act straight away (aim + key = move) */
-const MOVE_KEYS: { key: string; name: MoveName | 'any'; verb: string; pitch: number }[] = [
-  { key: 'm', name: 'any', verb: 'move across', pitch: 1 },
-  { key: 's', name: 'simplify', verb: 'simplify', pitch: 1.2 },
-  { key: 'd', name: 'distribute', verb: 'distribute', pitch: 1.1 },
-  { key: 'x', name: 'swap', verb: 'swap sides', pitch: 0.8 },
-];
-
-/** typing an operator starts a both-sides operation; no Shift needed (= is +, . is ×) */
-const OP_KEYS: Record<string, string> = { '=': '+', '+': '+', '-': '-', '.': '*', '*': '*', '/': '/' };
-const OP_SHOW: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-
-const LABEL_CHARS = 'asdfghjklqwertyuiopzxcvbnm';
-const DOMAIN_TEXT: Record<Domain, string> = { real: 'real number', positive: 'positive', nonneg: 'zero or more', integer: 'whole number' };
-
-interface Tech { key: string; label: string; ok: boolean; run: () => void }
-interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean }
+export type { Slot };
 
 export class App {
   slots: Slot[] = [];
   cur = 0;
   mode: Mode = 'write';
-  private memory = new Map<string, string>(); // parent id → child we came up from
-  private stage: Stage;
-  private graph: Graph;
-  private labels = new Map<string, string>();
-  private typed = '';
-  private message: { text: string; bad: boolean } | null = null;
-  private messageTimer = 0;
-  private preview: Eq | null = null;
-  private peek: Eq | null = null;
-  private hub: Hub | null = null;
-  private typingTimer = 0;
-  private writing: 'new' | 'edit' = 'edit';
-  private pending: { timer: number; run: () => void }[] = [];
-  private deleteArmed = 0;
-  private looseSel: string | null = null;
+  memory = new Map<string, string>(); // parent id → child we came up from
+  stage: Stage;
+  graph: Graph;
+  labels = new Map<string, string>();
+  typed = '';
+  message: { text: string; bad: boolean } | null = null;
+  messageTimer = 0;
+  preview: Eq | null = null;
+  peek: Eq | null = null;
+  hub: Hub | null = null;
+  typingTimer = 0;
+  writing: 'new' | 'edit' = 'edit';
+  pending: { timer: number; run: () => void }[] = [];
+  deleteArmed = 0;
+  looseSel: string | null = null;
   /** while the tour runs, your own session isn't overwritten */
   noSave = false;
   /** what each variable may be (real by default); moves and answers respect it */
   domains: Record<string, Domain> = {};
   /** a partial selection: the current step with a run of terms wrapped in a group node */
-  private grouped: { base: Eq; eq: Eq; id: string; anchor: string; head: string } | null = null;
-  private drag: { x: number; y: number; on: boolean } | null = null;
+  grouped: { base: Eq; eq: Eq; id: string; anchor: string; head: string } | null = null;
+  drag: { x: number; y: number; on: boolean } | null = null;
   tour: Tour;
   library: Library;
   settings: Settings;
   /** the workspace (card) being worked on */
   workId = '';
-  private resetArmed = 0;
+  resetArmed = 0;
   /** a key was pressed while Tab or f was held: letting go then closes the menu instead of pinning it open */
-  private chordUsed = false;
+  chordUsed = false;
 
+  pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
   constructor() {
     this.stage = new Stage($('stage'));
     this.graph = new Graph($<HTMLCanvasElement>('graph'), $('graph-note'));
@@ -135,7 +115,7 @@ export class App {
   /** what the stage shows: the typed preview, a form being browsed, or the current step */
   get shown(): Eq { return this.peek ?? this.eq; }
   get step(): Step { return this.steps[this.at]; }
-  private eqOf(i: number): Eq { const s = this.slots[i]; return s.steps[s.at].eq; }
+  eqOf(i: number): Eq { const s = this.slots[i]; return s.steps[s.at].eq; }
 
   /* ---------------- rendering ---------------- */
 
@@ -190,7 +170,7 @@ export class App {
   }
 
   /** the status tag an equation carries: its answer, ✓, ∎, or a warning */
-  private slotTag(i: number, e: Eq): { text: string; cls: string } | null {
+  slotTag(i: number, e: Eq): { text: string; cls: string } | null {
     const sl = this.slots[i], st = sl.steps[sl.at];
     if (relOf(e) === '≟') return isProved(e) ? { text: '∎', cls: 'solved' } : { text: 'prove', cls: 'goal' };
     if (relOf(e) === 'def') return { text: 'definition', cls: 'goal' };
@@ -264,7 +244,7 @@ export class App {
   }
 
   /** a copy of another equation flies into this one (substitute, add an equation) */
-  private flyFrom(j: number) {
+  flyFrom(j: number) {
     const src = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${j}"] .lane-math .mini`);
     const dst = this.stage.box('eq');
     if (!src || !dst) return;
@@ -476,7 +456,7 @@ export class App {
     else if (this.slots.length > 1) this.say(`Equation ${this.cur + 1}. Press 1–${this.slots.length} to switch between them.`);
   }
 
-  private entrance() {
+  entrance() {
     const els = [...$('stage').querySelectorAll('.g')];
     els.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: i * 14, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
   }
@@ -510,13 +490,13 @@ export class App {
   }
 
   /** run something after a beat; any key press runs it immediately instead */
-  private later(ms: number, run: () => void) {
+  later(ms: number, run: () => void) {
     const item = { timer: 0, run };
     item.timer = window.setTimeout(() => { this.pending = this.pending.filter(p => p !== item); run(); }, ms);
     this.pending.push(item);
   }
 
-  private flush() {
+  flush() {
     while (this.pending.length) {
       const p = this.pending.shift()!;
       clearTimeout(p.timer);
@@ -558,7 +538,7 @@ export class App {
     this.afterJump();
   }
 
-  private afterJump() {
+  afterJump() {
     if (this.sel && !find(this.eq, this.sel)) this.sel = null;
     sound.undo();
     this.renderAll({ quick: true }, true);
@@ -583,7 +563,7 @@ export class App {
 
   /* ---------------- simplification on offer ---------------- */
 
-  private spot: Spot | null = null;
+  spot: Spot | null = null;
 
   /** mark what could simplify with dashed boxes and a small prompt; nothing changes until you press s */
   renderSpot() {
@@ -736,7 +716,7 @@ export class App {
   }
 
   /** which sides a highlight could still grow toward (Ctrl + ← →) */
-  private growable(id: string): { l: boolean; r: boolean } {
+  growable(id: string): { l: boolean; r: boolean } {
     const g = this.grouped && id === this.grouped.id ? this.grouped : null;
     const first = g ? g.anchor : id;
     const path = findPath(this.base, first);
@@ -811,7 +791,7 @@ export class App {
     this.selectRange(touched[0].id, touched[touched.length - 1].id, quiet);
   }
 
-  private pointerDown(e: MouseEvent) {
+  pointerDown(e: MouseEvent) {
     if (e.button !== 0) return;
     const host = $('stage').getBoundingClientRect();
     this.drag = { x: e.clientX - host.left, y: e.clientY - host.top, on: false };
@@ -841,7 +821,7 @@ export class App {
     window.addEventListener('mouseup', up);
   }
 
-  private closeModes() {
+  closeModes() {
     if (this.mode === 'write') this.cancelEdit();
     if (this.mode === 'op') this.closeOp();
     if (this.mode === 'hub') this.closeHub(true);
@@ -896,7 +876,7 @@ export class App {
   }
 
   /** the outermost piece with its own box (a number in a product with a hidden 1 etc.) */
-  private dive(n: Node): Node {
+  dive(n: Node): Node {
     let cur = n;
     while (!this.stage.box(cur.id)) { const k = children(cur)[0]; if (!k) break; cur = k; }
     return cur;
@@ -996,746 +976,10 @@ export class App {
     if (got.partial) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 1400);
   }
 
-  /* ---------------- both sides: type an operator, see it live, Enter ---------------- */
-
-  /** What you most likely want to apply, given what is aimed: the thing that cancels it. */
-  private prefill(op: string): string {
-    const n = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
-    if (!n) return '';
-    const path = findPath(this.eq, n.id)!;
-    const side = path[1];
-    const txt = (m: Node) => toText(m, true);
-    if (op === '+' || op === '-') return txt(absOf(n));
-    if (op === '/') {
-      if (n === side && n.k === 'mul') { const c = coefOf(n); return c ? txt(absOf(c)) : txt(n.factors[0]); }
-      return txt(n);
-    }
-    if (op === '*') {
-      if (side.k === 'frac' && (n === side || n === side.den)) return txt(side.den);
-      return txt(n);
-    }
-    return '';
-  }
-
-  openOp(op: string) {
-    this.closeHub(false);
-    this.setMode('op');
-    const box = $('op');
-    const input = $<HTMLInputElement>('op-input');
-    const fill = this.prefill(op);
-    input.value = op === '*' ? '*' + fill : op + fill;
-    box.hidden = false;
-    this.place(box);
-    input.focus();
-    input.setSelectionRange(1, input.value.length);
-    this.onOpType();
-    this.renderHints();
-  }
-
-  private opResult(): MoveResult {
-    const v = $<HTMLInputElement>('op-input').value.trim();
-    if (v.length <= 1) return { error: 'Type what to apply, like 7 or 3x.' };
-    return applyBothChecked(this.eq, v, this.slots.map((_, j) => this.eqOf(j)));
-  }
-
-  onOpType() {
-    const r = this.opResult();
-    const v = $<HTMLInputElement>('op-input').value.trim();
-    const op = ({ '−': '-', '×': '*', '·': '*', '÷': '/' } as Record<string, string>)[v[0]] ?? v[0];
-    $('op-sym').textContent = OP_SHOW[op] ? `${OP_SHOW[op]} both sides` : 'both sides';
-    $('op').classList.toggle('bad', isErr(r) && v.length > 1);
-    $('op-note').textContent = isErr(r) ? (v.length > 1 ? r.error : 'start with + − × ÷') : r.conditions?.length ? `needs ${r.conditions.join(', ')}` : 'Enter to apply';
-    this.peek = isErr(r) ? null : r.eq;
-    this.renderMain({ quick: true });
-  }
-
-  closeOp() {
-    $('op').hidden = true;
-    $<HTMLInputElement>('op-input').blur();
-    const had = !!this.peek;
-    this.peek = null;
-    this.setMode('solve');
-    if (had) this.renderMain({ quick: true });
-    this.renderHints();
-  }
-
-  /* ---------------- E: techniques and forms ---------------- */
-
-  private techniques(): Tech[] {
-    const eq = this.eq;
-    const aimed = this.sel && this.sel !== 'eq' ? find(eq, this.sel) : null;
-    const vars = symbols(eq);
-    const aimVar = aimed?.k === 'sym' && vars.includes(aimed.name) ? aimed.name : vars.length === 1 ? vars[0] : null;
-    const out: Tech[] = relOf(eq) === 'expr' ? [] : [{
-      key: 'i', label: aimVar ? `solve for ${aimVar}` : 'solve for…', ok: vars.length > 0,
-      run: () => (aimVar ? this.solveFor(aimVar) : this.askVar()),
-    }];
-    out.push({ key: 'a', label: 'split into cases', ok: !!splitCases(eq), run: () => this.split() });
-    const qv = aimVar ?? vars.find(v => !isErr(quadraticFormula(eq, v) as never));
-    const q = qv ? quadraticFormula(eq, qv) : null;
-    if (q && !('error' in q)) out.push({ key: 'g', label: `quadratic formula for ${qv}`, ok: true, run: () => this.split(undefined, q) });
-    const hasCall = (() => { let c = false; walk(eq, n => { if (n.k === 'call' && DEFS.has(n.name)) c = true; }); return c; })();
-    if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
-    if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
-    this.slots.forEach((_, j) => {
-      if (j === this.cur) return;
-      const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));
-      out.push({ key: String(j + 1), label: `substitute from (${j + 1})`, ok: shares, run: () => this.substituteFrom(j) });
-    });
-    const partner = this.slots.findIndex((_, j) => j !== this.cur && !isErr(eliminate(eq, this.eqOf(j), j + 1, aimVar ?? undefined)));
-    if (this.slots.length > 1) out.push({
-      key: 'k', label: partner >= 0 ? `eliminate${aimVar ? ' ' + aimVar : ''} with (${partner + 1})` : 'eliminate with another equation', ok: partner >= 0,
-      run: () => {
-        this.flyFrom(partner);
-        this.apply(eliminate(this.eq, this.eqOf(partner), partner + 1, aimVar ?? undefined), 1.1);
-      },
-    });
-    return out;
-  }
-
-  openHub(sticky: boolean) {
-    this.flush();
-    const forms = formsFor(this.eq, this.sel);
-    this.hub = { forms, techs: this.techniques(), i: 0, sticky, moved: false, awaitVar: false };
-    this.chordUsed = false;
-    this.setMode('hub');
-    if (this.slots.length > 1) this.renderLanes();
-    sound.labels();
-    this.renderHub();
-    this.renderHints();
-  }
-
-  private askVar() {
-    if (!this.hub) return;
-    this.hub.awaitVar = true;
-    this.hub.sticky = true;
-    sound.tick(2);
-    this.renderHub();
-  }
-
-  hubKey(e: KeyboardEvent) {
-    const h = this.hub!;
-    const k = e.key;
-    if (k === 'Escape') return this.closeHub(true);
-    if (e.repeat) return;
-    if (h.awaitVar) {
-      const v = symbols(this.eq).find(s => s === k);
-      if (v) { this.closeHub(false); return this.solveFor(v); }
-      if (k === 'Tab') return this.closeHub(true);
-      return this.refuse(`Press one of ${symbols(this.eq).join(', ')}.`);
-    }
-    const step = ['ArrowRight', 'ArrowDown'].includes(k) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(k) ? -1 : 0;
-    if (step) {
-      if (!h.forms.length) return this.refuse('No other forms here. Aim at something else.');
-      h.i = h.moved ? (h.i + step + h.forms.length) % h.forms.length : step > 0 ? 0 : h.forms.length - 1;
-      h.moved = true;
-      sound.tick(1);
-      return this.peekAt();
-    }
-    if (k === 'Enter') { if (h.moved) return this.applyForm(); return this.refuse('Browse with ← → first, or press a key shown.'); }
-    // Tab again: apply the highlighted form, or close if nothing is highlighted
-    if (k === 'Tab') return h.moved ? this.applyForm() : this.closeHub(true);
-    const tech = h.techs.find(t => t.key === k);
-    if (tech) {
-      if (!tech.ok) return this.refuse(`${tech.label[0].toUpperCase()}${tech.label.slice(1)} doesn't apply here.`);
-      if (tech.key === 'i' && tech.label.endsWith('…')) return tech.run();
-      this.closeHub(false);
-      return tech.run();
-    }
-    if (/^[1-9]$/.test(k)) return this.refuse(Number(k) - 1 === this.cur ? 'That’s this equation. Hold Tab and press another equation’s number.' : `There is no equation ${k}.`);
-    const form = h.forms.find(f => f.chord === k);
-    if (form) { h.i = h.forms.indexOf(form); return this.applyForm(); }
-    if (k === 'f') { this.closeHub(false); return this.apply(applyMove('factor', this.eq, this.sel), 0.85); }
-    const known = 'zdxswctolprhqvn';
-    if (known.includes(k)) return this.refuse('That form doesn\'t apply to what is aimed.');
-  }
-
-  peekAt() {
-    const h = this.hub!;
-    const form = h.forms[h.i];
-    this.peek = form.eq;
-    this.renderMain({ quick: true, absorbs: form.hints.absorbs, flights: form.hints.flights });
-    this.graph.draw(this.peek, true);
-    this.renderHub();
-  }
-
-  applyForm() {
-    const h = this.hub;
-    if (!h) return;
-    const form = h.forms[h.i];
-    this.closeHub(false);
-    this.apply(form, 1.15);
-  }
-
-  closeHub(animateBack: boolean) {
-    if (!this.hub) return;
-    const peeked = !!this.peek;
-    this.hub = null;
-    this.peek = null;
-    $('forms').hidden = true;
-    this.setMode('solve');
-    if (animateBack && peeked) { sound.undo(); this.renderAll({ quick: true }, true); }
-    else { this.renderHints(); if (this.slots.length > 1) this.renderLanes(); }
-  }
-
-  renderHub() {
-    const h = this.hub!;
-    const host = $('forms');
-    host.replaceChildren();
-    host.className = 'forms hub';
-    if (h.awaitVar) {
-      const row = document.createElement('div');
-      row.className = 'hub-row';
-      row.innerHTML = `<span class="hub-title">Solve for</span>` + symbols(this.eq).map(v => `<button class="chip var" data-k="${v}"><kbd>${v}</kbd></button>`).join('');
-      host.append(row);
-    } else {
-      const row = document.createElement('div');
-      row.className = 'hub-row';
-      row.innerHTML = `<span class="hub-title">Techniques</span>` + h.techs.map(t => `<button class="chip${t.ok ? '' : ' off'}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}</button>`).join('');
-      host.append(row);
-      if (h.forms.length) {
-        const forms = document.createElement('div');
-        forms.className = 'hub-forms';
-        h.forms.forEach((form, i) => {
-          const card = document.createElement('button');
-          card.className = 'form-card' + (h.moved && i === h.i ? ' on' : '');
-          card.dataset.i = String(i);
-          const piece = form.select ? find(form.eq, form.select) : null;
-          const lay = layout(piece ?? form.eq, 17);
-          const mini = document.createElement('div');
-          mini.className = 'mini';
-          mini.style.width = lay.w + 'px';
-          mini.style.height = lay.asc + lay.desc + 'px';
-          const name = document.createElement('span');
-          name.className = 'form-name';
-          name.innerHTML = `${form.chord ? `<kbd>${form.chord}</kbd>` : ''}${form.name}`;
-          card.append(name, mini);
-          forms.append(card);
-          new Stage(mini).show(lay, 0, 0, null);
-        });
-        host.append(forms);
-      }
-    }
-    const tip = document.createElement('div');
-    tip.className = 'forms-tip';
-    tip.innerHTML = h.awaitVar ? 'press the variable' : h.sticky ? 'press a key, or <kbd>←</kbd><kbd>→</kbd> browse + <kbd>Tab</kbd> applies. <kbd>Esc</kbd> closes' : 'keep holding <kbd>Tab</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd> and release';
-    host.append(tip);
-    host.hidden = false;
-    this.place(host);
-    host.querySelector('.form-card.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }
-
-  /* ---------------- F: functions on both sides ---------------- */
-
-  /** tab and item being browsed; moved = the person browsed with the arrows */
-  private pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
-
-  openPal(sticky: boolean) {
-    this.flush();
-    const inv = inverseOf(this.peelSide());
-    const tab = inv ? FN_TABS.findIndex(t => t.items.some(x => x.f === inv.f)) : -1;
-    this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null };
-    this.chordUsed = false;
-    this.setMode('fnpal');
-    sound.labels();
-    this.renderPal();
-    this.renderHints();
-  }
-
-  private renderPal() {
-    const P = this.pal;
-    const host = $('forms');
-    host.replaceChildren();
-    host.className = 'forms hub pal';
-    const inv = inverseOf(this.peelSide());
-    const pe = peel(this.eq, this.sel);
-    const lead = document.createElement('div');
-    lead.className = 'hub-row';
-    lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button>`;
-    host.append(lead);
-    const tabs = document.createElement('div');
-    tabs.className = 'pal-tabs';
-    tabs.className = 'pal-tabs' + (P.moved ? '' : ' focus');
-    tabs.innerHTML = FN_TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('');
-    host.append(tabs);
-    const row = document.createElement('div');
-    row.className = 'hub-row pal-items';
-    row.innerHTML = FN_TABS[P.tab].items.map((w, j) => `<button class="chip${inv?.f === w.f ? ' rec' : ''}${P.moved && j === P.i ? ' on' : ''}" data-k="${w.key}"><kbd>${w.key}</kbd><span class="fx">${w.show}</span><span class="pal-name">${w.label}</span></button>`).join('');
-    host.append(row);
-    if (P.ask) {
-      const ask = document.createElement('div');
-      ask.className = 'pal-ask';
-      ask.innerHTML = `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">type a number, Enter applies</span>`;
-      host.append(ask);
-    }
-    const tip = document.createElement('div');
-    tip.className = 'forms-tip';
-    tip.innerHTML = P.ask ? '<kbd>Enter</kbd> apply <kbd>Esc</kbd> back'
-      : P.moved ? '<kbd>←</kbd><kbd>→</kbd> functions <kbd>↑</kbd> back to categories ' + (P.sticky ? '<kbd>Enter</kbd> apply <kbd>f</kbd> closes' : 'release <kbd>f</kbd> to apply')
-      : '<kbd>←</kbd><kbd>→</kbd> categories <kbd>↓</kbd> open one. Or press a function\'s key directly';
-    host.append(tip);
-    host.hidden = false;
-    this.place(host);
-    if (P.ask) {
-      const input = $<HTMLInputElement>('pal-input');
-      input.addEventListener('keydown', e => this.askKey(e));
-      input.addEventListener('input', () => this.askPreview());
-      input.focus();
-    }
-  }
-
-  private peelSide(): Node {
-    const p = this.sel && this.sel !== 'eq' ? findPath(this.eq, this.sel) : null;
-    if (p) return p[1];
-    return inverseOf(this.eq.lhs) || !inverseOf(this.eq.rhs) ? this.eq.lhs : this.eq.rhs;
-  }
-
-  /** what an item would do, tidied, for the live preview */
-  private palResult(w: WrapItem, arg?: Node): MoveResult {
-    const r = checked(this.eq, wrapBoth(this.eq, w.f, arg));
-    return r;
-  }
-
-  private palPeek() {
-    const P = this.pal;
-    const w = FN_TABS[P.tab].items[P.i];
-    const r = w.ask ? null : this.palResult(w);
-    this.peek = r && !isErr(r) ? r.eq : null;
-    this.renderMain({ quick: true });
-  }
-
-  palKey(e: KeyboardEvent) {
-    const P = this.pal;
-    const k = e.key;
-    if (k === 'Escape') return this.closePal(true);
-    if (e.repeat) return;
-    const items = FN_TABS[P.tab].items;
-    // arrows only: ← → pick a category, ↓ steps into it, ← → pick a function (live preview), ↑ steps back out
-    const dx = k === 'ArrowRight' || k === 'Tab' ? 1 : k === 'ArrowLeft' ? -1 : 0;
-    if (dx && !P.moved) { P.tab = (P.tab + dx + FN_TABS.length) % FN_TABS.length; sound.tick(1); return this.renderPal(); }
-    if (dx && P.moved) { P.i = (P.i + dx + items.length) % items.length; sound.tick(2); this.renderPal(); return this.palPeek(); }
-    if (k === 'ArrowDown' && !P.moved) { P.moved = true; P.i = 0; sound.tick(2); this.renderPal(); return this.palPeek(); }
-    if (k === 'ArrowUp' && P.moved) { P.moved = false; sound.tick(1); this.peek = null; this.renderMain({ quick: true }); return this.renderPal(); }
-    if (k === 'Enter') { if (P.moved) return this.choose(items[P.i]); P.moved = true; P.i = 0; this.renderPal(); return this.palPeek(); }
-    if (k === 'i') return this.palInverse();
-    if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
-    const w = WRAPS.find(x => x.key === k);
-    if (w) return this.choose(w);
-  }
-
-  /** on releasing f: apply what was browsed, else keep the menu open */
-  palRelease() {
-    const P = this.pal;
-    if (P.sticky || P.ask) return;
-    if (P.moved) return this.choose(FN_TABS[P.tab].items[P.i]);
-    P.sticky = true;
-    this.renderPal();
-  }
-
-  private palInverse() {
-    this.closePal(false);
-    this.applyTidy(peel(this.eq, this.sel), 0.9);
-  }
-
-  private choose(w: WrapItem) {
-    if (w.ask) {
-      this.pal.ask = w;
-      this.pal.sticky = true;
-      this.pal.tab = FN_TABS.findIndex(t => t.items.includes(w));
-      this.pal.i = FN_TABS[this.pal.tab].items.indexOf(w);
-      this.pal.moved = true;
-      this.setMode('fnask');
-      sound.tick(2);
-      this.renderPal();
-      return;
-    }
-    this.closePal(false);
-    this.applyTidy(this.palResult(w), 0.9);
-  }
-
-  private askArg(): Node | { error: string } {
-    const v = $<HTMLInputElement>('pal-input').value.trim();
-    if (!v) return { error: 'Type a number.' };
-    try { return parseExpr(v); } catch (e) { return { error: (e as Error).message }; }
-  }
-
-  private askPreview() {
-    const a = this.askArg();
-    const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
-    $('pal-note').textContent = isErr(r) ? r.error : 'Enter applies';
-    $('pal-note').classList.toggle('bad', isErr(r) && !!$<HTMLInputElement>('pal-input').value.trim());
-    this.peek = !isErr(r) ? r.eq : null;
-    this.renderMain({ quick: true });
-  }
-
-  private askKey(e: KeyboardEvent) {
-    e.stopPropagation();
-    if (e.key === 'Escape') { e.preventDefault(); this.pal.ask = null; this.setMode('fnpal'); this.peek = null; this.renderMain({ quick: true }); this.renderPal(); return; }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const a = this.askArg();
-      const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
-      if (isErr(r)) { this.refuse(r.error); return; }
-      this.closePal(false);
-      this.applyTidy(r, 0.9);
-    }
-  }
-
-  closePal(animateBack = false) {
-    $('forms').hidden = true;
-    const peeked = !!this.peek;
-    this.peek = null;
-    this.setMode('solve');
-    if (animateBack && peeked) this.renderAll({ quick: true }, true);
-    this.renderHints();
-  }
-
-  /** apply a move built outside applyMove (so not yet checked); leftovers are offered as a simplification */
-  applyTidy(r: MoveResult, pitch = 1) { this.apply(isErr(r) ? r : checked(this.eq, r), pitch); }
-
-  /* ---------------- techniques ---------------- */
-
-  solveFor(v: string) {
-    const rel = relOf(this.eq);
-    if (rel === 'expr') { this.refuse('An expression has nothing to solve. Add “= …” to make it an equation.'); return; }
-    if (rel === '≟') { this.refuse('This holds for every value, so there is nothing to solve: prove it instead, one side at a time.'); return; }
-    if (rel === 'def') { this.refuse('This defines a function. Use it in another equation, or hold Tab + b for its inverse.'); return; }
-    if (isIneq(this.eq)) {
-      const Q = polyOf(add([this.eq.lhs, negate(this.eq.rhs)]));
-      const linear = symbols(this.eq).length === 1 && !!Q && Q.c.length <= 2;
-      if (!linear) {
-        const s = solveInequality(this.eq, v);
-        if ('error' in s) { this.refuse(s.error); return; }
-        this.apply({ eq: this.eq, label: 'sign chart', hints: { absorbs: new Map(), flights: [] }, factor: () => 1, answer: s.text, rule: 'sign chart' }, 1.1);
-        return;
-      }
-    }
-    const r = isolate(this.eq, v);
-    if (!Array.isArray(r)) { this.refuse(r.error); return; }
-    if (!r.length) { this.refuse(`Already solved for ${v}.`); return; }
-    r.forEach(s => { s.select = null; s.focus = undefined; });
-    this.play(r, () => this.afterSolve(v));
-  }
-
-  /** after isolating: split into cases and solve each one, or say where it got stuck */
-  private afterSolve(v: string) {
-    // solving means a finished answer: take what simplifies at the end
-    if (solvedFor(this.eq) === v) { const t = tidy(this.eq); if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2); return; }
-    if (splitCases(this.eq, v)) { this.split(v); return; }
-    this.say(`Got as far as I could isolating ${v}. Try a form (hold Tab) or a function (hold f).`, true);
-  }
-
-  /** split this equation into cases; the others become new equations. With v, solve every case too. */
-  split(v?: string, cases?: Cases) {
-    const c = cases ?? splitCases(this.eq, v);
-    if (!c) { this.refuse('Splitting needs |something| = b, or a product = 0.'); return; }
-    if (this.slots.length + c.rest.length > 9) { this.refuse('Nine equations is the limit for now.'); return; }
-    const origin = this.slot!.origin ?? this.steps[0].eq;
-    const at = this.cur;
-    this.apply(c.first, 1.1);
-    c.rest.forEach((e, j) => {
-      const slot: Slot = { steps: [{ eq: e, label: `case ${j + 2}`, conditions: [...this.step.conditions] }], at: 0, sel: null, origin };
-      if (v) {
-        const r = isolate(e, v);
-        if (Array.isArray(r)) for (const st of r) { slot.steps.push({ eq: st.eq, label: st.label, conditions: [...new Set([...slot.steps[slot.at].conditions, ...(st.conditions ?? [])])], auto: st.auto }); slot.at++; }
-      }
-      this.slots.splice(at + 1 + j, 0, slot);
-      this.judge(at + 1 + j);
-    });
-    if (!this.slot!.origin) this.slot!.origin = origin;
-    this.renderRail();
-    this.save();
-    const nums = c.rest.map((_, j) => at + 2 + j).join(' and ');
-    if (!c.rest.length) this.say('One repeated root, so there is only one case.');
-    else this.say(`${c.why[0].toUpperCase()}${c.why.slice(1)}: the ${c.rest.length > 1 ? 'others are' : 'other is'} equation ${nums}.`);
-    if (v) this.later(ms(450), () => this.solveFor(v));
-  }
-
-  /** a solved slot: does its answer work in the equation it came from? */
-  private judge(i: number): string | null {
-    const slot = this.slots[i];
-    const e = slot.steps[slot.at].eq;
-    const v = solvedFor(e);
-    slot.bad = undefined;
-    if (!v) return null;
-    const rhs = e.lhs.k === 'sym' && e.lhs.name === v ? e.rhs : e.lhs;
-    const origin = slot.origin ?? slot.steps[0].eq;
-    if (relOf(origin) !== '=' || relOf(e) !== '=') return null;
-    if (symbols(rhs).length || symbols(origin).some(s => s !== v)) return null;
-    const x = evaluate(rhs, {});
-    const dom = this.domains[v];
-    const outside = dom === 'positive' ? !(x > 0) : dom === 'nonneg' ? !(x >= 0) : dom === 'integer' ? Math.abs(x - Math.round(x)) > 1e-9 : false;
-    if (outside) { slot.bad = `${v} = ${toText(rhs)} isn't ${DOMAIN_TEXT[dom!]}, so it is left out.`; return slot.bad; }
-    const L = evaluate(origin.lhs, { [v]: x }), R = evaluate(origin.rhs, { [v]: x });
-    if (Number.isFinite(L) && Number.isFinite(R) && Math.abs(L - R) <= 1e-7 * (1 + Math.abs(L) + Math.abs(R))) return null;
-    slot.bad = `${v} = ${toText(rhs)} doesn't work in the original ${toText(origin)}${Number.isFinite(L) && Number.isFinite(R) ? '' : ' (it is undefined there)'}, so it is not a solution.`;
-    return slot.bad;
-  }
-
-  cycleDomain(v: string) {
-    const order: Domain[] = ['real', 'positive', 'nonneg', 'integer'];
-    const next = order[(order.indexOf(this.domains[v] ?? 'real') + 1) % order.length];
-    if (next === 'real') delete this.domains[v]; else this.domains[v] = next;
-    setDomains(this.domains);
-    sound.tick(2);
-    this.slots.forEach((_, i) => this.judge(i));
-    this.renderRail();
-    this.save();
-    this.say(`${v} is now ${DOMAIN_TEXT[next].replace('number', 'a number').replace('real a number', 'any real number')}. Sign questions and answers follow it.`);
-  }
-
-  /** e + b on a definition: a new equation with the inverse function */
-  addInverse() {
-    const inv = inverseFunction(this.eq);
-    if ('error' in inv) { this.refuse(inv.error); return; }
-    if (this.slots.length >= 9) { this.refuse('Nine equations is the limit for now.'); return; }
-    this.slots.push({ steps: [{ eq: inv, label: 'inverse', conditions: [] }], at: 0, sel: null });
-    this.cur = this.slots.length - 1;
-    sound.commit();
-    this.stage.clear();
-    this.renderAll(null);
-    this.save();
-    const name = inv.lhs.k === 'call' ? inv.lhs.name : 'f⁻¹';
-    this.say(`Equation ${this.cur + 1} is ${name}: it undoes ${name.replace('⁻¹', '')}.`);
-  }
-
-  /** the function definitions in your equations, for evaluating f(…) everywhere */
-  syncDefs() {
-    DEFS.clear();
-    for (let i = 0; i < this.slots.length; i++) {
-      const e = this.eqOf(i);
-      if (e.rel === 'def' && e.lhs.k === 'call' && e.lhs.arg.k === 'sym') DEFS.set(e.lhs.name, { param: e.lhs.arg.name, body: e.rhs });
-    }
-  }
-
-  substituteFrom(j: number) {
-    const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
-    const r = substitute(this.eq, this.eqOf(j), aimed?.k === 'sym' ? aimed.name : null, `Equation ${j + 1}`);
-    if (!isErr(r)) this.flyFrom(j);
-    this.applyTidy(r, 1.2);
-  }
-
-  /* ---------------- keys ---------------- */
-
-  bind() {
-    const input = $<HTMLInputElement>('input');
-    input.addEventListener('input', () => this.onType());
-    // quick inserts under the box, for what's awkward to type
-    const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', '']];
-    for (const [label, ins, hint] of KEYS) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.innerHTML = escapeHtml(label) + (hint ? `<small>${hint}</small>` : '');
-      b.addEventListener('mousedown', ev => {
-        ev.preventDefault();
-        const a = input.selectionStart ?? input.value.length, z = input.selectionEnd ?? a;
-        input.value = input.value.slice(0, a) + ins + input.value.slice(z);
-        input.setSelectionRange(a + ins.length, a + ins.length);
-        this.onType();
-      });
-      $('input-keys').append(b);
-    }
-    input.addEventListener('focus', () => { if (this.mode !== 'write') { this.writing = 'edit'; this.setMode('write'); this.sel = null; this.renderAll(null); } });
-    input.addEventListener('keydown', e => {
-      e.stopPropagation();
-      if (e.key === 'Enter') { e.preventDefault(); this.commit(input.value); }
-      if (e.key === 'Escape') { e.preventDefault(); this.cancelEdit(); }
-    });
-    const op = $<HTMLInputElement>('op-input');
-    op.addEventListener('input', () => this.onOpType());
-    op.addEventListener('keydown', e => {
-      e.stopPropagation();
-      if (e.key === 'Escape') { e.preventDefault(); this.closeOp(); }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const r = this.opResult();
-        if (isErr(r)) { this.refuse(r.error); return; }
-        const ref = /#(\d)/.exec($<HTMLInputElement>('op-input').value);
-        this.closeOp();
-        if (ref) this.flyFrom(Number(ref[1]) - 1);
-        this.apply(r, 1.05);
-      }
-    });
-    $('original').addEventListener('click', () => this.edit(false));
-    $('trail').addEventListener('mousedown', e => e.stopPropagation());
-    $('stage').addEventListener('mousedown', e => this.pointerDown(e));
-    $('stage').addEventListener('mousemove', e => this.hover(e));
-    $('stage').addEventListener('mouseleave', () => $('hover').classList.remove('on'));
-    $('help-close').addEventListener('click', () => this.toggleHelp(false));
-    $('help-tour').addEventListener('click', () => { this.toggleHelp(false); this.tour.menu(); });
-    $('manual-btn').addEventListener('click', () => this.toggleHelp(true));
-    $('tour-btn').addEventListener('click', () => this.tour.menu());
-    document.querySelectorAll<HTMLElement>('.help-tabs button').forEach(b => b.addEventListener('click', () => this.helpTab(b.dataset.tab!)));
-    $('sound').addEventListener('click', () => this.toggleSound());
-    $('add-eq').addEventListener('click', () => this.edit(true));
-    $('reset-eq').addEventListener('click', () => { this.resetArmed = performance.now(); this.resetWork(); });
-    $('lib-btn').addEventListener('click', () => this.library.open());
-    $('settings-btn').addEventListener('click', () => this.settings.open());
-    $('flash').addEventListener('click', () => this.toggleFlash());
-    window.addEventListener('keydown', e => { if (e.key === 'Control' || e.key === 'Meta') document.body.classList.add('ctrl'); this.key(e); });
-    window.addEventListener('keyup', e => { if (e.key === 'Control' || e.key === 'Meta') document.body.classList.remove('ctrl'); });
-    window.addEventListener('blur', () => document.body.classList.remove('ctrl'));
-    window.addEventListener('keyup', e => {
-      if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') {
-        if (this.chordUsed && !this.pal.moved && !this.pal.sticky && !this.pal.ask) { this.closePal(true); return; }
-        this.palRelease(); return;
-      }
-      if (e.key !== 'Tab' || this.mode !== 'hub' || !this.hub || this.hub.sticky) return;
-      if (this.hub.moved) this.applyForm();
-      else if (this.chordUsed && !this.hub.awaitVar) this.closeHub(true);
-      else { this.hub.sticky = true; this.renderHub(); }
-    });
-    $('theme').addEventListener('click', () => this.toggleTheme());
-    $('forms').addEventListener('mousedown', e => {
-      e.stopPropagation();
-      const t = e.target as HTMLElement;
-      const card = t.closest<HTMLElement>('.form-card');
-      if (card && this.hub) { this.hub.i = Number(card.dataset.i); return this.applyForm(); }
-      const chip = t.closest<HTMLElement>('.chip');
-      if (chip) {
-        const ev = new KeyboardEvent('keydown', { key: chip.dataset.k! });
-        if (this.mode === 'hub') this.hubKey(ev);
-        else if (this.mode === 'fnpal') this.palKey(ev);
-      }
-      const tab = t.closest<HTMLElement>('.pal-tab');
-      if (tab && this.mode === 'fnpal') { this.pal.tab = Number(tab.dataset.tab); this.pal.i = 0; this.pal.sticky = true; this.renderPal(); }
-    });
-  }
-
-  /** the smallest piece under a point on the stage */
-  private hit(e: MouseEvent): string | null {
-    const host = $('stage').getBoundingClientRect();
-    const x = e.clientX - host.left, y = e.clientY - host.top;
-    const lay = this.stage.layout;
-    if (!lay) return null;
-    let best: string | null = null, area = Infinity;
-    for (const id of lay.boxes.keys()) {
-      if (id === 'eq') continue;
-      const r = this.stage.box(id)!;
-      if (x >= r.x - 4 && x <= r.x + r.w + 4 && y >= r.y - 4 && y <= r.y + r.h + 4 && r.w * r.h < area) { best = id; area = r.w * r.h; }
-    }
-    return best;
-  }
-
-  /** a faint outline on what a click would aim at */
-  private hover(e: MouseEvent) {
-    const el = $('hover');
-    const id = this.drag || this.mode !== 'solve' ? null : this.hit(e);
-    const r = id && id !== this.sel ? this.stage.box(id) : null;
-    el.classList.toggle('on', !!r);
-    if (r) Object.assign(el.style, { left: `${r.x - 4}px`, top: `${r.y - 3}px`, width: `${r.w + 8}px`, height: `${r.h + 6}px` });
-  }
-
-  click(e: MouseEvent) {
-    this.closeModes();
-    const best = this.hit(e);
-    if (best && best === this.sel) return this.grow();
-    this.select(best);
-  }
-
-  toggleHelp(show = $('help').hidden) { $('help').hidden = !show; }
-
-  /** close the manual, library and settings (a tour starting or ending) */
-  closeOverlays() {
-    this.toggleHelp(false);
-    this.library.close();
-    this.settings.close();
-    this.closeModes();
-  }
-
-  helpTab(tab: string) {
-    document.querySelectorAll<HTMLElement>('.help-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-    document.querySelectorAll<HTMLElement>('.help-pane').forEach(p => { p.hidden = p.dataset.pane !== tab; });
-    sound.tick(1);
-  }
-  toggleSound() {
-    const m = sound.toggle();
-    $('sound').classList.toggle('off', m);
-    $('sound').setAttribute('aria-pressed', String(!m));
-    this.say(m ? 'Sound off.' : 'Sound on.');
-  }
-
-  key(e: KeyboardEvent) {
-    if (this.mode === 'write' || this.mode === 'op' || this.mode === 'fnask') return;
-    if (this.tour.menuOpen) return this.tour.menuKey(e);
-    if (this.library.isOpen) return this.library.key(e);
-    if (this.settings.isOpen) return this.settings.key(e);
-    if (!$('help').hidden) {
-      if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); this.helpTab(e.key === 'ArrowLeft' ? 'how' : 'keys'); }
-      if (e.key === 'g') { e.preventDefault(); this.toggleHelp(false); this.tour.menu(); }
-      return;
-    }
-    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
-    const k = e.key;
-    const ctrl = e.ctrlKey || e.metaKey;
-    if (this.mode === 'hub') { e.preventDefault(); if (k !== 'Tab') this.chordUsed = true; return this.hubKey(e); }
-    if (this.mode === 'fnpal') { e.preventDefault(); if (k.toLowerCase() !== 'f') this.chordUsed = true; return this.palKey(e); }
-    if (this.mode === 'labels') {
-      e.preventDefault();
-      if (k === 'Escape' || k === ' ') { this.setMode('solve'); this.renderHints(); return; }
-      if (/^[a-z]$/.test(k)) this.labelKey(k);
-      else { this.setMode('solve'); this.renderHints(); }
-      return;
-    }
-    this.flush();
-    if (ctrl) {
-      // hold Ctrl: ← grows the highlight to the left, → to the right; let go and it stays
-      if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); return this.growEdge(k === 'ArrowLeft' ? -1 : 1); }
-      // Ctrl + ↑ ↓: previous / next equation
-      if (k === 'ArrowUp' || k === 'ArrowDown') { e.preventDefault(); return this.stepEquation(k === 'ArrowUp' ? -1 : 1); }
-      if (k.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
-      else if ((k.toLowerCase() === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); this.redo(); }
-      return;
-    }
-    const handled = () => e.preventDefault();
-    if (OP_KEYS[k]) { handled(); return this.openOp(OP_KEYS[k]); }
-    if (/^[1-9]$/.test(k)) { handled(); return this.switchTo(Number(k) - 1); }
-    const move = MOVE_KEYS.find(m => m.key === k);
-    if (move) {
-      handled();
-      if (move.name === 'any') { const r = moveAny(this.eq, this.sel); return isErr(r) || !r.check ? this.apply(r, move.pitch) : this.applyTidy(r, move.pitch); }
-      if (move.name === 'simplify') return this.simplifyKey();
-      return this.apply(applyMove(move.name, this.eq, this.sel), move.pitch);
-    }
-    switch (k) {
-      case ' ': handled(); return this.showLabels();
-      case 'h': case 'ArrowLeft': handled(); return e.altKey ? this.stepEquation(-1) : e.shiftKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : this.sideways(-1);
-      case 'l': case 'ArrowRight': handled(); return e.altKey ? this.stepEquation(1) : e.shiftKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : this.sideways(1);
-      case 'H': handled(); return this.apply(applyMove('slideL', this.eq, this.sel));
-      case 'L': handled(); return this.apply(applyMove('slideR', this.eq, this.sel));
-      case 'k': case 'ArrowUp': handled(); return this.grow();
-      case 'j': case 'ArrowDown': handled(); return this.shrink();
-      case 'Tab': handled(); if (e.shiftKey) return this.toggleSide(); if (!e.repeat) this.openHub(false); return;
-      case 'a': handled(); return this.select('eq');
-      case 'Escape': handled(); return this.select(null, true);
-      case 'u': handled(); return this.undo();
-      case 'r': case 'U': handled(); return this.redo();
-      case 'o': handled(); return this.openOp('+');
-      case 'e': case 'E': handled(); return this.solveKey();
-      case 'Enter': handled(); return this.openHub(true);
-      case 'f': case 'F': handled(); if (!e.repeat) this.openPal(false); return;
-      case 'i': handled(); return this.edit(false);
-      case 'n': handled(); return this.edit(true);
-      case 'Delete': case 'Backspace': handled(); return this.removeCurrent();
-      case 't': handled(); return this.toggleTheme();
-      case '?': handled(); return this.toggleHelp();
-      case 'M': handled(); return this.toggleSound();
-      case 'g': handled(); return this.tour.menu();
-      case 'w': handled(); this.closeModes(); return this.library.open();
-      case ',': handled(); this.closeModes(); return this.settings.open();
-      case 'z': handled(); return this.toggleFlash();
-      case 'G': handled(); { const at = cycleGraph(); sound.tick(2); return this.say(at === 'right' ? 'Graph on the right.' : at === 'below' ? 'Graph under the work.' : 'Graph hidden. Shift+G brings it back.'); }
-      case 'R': handled(); return this.resetWork();
-      case '[': handled(); return this.graph.zoom(1.25);
-      case ']': handled(); return this.graph.zoom(0.8);
-    }
-  }
-
   /* ---------------- pop-ups and theme ---------------- */
 
   /** sit a floating panel above the aimed piece (or the equation), inside the stage */
-  private place(host: HTMLElement) {
+  place(host: HTMLElement) {
     const anchor = (this.sel && this.sel !== 'eq' ? this.stage.box(this.sel) : null) ?? this.stage.box('eq');
     const W = $('stage').clientWidth;
     const hw = host.offsetWidth, hh = host.offsetHeight;
@@ -1788,7 +1032,7 @@ export class App {
   }
 
   /** a setting changed (from the settings panel or a shortcut): show it everywhere */
-  private prefsChanged(k: string) {
+  prefsChanged(k: string) {
     if (k === 'theme') { applyTheme(); this.themeLabel(); }
     if (k === 'look') applyLook();
     if (k === 'speed') { applySpeed(); this.flashLabel(); }
@@ -1797,122 +1041,9 @@ export class App {
     if (['theme', 'look', 'size', 'hints'].includes(k) && this.shown) { this.stage.clear(); this.renderAll(null); }
   }
 
-  /* ---------------- persistence ---------------- */
-
-  /** start over with one equation (the tour uses this) */
-  loadFresh(src: string) {
-    this.slots = []; this.cur = 0; this.writing = 'new';
-    this.commit(src, true);
-    this.message = null; this.renderHints();
-  }
-
-  restoreSlots(slots: Slot[], cur: number) {
-    this.slots = slots; this.cur = cur;
-    this.setMode('solve');
-    this.stage.clear();
-    this.renderAll(null);
-    this.save();
-  }
-
-  save() {
-    if (this.noSave) return;
-    if (!this.workId || !works.get(this.workId)) this.workId = works.create<Slot>().id;
-    works.save<Slot>(this.workId, { slots: this.slots, cur: this.cur, domains: this.domains });
-  }
-
-  /** open the workspace you were last in */
-  restore(): boolean {
-    const id = works.currentId;
-    return !!id && this.load(id);
-  }
-
-  private load(id: string): boolean {
-    try {
-      const w = works.get<Slot>(id);
-      if (!w || !w.slots.length) return false;
-      const slots = JSON.parse(JSON.stringify(w.slots)) as Slot[];
-      slots.forEach(sl => { sl.steps.forEach(st => bumpIds(st.eq)); sl.at = Math.min(sl.at, sl.steps.length - 1); sl.sel = null; });
-      this.workId = id;
-      works.setCurrent(id);
-      this.domains = { ...w.domains };
-      setDomains(this.domains);
-      this.slots = slots;
-      this.cur = Math.min(w.cur ?? 0, slots.length - 1);
-      this.grouped = null; this.preview = null; this.peek = null;
-      this.setMode('solve');
-      this.stage.clear();
-      this.renderAll(null);
-      return true;
-    } catch { return false; }
-  }
-
-  /** switch to another workspace from the library */
-  openWork(id: string) {
-    this.save();
-    if (!this.load(id)) return;
-    sound.commit();
-    $('stage').animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: ms(260), easing: 'cubic-bezier(.2,.8,.2,1)' });
-    this.say(`Opened ${works.get(id)?.name ?? 'workspace'}.`);
-  }
-
-  /** a fresh, empty workspace: type its first equation */
-  newWork() {
-    this.save();
-    const w = works.create<Slot>();
-    this.workId = w.id;
-    this.slots = []; this.cur = 0; this.domains = {}; setDomains(this.domains);
-    this.grouped = null; this.peek = null;
-    this.stage.clear();
-    this.edit(true);
-    this.say(`${w.name}: type the first equation.`);
-  }
-
-  /** every equation back to where it started; your steps stay on redo (r) */
-  resetWork() {
-    if (!this.slots.length) return;
-    if (performance.now() - this.resetArmed > 1600) {
-      this.resetArmed = performance.now();
-      sound.refuse();
-      this.say('Press R again to put every equation back at its start. Your steps stay on redo.', true);
-      return;
-    }
-    this.resetArmed = 0;
-    this.closeModes();
-    this.grouped = null;
-    this.slots.forEach(sl => { sl.at = 0; sl.sel = null; });
-    sound.undo();
-    this.renderAll({ quick: true }, true);
-    this.say('Back to the start. Press r to replay your steps.');
-    this.save();
-  }
 }
 
-/** what you've typed so far, drawn even when unfinished: unclosed brackets are closed and a
- *  dangling operator at the end is left off, so "3(x + 2" or "2x + 5 =" still shows */
-function livePreview(src: string): { eq: Eq; partial: boolean } | null {
-  if (!src.trim()) return null;
-  const close = (t: string) => {
-    let depth = 0;
-    for (const c of t) { if (c === '(') depth++; else if (c === ')') depth = Math.max(0, depth - 1); }
-    const bars = (t.match(/\|/g) ?? []).length % 2;
-    return t + ')'.repeat(depth) + (bars ? '|' : '');
-  };
-  let t = src;
-  for (let i = 0; i < 16 && t.trim(); i++) {
-    for (const cand of i === 0 ? [t, close(t)] : [close(t)]) {
-      try { return { eq: parseEquation(cand, true), partial: cand !== src }; } catch { /* keep trimming */ }
-    }
-    t = t.trimEnd().slice(0, -1);
-  }
-  return null;
-}
-
-/** a variable name for HTML: x_1 shows as x with a subscript 1 */
-function varHtml(v: string) {
-  const u = v.indexOf('_');
-  return u < 0 ? escapeHtml(v) : `${escapeHtml(v.slice(0, u))}<sub>${escapeHtml(v.slice(u + 1))}</sub>`;
-}
-
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
-}
+/** the methods that live in their own files */
+type Part<M> = { [K in keyof M]: M[K] };
+export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart> {}
+for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart]) Object.assign(App.prototype, part);

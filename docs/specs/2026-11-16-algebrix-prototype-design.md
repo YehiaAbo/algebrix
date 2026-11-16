@@ -171,3 +171,17 @@ App:
 - Switching morphs: the card's glyphs grow into place, and the equation you left shrinks into its card.
 - The typing box moved to the bottom (above the hints). It shows a live status (✓ equation / inequality / expression / function, or "keep going…") and quick-insert buttons (power, subscript, √, fraction, |x|, ≤, ≥, π, f(x) =).
 - Subscript variables: x_1, v_0, a_n and x_{max} parse as their own names and draw with real subscripts.
+- Side equations light up as linked only while Tab is held, so ordinary moves stay calm.
+
+### Round 8: the algebra pack
+
+**How formulas and identities work here.** An identity is a named rewrite of an expression into an equal one. It shows up as a form in the Tab menu ("factored", "completed square", "trig: double angle"), previewed live, and goes through the same numeric check as any move before it can be applied. A formula that solves something (the quadratic formula) is a technique instead: it is keyed in the Tab menu and splits the work into cases, the same way |x| = b or a product = 0 does, with its own numeric check that the cases together are exactly the original.
+
+- Quadratic formula: Tab + g. Gathers everything on one side, then writes x = (−b + √(b² − 4ac))/2a here and the − case as a second equation, with a, b and c plugged in so the student sees the formula. Tab + s (or s) works out the numbers. b² − 4ac < 0 is refused with the reason; a repeated root gives one case.
+- Completing the square: Tab + h, for an aimed quadratic or a whole side: a(x + b/2a)² + (c − b²/4a), with fractions when b is odd.
+- Factoring identities: difference of cubes, sum of cubes, perfect squares in two letters, and factoring keeps going as far as whole numbers allow (x⁴ − 16 → (x − 2)(x + 2)(x² + 4)). Common factors may be any shared piece, not only letters (cos x pulled out of 2 sin x cos x − cos x).
+- Trig identities: angle difference, even/odd, power reduction, tan double angle, plus the existing Pythagorean, double angle and angle sum. With nothing aimed, identities of a whole side are offered too.
+- Expressions (no = sign): e tidies them all the way instead of solving; no "everything on one side", "clear fractions" or "sides swapped" forms, since those would change the value.
+- Bug fixes: factoring with nothing aimed, the whole equation aimed, or a piece inside the sum aimed (key, Tab, and clicking the card); distribute dropped a minus when a term had two numbers; forms no longer offer the original back; one space after a minus before a root.
+- Tours: the menu is grouped (Getting started, Algebra pack) in two columns, with keys 1-9 then letters. Twelve algebra tours: linear equations, fractions, factoring, completing the square, the quadratic formula, algebraic identities, trig identities, inequalities, absolute value, roots and powers, exponentials and logs, expressions. A script plays each one end to end.
+- Code: app.ts was split with no change in behaviour. The hub (Tab), function palette (f), both-sides operations, solving, keys and persistence are now their own files under src/ui, as methods put on App.prototype; shared types and helpers live in src/ui/shared.ts. Every moved line was checked to be verbatim.
