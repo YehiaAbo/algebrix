@@ -4,7 +4,8 @@ Keyboard-first math workbench. Spec: `docs/specs/2026-11-16-algebrix-prototype-d
 
 - `src/engine/` pure algebra: AST with stable ids, parser, moves, equivalence checks. No DOM. Test-first (`npm test`).
 - `src/render/` math layout + animated transitions keyed by node id.
-- `src/ui/` workspace, input, keys, sound, graph.
+- `src/ui/` workspace, input, keys, sound, graph, library (workspaces as cards), settings, prefs.
+- `src/packs/` sound sets and looks; add one file and list it in `src/packs/index.ts`. Guide: `docs/EXTENDING.md`.
 - Never ship a move that is not covered by the numeric equivalence check.
 - No UI framework; keep animation code direct.
 

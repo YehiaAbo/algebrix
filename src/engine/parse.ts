@@ -1,7 +1,7 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName } from './ast';
+import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES } from './ast';
 import { negate, gcd } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
@@ -31,6 +31,9 @@ function tokenize(s: string): Tok[] {
       i = j === i + 1 ? i + 2 : j; // "\," "\;" etc. are spacing
       if (!name || name === 'left' || name === 'right') continue;
       if (name === 'cdot' || name === 'times') out.push({ t: 'op', v: '*' });
+      else if (name === 'le' || name === 'leq') out.push({ t: 'op', v: '≤' });
+      else if (name === 'ge' || name === 'geq') out.push({ t: 'op', v: '≥' });
+      else if (name === 'lt' || name === 'gt') out.push({ t: 'op', v: name === 'lt' ? '<' : '>' });
       else if (name === 'lvert' || name === 'rvert' || name === 'vert') out.push({ t: 'op', v: '|' });
       else if (name === 'div') out.push({ t: 'op', v: '/' });
       else if (GREEK[name]) out.push({ t: 'id', v: GREEK[name] });
@@ -41,10 +44,11 @@ function tokenize(s: string): Tok[] {
     if (word) { out.push({ t: 'cmd', v: word }); i += word.length; continue; }
     if (s.startsWith('pi', i)) { out.push({ t: 'id', v: 'π' }); i += 2; continue; }
     if (/[a-zA-Zα-ω]/.test(c)) { out.push({ t: 'id', v: c }); i++; continue; }
-    const map: Record<string, string> = { '−': '-', '×': '*', '·': '*', '÷': '/', '√': 'sqrt' };
+    if ((c === '<' || c === '>') && s[i + 1] === '=') { out.push({ t: 'op', v: c === '<' ? '≤' : '≥' }); i += 2; continue; }
+    const map: Record<string, string> = { '−': '-', '×': '*', '·': '*', '÷': '/', '√': 'sqrt', '⩽': '≤', '⩾': '≥' };
     const v = map[c] ?? c;
     if (v === 'sqrt') out.push({ t: 'cmd', v });
-    else if ('+-*/^=(){}[]|'.includes(v)) out.push({ t: 'op', v });
+    else if ('+-*/^=(){}[]|<>≤≥'.includes(v)) out.push({ t: 'op', v });
     else throw new ParseError(`I don't know the symbol “${c}”.`);
     i++;
   }
@@ -119,7 +123,10 @@ class Parser {
     if (!t) throw new ParseError('Unfinished expression.');
     this.i++;
     if (t.t === 'num') return number(t.v);
-    if (t.t === 'id') return sym(t.v);
+    if (t.t === 'id') {
+      if (FUNC_NAMES.includes(t.v) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
+      return sym(t.v);
+    }
     if (t.t === 'cmd') {
       if (t.v === 'frac' || t.v === 'dfrac' || t.v === 'tfrac') {
         const a = this.braced(), b = this.braced();
@@ -187,17 +194,26 @@ export function parseExpr(src: string): Node {
   return e;
 }
 
-export function parseEquation(src: string): Eq {
+const RELS = ['=', '<', '>', '≤', '≥'];
+
+/** An equation, an inequality, or (with `allowExpr`) a lone expression. */
+export function parseEquation(src: string, allowExpr = false): Eq {
   const toks = tokenize(src);
-  const eqs = toks.filter(t => t.t === 'op' && t.v === '=').length;
-  if (eqs === 0) throw new ParseError('Add an “=” to make it an equation.');
-  if (eqs > 1) throw new ParseError('Only one “=” for now.');
+  const rels = toks.filter(t => t.t === 'op' && RELS.includes(t.v));
+  if (rels.length === 0) {
+    if (!allowExpr) throw new ParseError('Add an “=” to make it an equation.');
+    return eq(parseExpr(src), num(0), 'expr');
+  }
+  if (rels.length > 1) throw new ParseError('Only one “=”, “<” or “>” for now.');
+  const rel = rels[0].v as Rel;
   const p = new Parser(toks);
-  if (p.isOp('=')) throw new ParseError('The left side is empty.');
+  if (p.isOp(rel)) throw new ParseError('The left side is empty.');
   const lhs = p.expr();
-  p.eat('=');
+  p.eat(rel);
   if (!p.peek()) throw new ParseError('The right side is empty.');
   const rhs = p.expr();
   if (p.peek()) throw new ParseError(`Unexpected “${(p.peek() as Tok).v}”.`);
-  return eq(lhs, rhs);
+  // f(x) = … defines f
+  if (rel === '=' && lhs.k === 'call' && lhs.arg.k === 'sym') return eq(lhs, rhs, 'def');
+  return eq(lhs, rhs, rel);
 }

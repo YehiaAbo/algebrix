@@ -4,10 +4,11 @@ import { toText } from './engine/print';
 import { clearMeasureCache } from './render/layout';
 import { resetMetrics } from './render/stage';
 
-try {
-  const t = localStorage.getItem('algebrix.theme');
-  if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
-} catch { /* storage blocked */ }
+import { applyAll } from './ui/appearance';
+import { prefs } from './ui/prefs';
+import { look } from './packs';
+
+applyAll();
 
 async function start() {
   try {
@@ -16,6 +17,7 @@ async function start() {
         document.fonts.load('64px "STIX Two Text"'),
         document.fonts.load('italic 64px "STIX Two Text"'),
         document.fonts.load('14px "Instrument Sans"'),
+        ...(look(prefs.look).fonts ? [document.fonts.load(`64px ${getComputedStyle(document.documentElement).getPropertyValue('--math-font')}`)] : []),
       ]),
       new Promise(r => setTimeout(r, 1500)),
     ]);

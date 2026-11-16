@@ -9,6 +9,8 @@ export interface Glyph {
   key: string;
   from?: string;
   kind: GlyphKind;
+  /** for the relation glyph: =, <, >, ≤, ≥, ≟ (drawn by the same bars, so a flip animates) */
+  rel?: string;
   text?: string;
   italic?: boolean;
   minus?: boolean;
@@ -30,23 +32,26 @@ interface Box { w: number; asc: number; desc: number; gs: Glyph[] }
 export const MATH_FONT = '"STIX Two Text", "STIX Two Math", "Cambria Math", "Times New Roman", serif';
 let ctx: CanvasRenderingContext2D | null = null;
 const cache = new Map<string, number>();
+/** the math font in use: the --math-font token, so a look pack can swap it */
+let font: string | null = null;
+const mathFont = () => (font ??= getComputedStyle(document.documentElement).getPropertyValue('--math-font').trim() || MATH_FONT);
 function measure(text: string, s: number, italic: boolean): number {
   const k = `${italic ? 'i' : 'n'}|${text}`;
   let w = cache.get(k);
   if (w === undefined) {
     ctx ??= document.createElement('canvas').getContext('2d')!;
-    ctx.font = `${italic ? 'italic ' : ''}100px ${MATH_FONT}`;
+    ctx.font = `${italic ? 'italic ' : ''}100px ${mathFont()}`;
     w = ctx.measureText(text).width / 100;
     cache.set(k, w);
   }
   return w * s;
 }
-export const clearMeasureCache = () => cache.clear();
+export const clearMeasureCache = () => { cache.clear(); font = null; };
 
 /** font ascent/descent as fractions of the size, for placing text baselines in the DOM */
 export function fontMetrics() {
   ctx ??= document.createElement('canvas').getContext('2d')!;
-  ctx.font = `100px ${MATH_FONT}`;
+  ctx.font = `100px ${mathFont()}`;
   const m = ctx.measureText('Hxy');
   return { A: (m.fontBoundingBoxAscent || 90) / 100, D: (m.fontBoundingBoxDescent || 25) / 100 };
 }
@@ -111,21 +116,25 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     }
     case 'sym': return text(n.name, s, `s${n.id}`, me, true, from && `s${from}`);
     case 'eq': {
-      const l = L(n.lhs, s, me, c), r = L(n.rhs, s, me, c);
+      const l = L(n.lhs, s, me, c);
+      if (n.rel === 'expr') return termBox(n.lhs, l, s, me);
+      const r = L(n.rhs, s, me, c);
       const w = 0.66 * s;
-      const g: Glyph = { key: 'eq', kind: 'eq', x: 0, y: -(AXIS + 0.13) * s, w, h: 0.26 * s, s, owners: me };
+      const g: Glyph = { key: 'eq', kind: 'eq', rel: n.rel === 'def' ? '=' : n.rel ?? '=', x: 0, y: -(AXIS + 0.13) * s, w, h: 0.26 * s, s, owners: me };
       return row([termBox(n.lhs, l, s, me), 0.3 * s, { w, asc: (AXIS + 0.13) * s, desc: 0, gs: [g] }, 0.3 * s, termBox(n.rhs, r, s, me)]);
     }
     case 'add': {
       const parts: (Box | number)[] = [];
-      n.terms.forEach((t, i) => {
-        const tOwn = t.k === 'neg' ? [...me, t.id] : me;
+      // a group (a sum inside a sum, from a partial selection) lays out inline; its pieces belong to it too
+      const flat = n.terms.flatMap(t => (t.k === 'add' ? t.terms.map(u => ({ t: u, own: [...me, t.id] })) : [{ t, own: me }]));
+      flat.forEach(({ t, own }, i) => {
+        const tOwn = t.k === 'neg' ? [...own, t.id] : own;
         const body = L(absOf(t), s, tOwn, c);
         const neg = isNeg(t);
         if (i === 0) {
-          if (neg) parts.push(sign(true, s, `sg${signKey(t)}`, [...me, t.id]), 0.04 * s);
+          if (neg) parts.push(sign(true, s, `sg${signKey(t)}`, [...own, t.id]), 0.04 * s);
         } else {
-          parts.push(0.2 * s, sign(neg, s, `sg${signKey(t)}`, [...me, t.id]), 0.2 * s);
+          parts.push(0.2 * s, sign(neg, s, `sg${signKey(t)}`, [...own, t.id]), 0.2 * s);
         }
         parts.push(body);
       });
@@ -146,7 +155,7 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
         if (drawn > 0) {
           const dot = f.k === 'num' || (f.k === 'frac' && prev?.k === 'frac') || (f.k === 'pow' && f.base.k === 'num');
           if (dot) parts.push(0.1 * s, text('·', s, `d${f.id}`, me, false), 0.1 * s);
-          else parts.push((f.k === 'fn' && f.name !== 'abs' ? 0.16 : wrap || prev?.k === 'add' ? 0.02 : 0.05) * s);
+          else parts.push(((f.k === 'fn' && f.name !== 'abs') || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs') ? 0.16 : wrap || prev?.k === 'add' ? 0.02 : 0.05) * s);
         }
         parts.push(b);
         drawn++;
@@ -172,7 +181,7 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     }
     case 'pow': {
       let b = L(n.base, s, me, c);
-      if (!(n.base.k === 'sym' || (n.base.k === 'num' && n.base.v >= 0) || n.base.k === 'sqrt' || (n.base.k === 'fn' && n.base.name === 'abs'))) b = parens(b, s, n.base.id, me);
+      if (!(n.base.k === 'sym' || (n.base.k === 'num' && n.base.v >= 0) || n.base.k === 'sqrt' || n.base.k === 'fn')) b = parens(b, s, n.base.id, me);
       const es = Math.max(s * 0.62, c.base * 0.36);
       const e = L(n.exp, es, me, c);
       const rise = Math.max(0.44 * s, b.asc - 0.5 * es * ASC);
@@ -187,6 +196,11 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const w = lead + a.w + 0.1 * s;
       const rad: Glyph = { key: `r${n.id}`, from: from && `r${from}`, kind: 'rad', x: 0, y: -top, w, h: top + a.desc + 0.06 * s, s, owners: me };
       return { w, asc: top + 0.03 * s, desc: a.desc + 0.06 * s, gs: [rad, ...shift(a, lead, 0)] };
+    }
+    case 'call': {
+      const a = L(n.arg, s, me, c);
+      const name = text(n.name, s, `f${n.id}`, me, true, from && `f${from}`);
+      return row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
     }
     case 'fn': {
       const a = L(n.arg, s, me, c);

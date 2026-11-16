@@ -4,7 +4,7 @@
 // surface stay the same at every step: visual proof that no move broke anything.
 // Desmos-style handling: drag to pan (or turn, in 3D), scroll to zoom at the cursor,
 // double-click to reset, hover a curve or a point to read its coordinates.
-import { Eq, Node, evaluate, symbols } from '../engine/ast';
+import { Eq, Node, evaluate, symbols, relOf, isIneq, holds } from '../engine/ast';
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -187,16 +187,28 @@ export class Graph {
       const x0 = Math.round(((a + b) / 2) * 1e9) / 1e9;
       if (!roots.some(x => Math.abs(x - x0) < 1e-6)) roots.push(x0);
     }
-    this.note.innerHTML = roots.length
+    const rel = relOf(eq);
+    // a lone expression or a definition is one curve: y = it
+    const single = rel === 'expr' ? 'l' : rel === 'def' ? 'r' : null;
+    this.note.innerHTML = single ? `The graph of <b>y = ${rel === 'def' ? (eq.lhs.k === 'call' ? eq.lhs.name + '(' + v + ')' : 'it') : 'it'}</b>. Rewriting never changes it.`
+      : isIneq(eq) ? `Shaded where it holds. The boundary is where the sides meet${roots.length ? `, <b>${v} ≈ ${roots.slice(0, 3).map(fmt).join(', ')}</b>` : ''}.`
+      : rel === '≟' ? 'The two sides are the same curve everywhere. That is what you are proving.'
+      : roots.length
       ? `Sides cross at <b>${v} ≈ ${roots.slice(0, 3).map(fmt).join(', ')}</b>${roots.length > 3 ? '…' : ''}. That point never moves.`
       : 'The two sides never cross in view. Drag or scroll to look around.';
     this.grid(X, Y, ux, (py: number) => this.toUnits(0, py)[1], v, '');
+    if (isIneq(eq)) {
+      c.fillStyle = css('--graph-a'); c.globalAlpha = 0.14 * this.fade;
+      xs.forEach((x, i) => { if (holds(eq, { [v]: x })) c.fillRect((i / N) * this.W - 0.5, 0, this.W / N + 1, this.H); });
+      c.globalAlpha = this.fade;
+    }
     const m = this.morph && this.morph.l.length === l.length ? this.morph : null;
     const lerp = (a: number[] | undefined, b: number[]) => (m && a ? b.map((y, i) => (Number.isFinite(a[i]) && Number.isFinite(y) ? a[i] + (y - a[i]) * m.t : y)) : b);
     const A = css('--graph-a'), B = css('--graph-b');
-    this.curve(lerp(m?.l, l), N, Y, A);
-    this.curve(lerp(m?.r, r), N, Y, B);
+    if (single !== 'r') this.curve(lerp(m?.l, l), N, Y, A);
+    if (single !== 'l') this.curve(lerp(m?.r, r), N, Y, single ? A : B);
     if (m && m.t < 1) return;
+    if (single) roots.length = 0;
     const pts = roots.map(x0 => ({ x: x0, y: evaluate(eq.lhs, { [v]: x0 }) })).filter(p => Number.isFinite(p.y));
     for (const p of pts) this.dot(X(p.x), Y(p.y), css('--ink'));
     // hover: a point near the cursor, else trace the nearest curve
@@ -222,8 +234,17 @@ export class Graph {
     this.grid(X, Y, ux, uy, hx, vy);
     const extra = this.others.filter(o => symbols(o).every(v => v === hx || v === vy) && symbols(o).length > 0);
     for (const o of extra) this.implicit(o, hx, vy, ux, uy, css('--graph-b'), 0.75);
-    this.implicit(eq, hx, vy, ux, uy, css('--graph-a'), 1);
-    this.note.innerHTML = extra.length
+    if (isIneq(eq)) {
+      // shade the region where it holds; a strict inequality gets a dashed boundary
+      const c = this.ctx, cell = 4;
+      c.fillStyle = css('--graph-a'); c.globalAlpha = 0.13 * this.fade;
+      for (let py = 0; py < this.H; py += cell) for (let px = 0; px < this.W; px += cell) {
+        if (holds(eq, { [hx]: ux(px + cell / 2), [vy]: uy(py + cell / 2) })) c.fillRect(px, py, cell, cell);
+      }
+      c.globalAlpha = this.fade;
+    }
+    this.implicit(eq, hx, vy, ux, uy, css('--graph-a'), 1, relOf(eq) === '<' || relOf(eq) === '>');
+    this.note.innerHTML = isIneq(eq) ? 'Shaded: every point where it holds. A dashed edge is not included.' : extra.length
       ? `Your equation is the bold curve. Where it crosses the others, all of them hold at once.`
       : `Every point on the curve solves the equation. It stays the same curve at every step.`;
     const ms = this.mouse;
@@ -409,7 +430,7 @@ export class Graph {
     c.globalAlpha = 1;
   }
 
-  private implicit(eq: Eq, hx: string, vy: string, ux: (p: number) => number, uy: (p: number) => number, color: string, alpha: number) {
+  private implicit(eq: Eq, hx: string, vy: string, ux: (p: number) => number, uy: (p: number) => number, color: string, alpha: number, dashed = false) {
     const { W, H } = this, c = this.ctx;
     const n = 150, m = Math.round(n * H / W);
     const F: number[][] = [];
@@ -433,6 +454,7 @@ export class Graph {
       edge(v[3], v[2], px(i), py(j + 1), px(i + 1), py(j + 1));
       edge(v[0], v[3], px(i), py(j), px(i), py(j + 1));
       if (pts.length < 2) continue;
+      if (dashed && (i + j) % 6 < 3) continue;
       // skip poles: a sign change through infinity, not through zero
       const mid = evaluate(eq, { [hx]: ux(px(i + 0.5)), [vy]: uy(py(j + 0.5)) });
       if (Math.abs(mid) > 4 * Math.max(...v.map(Math.abs))) continue;

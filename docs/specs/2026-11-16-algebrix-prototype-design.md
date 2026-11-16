@@ -113,3 +113,33 @@ Feedback: single keys only (no Shift for ×), E as a real chord hub for techniqu
 - **3D.** Equations in three variables show their solution surface (marching tetrahedra on a 31³ grid, gradient shading, painter's order, faint x/y grid lines on the surface). Drag turns it, scroll zooms the box, double-click resets the view. Poles are skipped.
 - **Manual.** `?` (or the rail button) opens a Manual with two tabs, How it works (eight short cards) and Keys; ← → switch tabs.
 - **Tour.** A 13-step playthrough (`g`, rail button, or automatically on first visit): aim, move across, take a simplification, divide across, undo/redo, try dividing by 0 (it resists), undo a square with f+i, split |x| = 3 into cases. Each step advances when you've done it. Your own equations are put aside and come back at the end; `q` leaves early.
+
+## Round 6 plan (2026-11-16)
+
+Goal: finish the algebra foundation before Calc 1, and make the app easy to grow (packs, workspaces, settings).
+
+Engine (test-first, every rewrite numerically checked):
+1. Partial selections: a run of neighbouring terms (or factors) becomes a temporary group node, so every existing move works on it; groups dissolve after the move. Picked by mouse box-select or Shift + arrows.
+2. Step records: each step keeps its rule and whether it is reversible (⇔) or one-way (⇒, e.g. squaring both sides).
+3. New forms: polynomial long division, partial fractions (distinct linear factors), rationalize a denominator, a trig identity pack.
+4. Elimination: add or subtract a multiple of another equation (`-2#2` in the both-sides bar).
+5. Inequalities: <, >, ≤, ≥. Multiplying or dividing by a negative flips the sign; by an unknown sign is refused. Solving gives an interval answer (sign chart for polynomials and rational functions).
+6. Expressions (no =) and identities: rewrite one expression; an equation that holds for every value is a proof goal (only one side at a time, finished when both sides match).
+7. Named functions: `f(x) = …` defines f; `f(3)`, `f(g(x))` can be unfolded; e+v builds the inverse function.
+8. A 50-problem "done enough" set that must solve by keys alone.
+
+App:
+9. Mouse box-select; Shift + arrows extend; Alt + arrows slide.
+10. Flash mode (⚡, `z`): every animation about 3× faster but still visible.
+11. Work cards (`w`): every workspace as a card, new, open, duplicate, rename, delete; Reset puts every equation back at its start.
+12. Settings (`,`): theme, look pack, sound pack and volume, speed, size, hints.
+13. Packs: sounds and looks are registries in `src/packs/`, so a Lego sound set or a pixel-art look is one file. Ships with "Blocks" sounds and a "Pixel" look as proof.
+
+### Round 6: what shipped
+
+- All 13 plan items are in. `tests/problems.test.ts` holds the 50-problem "done enough" set (plus one sanity check); all pass.
+- Mouse box select counts only the smallest pieces it covers, and their common parent decides the pick. A box over most of a side now picks that run, not the whole side. Hovering outlines what a click would aim at.
+- Workspaces (`src/ui/works.ts`, store key `algebrix.works`) replace the single session; the old session migrates in as "My work". The library (`w`, `src/ui/library.ts`) shows them as cards drawn with the real layout. Shift+R twice resets every equation to its start, and redo keeps the steps.
+- Settings (`,`, `src/ui/settings.ts`) are backed by `src/ui/prefs.ts` (key `algebrix.prefs`), and `src/ui/appearance.ts` applies them.
+- Flash mode (`z` or ⚡ in the bottom bar) uses a 0.38× pace for the stage, CSS transitions, and auto-step timers. There is also a Calm mode at 1.45×.
+- Packs live in `src/packs/`: sound sets (Studio, Blocks) and looks (Studio, Pixel). The math layout measures with `--math-font`, so a look can swap the font. See `docs/EXTENDING.md`.

@@ -14,7 +14,13 @@ export interface Transition {
 
 interface Entry { el: HTMLElement | SVGSVGElement; g: Glyph }
 
-export const EASE = 'cubic-bezier(.2,.8,.16,1)';
+export const SMOOTH = 'cubic-bezier(.2,.8,.16,1)';
+export let EASE = SMOOTH;
+/** a look can make glyphs move differently (a pixel look steps like a sprite) */
+export const setEase = (e: string) => { EASE = e; };
+/** animation length multiplier (flash mode makes it small) */
+let pace = 1;
+export const setPace = (p: number) => { pace = p; };
 const SVGNS = 'http://www.w3.org/2000/svg';
 
 let metrics: { A: number; D: number } | null = null;
@@ -52,7 +58,7 @@ export class Stage {
     this.layout = lay; this.ox = ox; this.oy = oy;
 
     const focusOwned = (g: Glyph) => !!tr?.focus && g.owners.includes(tr.focus);
-    const dur = tr?.quick ? 200 : 260;
+    const dur = Math.round((tr?.quick ? 200 : 260) * pace);
 
     // Pieces that vanish can be "reused" by new pieces showing the same symbol, so a
     // rewrite like factoring reads as symbols rearranging instead of fading in and out.
@@ -168,7 +174,7 @@ export class Stage {
       frames.push({ transform: `translate(${dx / 2}px,${dy / 2 - lift}px) scale(${(sx + 1) / 2},${(sy + 1) / 2})`, offset: 0.5 });
     }
     frames.push({ transform: 'none', opacity: 1 });
-    el.animate(frames, { duration: arc ? dur + 60 : dur, easing: arc ? 'cubic-bezier(.3,.6,.2,1)' : EASE });
+    el.animate(frames, { duration: arc ? dur + 60 : dur, easing: arc && EASE === SMOOTH ? 'cubic-bezier(.3,.6,.2,1)' : EASE });
   }
 
   private crossfade(oldEl: HTMLElement, from: Rect, to: Rect, dur: number) {
@@ -212,7 +218,7 @@ function create(g: Glyph): HTMLElement | SVGSVGElement {
   const el = document.createElement('div');
   el.className = 'g ' + g.kind;
   if (g.kind === 'sign') el.innerHTML = '<i class="h"></i><i class="v"></i>';
-  if (g.kind === 'eq') el.innerHTML = '<i></i><i></i>';
+  if (g.kind === 'eq') el.innerHTML = '<i></i><i></i><i></i>';
   return el;
 }
 
@@ -246,6 +252,8 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     st.fontSize = g.s + 'px';
     st.lineHeight = r.h + 'px';
     el.classList.toggle('it', !!g.italic);
+  } else if (g.kind === 'eq') {
+    (el as HTMLElement).dataset.rel = g.rel ?? '=';
   } else if (g.kind === 'sign') {
     el.classList.toggle('minus', !!g.minus);
   } else if (g.kind === 'paren' || g.kind === 'rad') {

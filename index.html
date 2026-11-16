@@ -12,8 +12,12 @@
   <div class="app">
     <aside class="rail">
       <div class="brand"><span class="mark">a<sub>x</sub></span><span class="word">algebrix</span></div>
+      <button id="lib-btn" class="work-btn" title="Your work (w)">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="5.5" width="10" height="11" rx="2"/><path d="M6.5 3.5h8a2 2 0 0 1 2 2v9"/></svg>
+        <span id="work-name">Work</span><kbd>w</kbd>
+      </button>
       <section>
-        <h2 class="h-row">Equations <button id="add-eq" class="add-eq" title="New equation (n)">+ new</button></h2>
+        <h2 class="h-row">Equations <span class="h-acts"><button id="reset-eq" class="add-eq" title="Put every equation back at its start (Shift+R)">reset</button><button id="add-eq" class="add-eq" title="New equation (n)">+ new</button></span></h2>
         <ol id="eqs" class="eqs"></ol>
         <p id="eqs-tip" class="empty"></p>
       </section>
@@ -36,6 +40,10 @@
           <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M8.5 7.3v5.4l4.3-2.7z"/></svg>
           <span>Take the tour</span>
         </button>
+        <button id="settings-btn" class="sound" title="Settings (,)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
+          <span>Settings</span>
+        </button>
         <button id="theme" class="sound" title="Theme (t)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.2"/><path class="half" d="M10 3.8a6.2 6.2 0 0 1 0 12.4z"/></svg>
           <span>Theme</span>
@@ -57,8 +65,11 @@
       </header>
       <div id="stage" class="stage">
         <div id="trail" class="trail"></div>
+        <div id="hover" class="hover"></div>
         <div id="sel" class="sel"></div>
         <div id="spots" class="spots"></div>
+        <div id="marquee" class="marquee" hidden></div>
+        <div id="answer" class="answer" hidden></div>
         <div id="labels" class="labels"></div>
         <div id="forms" class="forms" hidden></div>
         <div id="tour" class="tour" hidden role="status" aria-live="polite">
@@ -72,7 +83,12 @@
           <span id="op-note" class="op-note"></span>
         </div>
       </div>
-      <footer id="hints" class="hints" aria-live="polite"></footer>
+      <footer class="bar">
+        <div id="hints" class="hints" aria-live="polite"></div>
+        <button id="flash" class="flash" title="Flash mode: much faster animations (z)" aria-pressed="false">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.2 2.5 4.8 11h4.6l-1 6.5L15.2 9h-4.7z"/></svg>
+        </button>
+      </footer>
     </main>
 
     <aside class="side">
@@ -100,7 +116,11 @@
           <section><h3>5. Hold e for algebra</h3><p>Factor, expand, combine fractions, clear denominators, split into cases, solve for a variable (<kbd>i</kbd>), substitute from another equation (<kbd>1</kbd>–<kbd>9</kbd>). Arrows browse, releasing <kbd>e</kbd> applies.</p></section>
           <section><h3>6. Hold f for functions</h3><p>Put a function on both sides, or press <kbd>i</kbd> to undo the outer one. <kbd>←</kbd> <kbd>→</kbd> pick a family (powers, roots, exp and log, trig), <kbd>↓</kbd> steps in, release <kbd>f</kbd> to apply.</p></section>
           <section><h3>7. Many equations</h3><p><kbd>n</kbd> adds one, <kbd>1</kbd>–<kbd>9</kbd> switch. Answers are checked against the equation you started with; extraneous ones are flagged.</p></section>
-          <section><h3>8. The graph</h3><p>One variable: both sides as curves, and the answers are where they cross. Two: the solution curve. Three: the solution surface in 3D. It never changes while you work. Drag, scroll, double-click to reset.</p></section>
+          <section><h3>8. The graph</h3><p>One variable: both sides as curves, and the answers are where they cross. Two: the solution curve, or the shaded region for an inequality. Three: the solution surface in 3D. Drag, scroll, double-click to reset.</p></section>
+          <section><h3>9. Pick part of a side</h3><p>Drag a box with the mouse around the pieces you want, or hold <kbd>Shift</kbd> and use <kbd>←</kbd> <kbd>→</kbd> to stretch the aim. <i>3 + 5</i> out of <i>2x + 3 + 5 + y</i> works like any single piece: <kbd>s</kbd>, <kbd>m</kbd>, and the rest.</p></section>
+          <section><h3>10. More than equations</h3><p>Type <i>x^2 − 4 &lt; 0</i> for an inequality (moves flip the sign when they must; <kbd>e</kbd> <kbd>i</kbd> solves it with a sign chart). Type just an expression to rewrite it. An identity like <i>(a+b)^2 = a^2+2ab+b^2</i> becomes a proof. <i>f(x) = x^2 + 1</i> defines a function.</p></section>
+          <section><h3>11. Your work</h3><p><kbd>w</kbd> shows every workspace as a card: open, rename, copy, or start a new one. <kbd>Shift</kbd>+<kbd>R</kbd> twice puts every equation back at its start (<kbd>r</kbd> replays your steps).</p></section>
+          <section><h3>12. Make it yours</h3><p><kbd>,</kbd> opens settings: theme, look (try Pixel), math size, speed, sound pack (try Blocks). <kbd>z</kbd> or the ⚡ at the bottom switches flash mode.</p></section>
         </div>
       </div>
       <div class="help-pane" data-pane="keys" hidden>
@@ -112,6 +132,8 @@
             <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next piece</dd>
             <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>grow / shrink the aim</dd>
             <dt><kbd>Tab</kbd></dt><dd>other side</dd>
+            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>stretch the aim over neighbours</dd>
+            <dt>drag a box</dt><dd>aim at whatever it covers</dd>
             <dt><kbd>a</kbd></dt><dd>whole equation</dd>
             <dt><kbd>Esc</kbd></dt><dd>clear</dd>
           </dl>
@@ -131,7 +153,8 @@
             <dt><kbd>=</kbd> <kbd>-</kbd> <kbd>.</kbd> <kbd>/</kbd></dt><dd>+ − × ÷ both sides, with a live preview</dd>
             <dt><kbd>s</kbd> <kbd>d</kbd></dt><dd>simplify, distribute</dd>
             <dt><kbd>x</kbd></dt><dd>swap sides</dd>
-            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>slide a term</dd>
+            <dt><kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>slide a term</dd>
+            <dt><kbd>-</kbd> then <i>2#2</i></dt><dd>subtract 2 × equation 2 (elimination)</dd>
           </dl>
           <h3 class="gap">Hold f + (functions on both sides)</h3>
           <dl>
@@ -155,11 +178,17 @@
             <dt><kbd>f</kbd> <kbd>x</kbd> <kbd>s</kbd></dt><dd>factored / expanded / simplified</dd>
             <dt><kbd>z</kbd> <kbd>d</kbd> <kbd>w</kbd></dt><dd>= 0 / clear fractions / swap</dd>
             <dt><kbd>l</kbd> <kbd>p</kbd> <kbd>r</kbd></dt><dd>log rules / as powers / as roots</dd>
+            <dt><kbd>q</kbd> <kbd>v</kbd> <kbd>n</kbd></dt><dd>long division / partial fractions / rationalize</dd>
+            <dt><kbd>k</kbd></dt><dd>eliminate a variable with another equation</dd>
+            <dt><kbd>u</kbd> <kbd>b</kbd></dt><dd>unfold f(…) / build f⁻¹</dd>
             <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>browse forms, release e to apply</dd>
           </dl>
           <h3 class="gap">Work</h3>
           <dl>
             <dt><kbd>u</kbd> <kbd>r</kbd></dt><dd>undo / redo</dd>
+            <dt><kbd>w</kbd> <kbd>,</kbd></dt><dd>your work / settings</dd>
+            <dt><kbd>z</kbd></dt><dd>⚡ flash mode</dd>
+            <dt><kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>reset all to the start</dd>
             <dt><kbd>t</kbd> <kbd>M</kbd></dt><dd>theme / sound</dd>
             <dt><kbd>g</kbd> <kbd>?</kbd></dt><dd>tour / this manual</dd>
             <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>zoom graph</dd>
@@ -168,6 +197,30 @@
       </div>
       </div>
       <p class="help-note">Every move is checked numerically. If it wouldn't keep the equation true, it doesn't happen. Tap <kbd>e</kbd> or <kbd>f</kbd> to keep its menu open instead of holding.</p>
+    </div>
+  </div>
+  <div id="library" class="overlay" hidden>
+    <div class="lib" role="dialog" aria-label="Your work">
+      <div class="help-head">
+        <h2>Your work</h2><span id="lib-count" class="lib-count"></span>
+        <span class="help-spacer"></span>
+        <span class="lib-keys"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move <kbd>Enter</kbd> open <kbd>n</kbd> new <kbd>r</kbd> rename <kbd>d</kbd> copy</span>
+        <button id="lib-close" aria-label="Close">Esc</button>
+      </div>
+      <div id="lib-grid" class="lib-grid"></div>
+      <p id="lib-hint" class="help-note"></p>
+    </div>
+  </div>
+
+  <div id="settings" class="overlay" hidden>
+    <div class="panel-card" role="dialog" aria-label="Settings">
+      <div class="help-head">
+        <h2>Settings</h2>
+        <span class="help-spacer"></span>
+        <span class="lib-keys"><kbd>↑</kbd><kbd>↓</kbd> pick <kbd>←</kbd><kbd>→</kbd> change</span>
+        <button id="settings-close" aria-label="Close">Esc</button>
+      </div>
+      <div id="settings-rows" class="set-rows"></div>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>

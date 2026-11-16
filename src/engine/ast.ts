@@ -14,8 +14,13 @@ export interface Sqrt extends Base { k: 'sqrt'; arg: Node }
 export const FN_TEXT: Record<string, string> = { asin: 'arcsin', acos: 'arccos', atan: 'arctan' };
 export type FnName = 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan' | 'ln' | 'log' | 'abs';
 export interface Fn extends Base { k: 'fn'; name: FnName; arg: Node }
-export interface Eq extends Base { k: 'eq'; lhs: Node; rhs: Node }
-export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Eq;
+/** a named function you defined, like f(x + 1) */
+export interface Call extends Base { k: 'call'; name: string; arg: Node }
+/** How the two sides relate. 'expr' is a lone expression (the right side is an unused 0);
+ *  '≟' is an identity to prove: each side may only be rewritten into an equal form. */
+export type Rel = '=' | '<' | '>' | '≤' | '≥' | 'expr' | '≟' | 'def';
+export interface Eq extends Base { k: 'eq'; lhs: Node; rhs: Node; rel?: Rel }
+export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Call | Eq;
 
 /** Named constants: they look like symbols but are never variables. */
 export const CONSTS: Record<string, number> = { e: Math.E, π: Math.PI };
@@ -40,14 +45,37 @@ export const frac = (n: Node, d: Node, id = newId()): Frac => ({ k: 'frac', id, 
 export const pow = (base: Node, exp: Node, id = newId()): Pow => ({ k: 'pow', id, base, exp });
 export const sqrt = (arg: Node, id = newId()): Sqrt => ({ k: 'sqrt', id, arg });
 export const fn = (name: FnName, arg: Node, id = newId()): Fn => ({ k: 'fn', id, name, arg });
-export const eq = (lhs: Node, rhs: Node): Eq => ({ k: 'eq', id: 'eq', lhs, rhs });
+export const call = (name: string, arg: Node, id = newId()): Call => ({ k: 'call', id, name, arg });
+/** names that read as function calls when followed by "(" */
+export const FUNC_NAMES = ['f', 'g', 'h'];
+/** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */
+export const DEFS = new Map<string, { param: string; body: Node }>();
+let callDepth = 0;
+export const eq = (lhs: Node, rhs: Node, rel?: Rel): Eq => (rel && rel !== '=' ? { k: 'eq', id: 'eq', lhs, rhs, rel } : { k: 'eq', id: 'eq', lhs, rhs });
+export const relOf = (e: Eq): Rel => e.rel ?? '=';
+export const isIneq = (e: Eq) => ['<', '>', '≤', '≥'].includes(relOf(e));
+/** the same relation read from the other side: a < b ⇔ b > a */
+export const flipRel = (r: Rel): Rel => (({ '<': '>', '>': '<', '≤': '≥', '≥': '≤' } as Record<string, Rel>)[r] ?? r);
+/** does the relation hold at this point? (NaN when either side is undefined) */
+export function holds(e: Eq, env: Env): boolean | null {
+  const d = evaluate(e.lhs, env) - evaluate(e.rhs, env);
+  if (!Number.isFinite(d)) return null;
+  const tol = 1e-9 * (1 + Math.abs(evaluate(e.lhs, env)));
+  switch (relOf(e)) {
+    case '<': return d < -tol;
+    case '>': return d > tol;
+    case '≤': return d <= tol;
+    case '≥': return d >= -tol;
+    default: return Math.abs(d) <= tol;
+  }
+}
 
 export function children(n: Node): Node[] {
   switch (n.k) {
     case 'num': case 'sym': return [];
     case 'add': return n.terms;
     case 'mul': return n.factors;
-    case 'neg': case 'sqrt': case 'fn': return [n.arg];
+    case 'neg': case 'sqrt': case 'fn': case 'call': return [n.arg];
     case 'frac': return [n.num, n.den];
     case 'pow': return [n.base, n.exp];
     case 'eq': return [n.lhs, n.rhs];
@@ -60,7 +88,7 @@ export function withChildren<T extends Node>(n: T, kids: Node[]): T {
     case 'num': case 'sym': return n;
     case 'add': return { ...n, terms: kids };
     case 'mul': return { ...n, factors: kids };
-    case 'neg': case 'sqrt': case 'fn': return { ...n, arg: kids[0] };
+    case 'neg': case 'sqrt': case 'fn': case 'call': return { ...n, arg: kids[0] };
     case 'frac': return { ...n, num: kids[0], den: kids[1] };
     case 'pow': return { ...n, base: kids[0], exp: kids[1] };
     case 'eq': return { ...n, lhs: kids[0], rhs: kids[1] };
@@ -121,7 +149,8 @@ export function key(n: Node): string {
     case 'pow': return '(^ ' + key(n.base) + ' ' + key(n.exp) + ')';
     case 'sqrt': return '(sqrt ' + key(n.arg) + ')';
     case 'fn': return '(' + n.name + ' ' + key(n.arg) + ')';
-    case 'eq': return '(= ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
+    case 'call': return '(call ' + n.name + ' ' + key(n.arg) + ')';
+    case 'eq': return '(' + (n.rel ?? '=') + ' ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
   }
 }
 
@@ -150,6 +179,12 @@ export function evaluate(n: Node, env: Env): number {
         case 'abs': return Math.abs(a);
       }
       return NaN;
+    }
+    case 'call': {
+      const d = DEFS.get(n.name);
+      if (!d || callDepth > 40) return NaN;
+      callDepth++;
+      try { return evaluate(d.body, { ...env, [d.param]: evaluate(n.arg, env) }); } finally { callDepth--; }
     }
     case 'eq': return evaluate(n.lhs, env) - evaluate(n.rhs, env);
   }

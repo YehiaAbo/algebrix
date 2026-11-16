@@ -1,19 +1,31 @@
-import { Eq, Node, find, findPath, children, bumpIds, symbols } from '../engine/ast';
+import { Eq, Node, find, findPath, children, bumpIds, symbols, relOf, isIneq, DEFS, add, key } from '../engine/ast';
+import { solveInequality } from '../engine/inequality';
+import { isIdentity, isProved, unfold, inverseFunction } from '../engine/goals';
+import { polyOf } from '../engine/rewrite';
+import { setDomains, Domain } from '../engine/moves';
 import { parseEquation, ParseError } from '../engine/parse';
 import { toText } from '../engine/print';
-import { applyMove, applyBothChecked, checked, isErr, MoveName, MoveOk, MoveResult, solvedFor } from '../engine/moves';
-import { absOf, coefOf } from '../engine/terms';
+import { applyMove, applyBothChecked, checked, direction, isErr, MoveName, MoveOk, MoveResult, solvedFor } from '../engine/moves';
+import { absOf, coefOf, negate } from '../engine/terms';
 import { formsFor, Form } from '../engine/forms';
-import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, isolate, substitute, splitCases, simplifySpot, Spot } from '../engine/techniques';
+import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, isolate, substitute, splitCases, simplifySpot, Spot, eliminate, tidy } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
 import { evaluate } from '../engine/ast';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition } from '../render/stage';
 import { Graph } from './graph';
 import { Tour, toured } from './tour';
+import { group, ungroup } from '../engine/select';
+import { walk } from '../engine/ast';
 import { sound } from './sound';
+import { prefs, setPref, onPrefs, ms } from './prefs';
+import { applyTheme, applyLook, applySpeed, isDark } from './appearance';
+import { works } from './works';
+import { Library } from './library';
+import { Settings } from './settings';
 
-interface Step { eq: Eq; label: string; conditions: string[]; auto?: boolean }
+/** one step of work: what it is, the rule it used, and whether it is reversible (⇔) or one-way (⇒) */
+interface Step { eq: Eq; label: string; conditions: string[]; auto?: boolean; rule?: string; dir?: '⇔' | '⇒'; answer?: string }
 /** origin: the equation a case came from, to check answers against. bad: why its answer fails */
 export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string }
 type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
@@ -33,6 +45,7 @@ const OP_KEYS: Record<string, string> = { '=': '+', '+': '+', '-': '-', '.': '*'
 const OP_SHOW: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷' };
 
 const LABEL_CHARS = 'asdfghjklqwertyuiopzxcvbnm';
+const DOMAIN_TEXT: Record<Domain, string> = { real: 'real number', positive: 'positive', nonneg: 'zero or more', integer: 'whole number' };
 
 interface Tech { key: string; label: string; ok: boolean; run: () => void }
 interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean }
@@ -58,7 +71,17 @@ export class App {
   private looseSel: string | null = null;
   /** while the tour runs, your own session isn't overwritten */
   noSave = false;
+  /** what each variable may be (real by default); moves and answers respect it */
+  domains: Record<string, Domain> = {};
+  /** a partial selection: the current step with a run of terms wrapped in a group node */
+  private grouped: { base: Eq; eq: Eq; id: string; anchor: string; head: string } | null = null;
+  private drag: { x: number; y: number; on: boolean } | null = null;
   tour: Tour;
+  library: Library;
+  settings: Settings;
+  /** the workspace (card) being worked on */
+  workId = '';
+  private resetArmed = 0;
 
   constructor() {
     this.stage = new Stage($('stage'));
@@ -70,11 +93,23 @@ export class App {
       if (next !== size) { size = next; this.renderMain(null); }
     }).observe($('stage'));
     this.tour = new Tour(this);
+    const app = this;
+    this.library = new Library({
+      get workId() { return app.workId; },
+      saveNow: () => this.save(),
+      open: id => this.openWork(id),
+      create: () => this.newWork(),
+      afterRemove: () => { if (!this.restore()) this.newWork(); },
+    });
+    this.settings = new Settings({ tour: () => this.tour.start() });
+    onPrefs((_, k) => this.prefsChanged(k));
     if (!this.restore()) {
       this.writing = 'new';
       this.commit('7y + 3x = 20', true);
     }
     this.themeLabel();
+    this.flashLabel();
+    $('sound').classList.toggle('off', prefs.muted);
     if (!toured()) window.setTimeout(() => this.tour.start(), 600);
   }
 
@@ -86,7 +121,13 @@ export class App {
   get sel(): string | null { return this.slot ? this.slot.sel : this.looseSel; }
   set sel(v: string | null) { if (this.slot) this.slot.sel = v; else this.looseSel = v; }
 
-  get eq(): Eq { return this.preview ?? this.steps[this.at]?.eq; }
+  get eq(): Eq {
+    if (this.preview) return this.preview;
+    const base = this.steps[this.at]?.eq;
+    return this.grouped && this.grouped.base === base ? this.grouped.eq : base;
+  }
+  /** the current step itself, without any temporary group */
+  get base(): Eq { return this.steps[this.at]?.eq; }
   /** what the stage shows: the typed preview, a form being browsed, or the current step */
   get shown(): Eq { return this.peek ?? this.eq; }
   get step(): Step { return this.steps[this.at]; }
@@ -95,12 +136,13 @@ export class App {
   /* ---------------- rendering ---------------- */
 
   renderMain(tr: Transition | null) {
+    $('hover').classList.remove('on');
     const eq = this.shown;
     if (!eq) { this.stage.clear(); return; }
     const host = $('stage');
     const W = host.clientWidth, H = host.clientHeight;
     const pad = 32;
-    let S = Math.min(68, Math.max(30, W / 15));
+    let S = Math.min(68, Math.max(30, W / 15)) * prefs.size;
     let lay = layout(eq, S);
     if (lay.w > W - 2 * pad) { S = Math.max(22, S * (W - 2 * pad) / lay.w); lay = layout(eq, S); }
     const h = lay.asc + lay.desc;
@@ -110,6 +152,15 @@ export class App {
     if (lay.w > W - 2 * pad) ox = (W - lay.w) / 2;
     const oy = Math.round(Math.max(H * 0.56 - (lay.asc + lay.desc) / 2, Math.min(230, H * 0.4)));
     this.stage.show(lay, Math.round(ox), oy, tr);
+    // a final answer that isn't an equation (an inequality's solution set) sits under it
+    const ans = $('answer');
+    const text = !this.preview && !this.peek ? this.step?.answer : undefined;
+    const proved = !this.preview && !this.peek && relOf(eq) === '≟' && isProved(eq);
+    ans.hidden = !text && !proved;
+    if (text || proved) {
+      ans.textContent = proved ? '∎ proved' : text!;
+      ans.style.top = `${Math.round(oy + lay.asc + lay.desc + 22)}px`;
+    }
     host.classList.toggle('preview', !!this.preview || (!!this.peek && this.mode === 'op'));
     this.renderSelection();
     this.renderSpot();
@@ -128,6 +179,7 @@ export class App {
   }
 
   renderAll(tr: Transition | null, graphAnim = false) {
+    this.syncDefs();
     this.renderMain(tr);
     this.renderTrail();
     this.renderRail();
@@ -151,7 +203,13 @@ export class App {
       mini.className = 'mini';
       const label = document.createElement('span');
       label.className = 'trail-label';
-      label.textContent = this.steps[i + 1].label;
+      const st = this.steps[i + 1];
+      label.textContent = st.label;
+      const dir = document.createElement('span');
+      dir.className = `trail-dir${st.dir === '⇒' ? ' one-way' : ''}`;
+      dir.textContent = st.dir ?? '⇔';
+      dir.title = st.dir === '⇒' ? 'One-way step: it can add solutions, so answers get checked' : 'Reversible step: same solutions before and after';
+      label.prepend(dir);
       row.append(mini, label);
       host.append(row);
       const lay = layout(this.steps[i].eq, 21);
@@ -175,6 +233,7 @@ export class App {
 
   renderRail() {
     // the system: every equation, numbered like weapon slots
+    $('work-name').textContent = works.get(this.workId)?.name ?? 'Untitled';
     const list = $('eqs');
     list.replaceChildren();
     this.slots.forEach((_, i) => {
@@ -195,7 +254,11 @@ export class App {
       const solved = solvedFor(e);
       const bad = this.slots[i].bad;
       if (bad) { btn.classList.add('bad'); btn.title = bad; }
-      if (solved) { const tag = document.createElement('span'); tag.className = bad ? 'solved no' : 'solved'; tag.textContent = bad ? 'not a solution' : '✓'; btn.append(tag); }
+      const st = this.slots[i].steps[this.slots[i].at];
+      const done = (relOf(e) === '≟' && isProved(e)) ? '∎' : st.answer ? st.answer : solved ? (bad ? 'not a solution' : '✓') : '';
+      if (done) { const tag = document.createElement('span'); tag.className = bad ? 'solved no' : st.answer ? 'solved ans' : 'solved'; tag.textContent = done; btn.append(tag); }
+      if (relOf(e) === '≟' && !isProved(e)) { const tag = document.createElement('span'); tag.className = 'goal'; tag.textContent = 'prove'; btn.append(tag); }
+      if (relOf(e) === 'def') btn.classList.add('def');
       li.append(btn);
       list.append(li);
       new Stage(mini).show(lay, 0, 0, null);
@@ -211,7 +274,9 @@ export class App {
     for (const v of symbols(eq)) {
       const li = document.createElement('li');
       const conds = (this.step?.conditions ?? []).filter(c => new RegExp(`(^|[^a-zα-ω])${v}([^a-zα-ω]|$)`).test(c));
-      li.innerHTML = `<span class="var">${v}</span><span class="dom">real number</span>${solved === v ? '<span class="solved">solved</span>' : ''}`;
+      const dom = this.domains[v] ?? 'real';
+      li.innerHTML = `<span class="var">${v}</span><button class="dom" title="Click to change what ${v} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? '<span class="solved">solved</span>' : ''}`;
+      li.querySelector('.dom')!.addEventListener('click', () => this.cycleDomain(v));
       if (conds.length) li.title = conds.join(', ');
       vars.append(li);
     }
@@ -232,6 +297,7 @@ export class App {
     host.classList.toggle('msg', !!this.message);
     host.classList.toggle('bad', !!this.message?.bad);
     if (this.message) { host.textContent = this.message.text; return; }
+    if (!prefs.hints && this.mode === 'solve') { host.innerHTML = '<span class="spacer"></span><span class="hint dim"><kbd>?</kbd> manual</span>'; return; }
     if (this.mode === 'write') {
       host.innerHTML = `<span class="hint"><kbd>Enter</kbd> ${this.writing === 'new' && this.slots.length ? 'add to the system' : 'start solving'}</span><span class="hint"><kbd>Esc</kbd> cancel</span><span class="aside">Type like <i>3x/7 + 2 = y</i>, <i>x^2</i>, <i>sqrt(x)</i>, <i>ln(x)</i>, <i>|x − 1|</i>, <i>e^x</i>, or paste LaTeX.</span>`;
       return;
@@ -280,8 +346,9 @@ export class App {
 
   commit(src: string, quiet = false) {
     let eq: Eq;
-    try { eq = this.preview && !quiet ? this.preview : parseEquation(src); }
+    try { eq = this.preview && !quiet ? this.preview : parseEquation(src, true); }
     catch (e) { this.refuse((e as Error).message); return; }
+    if (isIdentity(eq)) eq = { ...eq, rel: '≟' };
     this.preview = null;
     this.message = null;
     clearTimeout(this.typingTimer);
@@ -300,7 +367,11 @@ export class App {
     this.renderAll(null);
     if (!quiet) this.entrance();
     this.save();
+    const rel = relOf(eq);
     if (quiet) this.say('Space aims. m moves it across. = − . / do anything to both sides. Hold e for algebra, f for functions. ? shows every key.');
+    else if (rel === '≟') this.say('Both sides agree for every value: an identity. Prove it by rewriting one side at a time until they match.');
+    else if (rel === 'def' && eq.lhs.k === 'call') this.say(`Defined ${eq.lhs.name}. Use ${eq.lhs.name}(…) in other equations; hold e + u to unfold it, e + b for its inverse.`);
+    else if (rel === 'expr') this.say('An expression: rewrite it with s, d, e and f. Add “= …” to make it an equation.');
     else if (this.slots.length > 1) this.say(`Equation ${this.cur + 1}. Press 1–${this.slots.length} to switch between them.`);
   }
 
@@ -311,11 +382,16 @@ export class App {
 
   apply(r: MoveResult, pitch = 1, opts: { quietLabel?: boolean } = {}) {
     if (isErr(r)) { this.refuse(r.error); return false; }
+    r = { ...r, eq: ungroup(r.eq) };
+    this.grouped = null;
     const before = this.eq;
     const wasSolved = solvedFor(before);
     const conditions = [...new Set([...this.step.conditions, ...(r.conditions ?? [])])];
     this.steps = this.steps.slice(0, this.at + 1);
-    this.steps.push({ eq: r.eq, label: r.label, conditions, auto: r.auto });
+    let answer = r.answer;
+    const sv = solvedFor(r.eq);
+    if (!answer && isIneq(r.eq) && sv && symbols(r.eq).length === 1) { const s = solveInequality(r.eq, sv); if (!('error' in s)) answer = s.text; }
+    this.steps.push({ eq: r.eq, label: r.label, conditions, auto: r.auto, rule: r.rule ?? r.label, dir: direction(r), answer });
     this.at++;
     this.sel = r.select !== undefined ? (r.select && find(r.eq, r.select) ? r.select : null) : this.sel && find(r.eq, this.sel) ? this.sel : null;
     sound.move(pitch);
@@ -323,6 +399,8 @@ export class App {
     if (!opts.quietLabel) this.bubble(r.label, false, r.focus ?? this.sel);
     const now = solvedFor(r.eq);
     const bad = now ? this.judge(this.cur) : null;
+    if (relOf(r.eq) === '≟' && isProved(r.eq)) { setTimeout(() => sound.solved(), 140); this.say('Both sides match. Proved ∎'); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); this.save(); return true; }
+    if (answer) this.say(answer);
     if (bad) { this.say(bad, true); this.renderRail(); }
     else if (now && now !== wasSolved) { setTimeout(() => sound.solved(), 140); this.say(`Solved for ${now}.`); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); }
     if (r.conditions?.length) this.say(`Noted on the left: ${r.conditions.join(', ')}.`);
@@ -351,9 +429,10 @@ export class App {
     let i = 0;
     const next = () => {
       const s = steps[i++];
-      this.apply(s, 1.05 + 0.03 * i, { quietLabel: !!s.auto });
-      if (i < steps.length) this.later(s.auto ? 300 : 420, next);
-      else if (done) this.later(460, done);
+      // a tidy that changes nothing isn't a step
+      if (!(s.auto && key(s.eq) === key(this.eq))) this.apply(s, 1.05 + 0.03 * i, { quietLabel: !!s.auto });
+      if (i < steps.length) this.later(ms(s.auto ? 300 : 420), next);
+      else if (done) this.later(ms(460), done);
     };
     next();
   }
@@ -393,6 +472,7 @@ export class App {
 
   select(id: string | null, quiet = false) {
     if (id === this.sel) return;
+    if (this.grouped && id !== this.grouped.id) { this.grouped = null; this.renderMain(null); }
     this.sel = id;
     if (!quiet) sound.tick(id ? (findPath(this.eq, id)?.length ?? 1) - 1 : 0);
     this.renderSelection();
@@ -513,6 +593,99 @@ export class App {
       if (this.sameBox(next.id, n.id)) { n = next; continue; }
       return this.select(next.id);
     }
+  }
+
+  /** pick the run of neighbours from anchor to head (one sum or product) */
+  selectRange(anchor: string, head: string, quiet = false) {
+    const base = this.base;
+    const g = group(base, [anchor, head]);
+    if ('error' in g) return this.refuse(g.error);
+    if (g.eq === base) { this.grouped = null; return this.select(g.id, quiet); }
+    this.grouped = { base, eq: g.eq, id: g.id, anchor, head };
+    this.sel = null;
+    this.renderMain(null);
+    this.select(g.id, quiet);
+  }
+
+  /** Shift + ← →: grow or shrink the selection one neighbour at a time */
+  extend(dir: -1 | 1) {
+    if (!this.sel || this.sel === 'eq') return this.sideways(dir);
+    const g = this.grouped && this.sel === this.grouped.id ? this.grouped : null;
+    const anchor = g ? g.anchor : this.sel, head = g ? g.head : this.sel;
+    const path = findPath(this.base, head);
+    const parent = path && path.length > 2 ? path[path.length - 2] : null;
+    if (!parent || (parent.k !== 'add' && parent.k !== 'mul')) return this.refuse('Shift + arrows pick neighbouring terms of a sum, or factors of a product.');
+    const sibs = this.visibleKids(parent);
+    const j = sibs.findIndex(k => k.id === head) + dir;
+    if (j < 0 || j >= sibs.length) return this.refuse(dir > 0 ? 'Nothing further right in this sum.' : 'Nothing further left in this sum.');
+    if (sibs[j].id === anchor) return this.select(anchor);
+    this.selectRange(anchor, sibs[j].id);
+  }
+
+  /** Mouse box: whatever the box touches is picked, as a run of neighbours when it can be */
+  boxSelect(x0: number, y0: number, x1: number, y1: number, quiet: boolean) {
+    const [l, r, t, b] = [Math.min(x0, x1), Math.max(x0, x1), Math.min(y0, y1), Math.max(y0, y1)];
+    const base = this.base;
+    const hit: string[] = [];
+    walk(base, n => {
+      // only the smallest pieces count; what they share decides the pick. Otherwise a box
+      // over most of a side would cover the side's own box and take all of it.
+      if (n.k === 'eq' || children(n).length) return;
+      const q = this.stage.box(n.id);
+      if (!q) return;
+      // mostly inside the box counts
+      const ov = Math.max(0, Math.min(r, q.x + q.w) - Math.max(l, q.x)) * Math.max(0, Math.min(b, q.y + q.h) - Math.max(t, q.y));
+      if (ov >= 0.6 * q.w * q.h) hit.push(n.id);
+    });
+    if (!hit.length) return this.select(null, quiet);
+    const paths = hit.map(id => findPath(base, id)!);
+    let depth = 0;
+    while (paths.every(p => p.length > depth + 1 && p[depth + 1] === paths[0][depth + 1])) depth++;
+    const lca = paths[0][depth];
+    if (lca.k === 'eq') return this.select('eq', quiet);
+    if (lca.k !== 'add' && lca.k !== 'mul') return this.select(lca.id, quiet);
+    const kids = this.visibleKids(lca);
+    const touched = kids.filter(k => paths.some(p => p[depth + 1] === k));
+    if (paths.some(p => p.length === depth + 1) || touched.length === kids.length) return this.select(lca.id, quiet);
+    this.selectRange(touched[0].id, touched[touched.length - 1].id, quiet);
+  }
+
+  private pointerDown(e: MouseEvent) {
+    if (e.button !== 0) return;
+    const host = $('stage').getBoundingClientRect();
+    this.drag = { x: e.clientX - host.left, y: e.clientY - host.top, on: false };
+    const box = $('marquee');
+    const move = (m: MouseEvent) => {
+      const d = this.drag;
+      if (!d) return;
+      const x = m.clientX - host.left, y = m.clientY - host.top;
+      if (!d.on && Math.hypot(x - d.x, y - d.y) < 5) return;
+      if (!d.on) { d.on = true; this.closeModes(); box.hidden = false; }
+      Object.assign(box.style, { left: `${Math.min(x, d.x)}px`, top: `${Math.min(y, d.y)}px`, width: `${Math.abs(x - d.x)}px`, height: `${Math.abs(y - d.y)}px` });
+      this.boxSelect(d.x, d.y, x, y, true);
+    };
+    const up = (u: MouseEvent) => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      const d = this.drag;
+      this.drag = null;
+      box.hidden = true;
+      if (!d) return;
+      if (!d.on) return this.click(e);
+      sound.tick(2);
+      this.renderHints();
+      void u;
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+
+  private closeModes() {
+    if (this.mode === 'write') this.cancelEdit();
+    if (this.mode === 'op') this.closeOp();
+    if (this.mode === 'hub') this.closeHub(true);
+    if (this.mode === 'fnpal' || this.mode === 'fnask') this.closePal(true);
+    if (this.mode !== 'solve') this.setMode('solve');
   }
 
   sideways(dir: -1 | 1) {
@@ -697,7 +870,7 @@ export class App {
   private opResult(): MoveResult {
     const v = $<HTMLInputElement>('op-input').value.trim();
     if (v.length <= 1) return { error: 'Type what to apply, like 7 or 3x.' };
-    return applyBothChecked(this.eq, v);
+    return applyBothChecked(this.eq, v, this.slots.map((_, j) => this.eqOf(j)));
   }
 
   onOpType() {
@@ -733,10 +906,21 @@ export class App {
       run: () => (aimVar ? this.solveFor(aimVar) : this.askVar()),
     }];
     out.push({ key: 'a', label: 'split into cases', ok: !!splitCases(eq), run: () => this.split() });
+    const hasCall = (() => { let c = false; walk(eq, n => { if (n.k === 'call' && DEFS.has(n.name)) c = true; }); return c; })();
+    if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
+    if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
     this.slots.forEach((_, j) => {
       if (j === this.cur) return;
       const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));
       out.push({ key: String(j + 1), label: `substitute from (${j + 1})`, ok: shares, run: () => this.substituteFrom(j) });
+    });
+    const partner = this.slots.findIndex((_, j) => j !== this.cur && !isErr(eliminate(eq, this.eqOf(j), j + 1, aimVar ?? undefined)));
+    if (this.slots.length > 1) out.push({
+      key: 'k', label: partner >= 0 ? `eliminate${aimVar ? ' ' + aimVar : ''} with (${partner + 1})` : 'eliminate with another equation', ok: partner >= 0,
+      run: () => {
+        document.querySelectorAll('.eq-slot')[partner]?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 700, easing: 'ease-out' });
+        this.apply(eliminate(this.eq, this.eqOf(partner), partner + 1, aimVar ?? undefined), 1.1);
+      },
     });
     return out;
   }
@@ -1039,6 +1223,20 @@ export class App {
   /* ---------------- techniques ---------------- */
 
   solveFor(v: string) {
+    const rel = relOf(this.eq);
+    if (rel === 'expr') { this.refuse('An expression has nothing to solve. Add “= …” to make it an equation.'); return; }
+    if (rel === '≟') { this.refuse('This holds for every value, so there is nothing to solve: prove it instead, one side at a time.'); return; }
+    if (rel === 'def') { this.refuse('This defines a function. Use it in another equation, or hold e + b for its inverse.'); return; }
+    if (isIneq(this.eq)) {
+      const Q = polyOf(add([this.eq.lhs, negate(this.eq.rhs)]));
+      const linear = symbols(this.eq).length === 1 && !!Q && Q.c.length <= 2;
+      if (!linear) {
+        const s = solveInequality(this.eq, v);
+        if ('error' in s) { this.refuse(s.error); return; }
+        this.apply({ eq: this.eq, label: 'sign chart', hints: { absorbs: new Map(), flights: [] }, factor: () => 1, answer: s.text, rule: 'sign chart' }, 1.1);
+        return;
+      }
+    }
     const r = isolate(this.eq, v);
     if (!Array.isArray(r)) { this.refuse(r.error); return; }
     if (!r.length) { this.refuse(`Already solved for ${v}.`); return; }
@@ -1048,7 +1246,8 @@ export class App {
 
   /** after isolating: split into cases and solve each one, or say where it got stuck */
   private afterSolve(v: string) {
-    if (solvedFor(this.eq) === v) return;
+    // solving means a finished answer: take what simplifies at the end
+    if (solvedFor(this.eq) === v) { const t = tidy(this.eq); if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2); return; }
     if (splitCases(this.eq, v)) { this.split(v); return; }
     this.say(`Got as far as I could isolating ${v}. Try a form (hold e) or a function (hold f).`, true);
   }
@@ -1075,7 +1274,7 @@ export class App {
     this.save();
     const nums = c.rest.map((_, j) => at + 2 + j).join(' and ');
     this.say(`${c.why[0].toUpperCase()}${c.why.slice(1)}: the ${c.rest.length > 1 ? 'others are' : 'other is'} equation ${nums}.`);
-    if (v) this.later(450, () => this.solveFor(v));
+    if (v) this.later(ms(450), () => this.solveFor(v));
   }
 
   /** a solved slot: does its answer work in the equation it came from? */
@@ -1087,12 +1286,52 @@ export class App {
     if (!v) return null;
     const rhs = e.lhs.k === 'sym' && e.lhs.name === v ? e.rhs : e.lhs;
     const origin = slot.origin ?? slot.steps[0].eq;
+    if (relOf(origin) !== '=' || relOf(e) !== '=') return null;
     if (symbols(rhs).length || symbols(origin).some(s => s !== v)) return null;
     const x = evaluate(rhs, {});
+    const dom = this.domains[v];
+    const outside = dom === 'positive' ? !(x > 0) : dom === 'nonneg' ? !(x >= 0) : dom === 'integer' ? Math.abs(x - Math.round(x)) > 1e-9 : false;
+    if (outside) { slot.bad = `${v} = ${toText(rhs)} isn't ${DOMAIN_TEXT[dom!]}, so it is left out.`; return slot.bad; }
     const L = evaluate(origin.lhs, { [v]: x }), R = evaluate(origin.rhs, { [v]: x });
     if (Number.isFinite(L) && Number.isFinite(R) && Math.abs(L - R) <= 1e-7 * (1 + Math.abs(L) + Math.abs(R))) return null;
     slot.bad = `${v} = ${toText(rhs)} doesn't work in the original ${toText(origin)}${Number.isFinite(L) && Number.isFinite(R) ? '' : ' (it is undefined there)'}, so it is not a solution.`;
     return slot.bad;
+  }
+
+  cycleDomain(v: string) {
+    const order: Domain[] = ['real', 'positive', 'nonneg', 'integer'];
+    const next = order[(order.indexOf(this.domains[v] ?? 'real') + 1) % order.length];
+    if (next === 'real') delete this.domains[v]; else this.domains[v] = next;
+    setDomains(this.domains);
+    sound.tick(2);
+    this.slots.forEach((_, i) => this.judge(i));
+    this.renderRail();
+    this.save();
+    this.say(`${v} is now ${DOMAIN_TEXT[next].replace('number', 'a number').replace('real a number', 'any real number')}. Sign questions and answers follow it.`);
+  }
+
+  /** e + b on a definition: a new equation with the inverse function */
+  addInverse() {
+    const inv = inverseFunction(this.eq);
+    if ('error' in inv) { this.refuse(inv.error); return; }
+    if (this.slots.length >= 9) { this.refuse('Nine equations is the limit for now.'); return; }
+    this.slots.push({ steps: [{ eq: inv, label: 'inverse', conditions: [] }], at: 0, sel: null });
+    this.cur = this.slots.length - 1;
+    sound.commit();
+    this.stage.clear();
+    this.renderAll(null);
+    this.save();
+    const name = inv.lhs.k === 'call' ? inv.lhs.name : 'f⁻¹';
+    this.say(`Equation ${this.cur + 1} is ${name}: it undoes ${name.replace('⁻¹', '')}.`);
+  }
+
+  /** the function definitions in your equations, for evaluating f(…) everywhere */
+  syncDefs() {
+    DEFS.clear();
+    for (let i = 0; i < this.slots.length; i++) {
+      const e = this.eqOf(i);
+      if (e.rel === 'def' && e.lhs.k === 'call' && e.lhs.arg.k === 'sym') DEFS.set(e.lhs.name, { param: e.lhs.arg.name, body: e.rhs });
+    }
   }
 
   substituteFrom(j: number) {
@@ -1129,7 +1368,9 @@ export class App {
     });
     $('original').addEventListener('click', () => this.edit(false));
     $('trail').addEventListener('mousedown', e => e.stopPropagation());
-    $('stage').addEventListener('mousedown', e => this.click(e));
+    $('stage').addEventListener('mousedown', e => this.pointerDown(e));
+    $('stage').addEventListener('mousemove', e => this.hover(e));
+    $('stage').addEventListener('mouseleave', () => $('hover').classList.remove('on'));
     $('help-close').addEventListener('click', () => this.toggleHelp(false));
     $('help-tour').addEventListener('click', () => { this.toggleHelp(false); this.tour.start(); });
     $('manual-btn').addEventListener('click', () => this.toggleHelp(true));
@@ -1137,6 +1378,10 @@ export class App {
     document.querySelectorAll<HTMLElement>('.help-tabs button').forEach(b => b.addEventListener('click', () => this.helpTab(b.dataset.tab!)));
     $('sound').addEventListener('click', () => this.toggleSound());
     $('add-eq').addEventListener('click', () => this.edit(true));
+    $('reset-eq').addEventListener('click', () => { this.resetArmed = performance.now(); this.resetWork(); });
+    $('lib-btn').addEventListener('click', () => this.library.open());
+    $('settings-btn').addEventListener('click', () => this.settings.open());
+    $('flash').addEventListener('click', () => this.toggleFlash());
     window.addEventListener('keydown', e => this.key(e));
     window.addEventListener('keyup', e => {
       if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') { this.palRelease(); return; }
@@ -1161,22 +1406,33 @@ export class App {
     });
   }
 
-  click(e: MouseEvent) {
-    if (this.mode === 'write') this.cancelEdit();
-    if (this.mode === 'op') this.closeOp();
-    if (this.mode === 'hub') this.closeHub(true);
-    if (this.mode === 'fnpal' || this.mode === 'fnask') this.closePal(true);
-    if (this.mode !== 'solve') this.setMode('solve');
+  /** the smallest piece under a point on the stage */
+  private hit(e: MouseEvent): string | null {
     const host = $('stage').getBoundingClientRect();
     const x = e.clientX - host.left, y = e.clientY - host.top;
     const lay = this.stage.layout;
-    if (!lay) return;
+    if (!lay) return null;
     let best: string | null = null, area = Infinity;
     for (const id of lay.boxes.keys()) {
       if (id === 'eq') continue;
       const r = this.stage.box(id)!;
       if (x >= r.x - 4 && x <= r.x + r.w + 4 && y >= r.y - 4 && y <= r.y + r.h + 4 && r.w * r.h < area) { best = id; area = r.w * r.h; }
     }
+    return best;
+  }
+
+  /** a faint outline on what a click would aim at */
+  private hover(e: MouseEvent) {
+    const el = $('hover');
+    const id = this.drag || this.mode !== 'solve' ? null : this.hit(e);
+    const r = id && id !== this.sel ? this.stage.box(id) : null;
+    el.classList.toggle('on', !!r);
+    if (r) Object.assign(el.style, { left: `${r.x - 4}px`, top: `${r.y - 3}px`, width: `${r.w + 8}px`, height: `${r.h + 6}px` });
+  }
+
+  click(e: MouseEvent) {
+    this.closeModes();
+    const best = this.hit(e);
     if (best && best === this.sel) return this.grow();
     this.select(best);
   }
@@ -1197,6 +1453,8 @@ export class App {
 
   key(e: KeyboardEvent) {
     if (this.mode === 'write' || this.mode === 'op' || this.mode === 'fnask') return;
+    if (this.library.isOpen) return this.library.key(e);
+    if (this.settings.isOpen) return this.settings.key(e);
     if (!$('help').hidden) {
       if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); this.helpTab(e.key === 'ArrowLeft' ? 'how' : 'keys'); }
@@ -1233,8 +1491,8 @@ export class App {
     }
     switch (k) {
       case ' ': handled(); return this.showLabels();
-      case 'h': case 'ArrowLeft': handled(); return e.shiftKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : this.sideways(-1);
-      case 'l': case 'ArrowRight': handled(); return e.shiftKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : this.sideways(1);
+      case 'h': case 'ArrowLeft': handled(); return e.altKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : e.shiftKey ? this.extend(-1) : this.sideways(-1);
+      case 'l': case 'ArrowRight': handled(); return e.altKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : e.shiftKey ? this.extend(1) : this.sideways(1);
       case 'H': handled(); return this.apply(applyMove('slideL', this.eq, this.sel));
       case 'L': handled(); return this.apply(applyMove('slideR', this.eq, this.sel));
       case 'k': case 'ArrowUp': handled(); return this.grow();
@@ -1255,6 +1513,10 @@ export class App {
       case '?': handled(); return this.toggleHelp();
       case 'M': handled(); return this.toggleSound();
       case 'g': handled(); return this.tour.start();
+      case 'w': handled(); this.closeModes(); return this.library.open();
+      case ',': handled(); this.closeModes(); return this.settings.open();
+      case 'z': handled(); return this.toggleFlash();
+      case 'R': handled(); return this.resetWork();
       case '[': handled(); return this.graph.zoom(1.25);
       case ']': handled(); return this.graph.zoom(0.8);
     }
@@ -1295,19 +1557,33 @@ export class App {
   }
 
   toggleTheme() {
-    const root = document.documentElement;
-    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    root.dataset.theme = dark ? 'light' : 'dark';
-    try { localStorage.setItem('algebrix.theme', root.dataset.theme); } catch { /* storage blocked */ }
-    this.themeLabel();
+    setPref('theme', isDark() ? 'light' : 'dark');
     sound.tick(2);
-    if (this.shown) this.renderAll(null);
   }
 
   themeLabel() {
-    const root = document.documentElement;
-    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    $('theme').querySelector('span')!.textContent = dark ? 'Light mode' : 'Dark mode';
+    $('theme').querySelector('span')!.textContent = isDark() ? 'Light mode' : 'Dark mode';
+  }
+
+  toggleFlash() {
+    setPref('speed', prefs.speed === 'flash' ? 'standard' : 'flash');
+    sound.tick(prefs.speed === 'flash' ? 4 : 0);
+    this.say(prefs.speed === 'flash' ? '⚡ Flash mode: every animation runs about three times faster.' : 'Standard speed.');
+  }
+
+  flashLabel() {
+    const on = prefs.speed === 'flash';
+    $('flash').classList.toggle('on', on);
+    $('flash').setAttribute('aria-pressed', String(on));
+  }
+
+  /** a setting changed (from the settings panel or a shortcut): show it everywhere */
+  private prefsChanged(k: string) {
+    if (k === 'theme') { applyTheme(); this.themeLabel(); }
+    if (k === 'look') applyLook();
+    if (k === 'speed') { applySpeed(); this.flashLabel(); }
+    if (k === 'muted') { $('sound').classList.toggle('off', prefs.muted); $('sound').setAttribute('aria-pressed', String(!prefs.muted)); }
+    if (['theme', 'look', 'size', 'hints'].includes(k) && this.shown) { this.stage.clear(); this.renderAll(null); }
   }
 
   /* ---------------- persistence ---------------- */
@@ -1329,23 +1605,74 @@ export class App {
 
   save() {
     if (this.noSave) return;
-    try { localStorage.setItem('algebrix.session', JSON.stringify({ v: 3, slots: this.slots, cur: this.cur })); } catch { /* storage blocked */ }
+    if (!this.workId || !works.get(this.workId)) this.workId = works.create<Slot>().id;
+    works.save<Slot>(this.workId, { slots: this.slots, cur: this.cur, domains: this.domains });
   }
 
+  /** open the workspace you were last in */
   restore(): boolean {
+    const id = works.currentId;
+    return !!id && this.load(id);
+  }
+
+  private load(id: string): boolean {
     try {
-      const raw = localStorage.getItem('algebrix.session');
-      if (!raw) return false;
-      const s = JSON.parse(raw) as { slots?: Slot[]; cur?: number; steps?: Step[]; at?: number };
-      const slots = s.slots ?? (s.steps?.length ? [{ steps: s.steps, at: s.at ?? 0, sel: null }] : []);
-      if (!slots.length) return false;
+      const w = works.get<Slot>(id);
+      if (!w || !w.slots.length) return false;
+      const slots = JSON.parse(JSON.stringify(w.slots)) as Slot[];
       slots.forEach(sl => { sl.steps.forEach(st => bumpIds(st.eq)); sl.at = Math.min(sl.at, sl.steps.length - 1); sl.sel = null; });
+      this.workId = id;
+      works.setCurrent(id);
+      this.domains = { ...w.domains };
+      setDomains(this.domains);
       this.slots = slots;
-      this.cur = Math.min(s.cur ?? 0, slots.length - 1);
+      this.cur = Math.min(w.cur ?? 0, slots.length - 1);
+      this.grouped = null; this.preview = null; this.peek = null;
       this.setMode('solve');
+      this.stage.clear();
       this.renderAll(null);
       return true;
     } catch { return false; }
+  }
+
+  /** switch to another workspace from the library */
+  openWork(id: string) {
+    this.save();
+    if (!this.load(id)) return;
+    sound.commit();
+    $('stage').animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: ms(260), easing: 'cubic-bezier(.2,.8,.2,1)' });
+    this.say(`Opened ${works.get(id)?.name ?? 'workspace'}.`);
+  }
+
+  /** a fresh, empty workspace: type its first equation */
+  newWork() {
+    this.save();
+    const w = works.create<Slot>();
+    this.workId = w.id;
+    this.slots = []; this.cur = 0; this.domains = {}; setDomains(this.domains);
+    this.grouped = null; this.peek = null;
+    this.stage.clear();
+    this.edit(true);
+    this.say(`${w.name}: type the first equation.`);
+  }
+
+  /** every equation back to where it started; your steps stay on redo (r) */
+  resetWork() {
+    if (!this.slots.length) return;
+    if (performance.now() - this.resetArmed > 1600) {
+      this.resetArmed = performance.now();
+      sound.refuse();
+      this.say('Press R again to put every equation back at its start. Your steps stay on redo.', true);
+      return;
+    }
+    this.resetArmed = 0;
+    this.closeModes();
+    this.grouped = null;
+    this.slots.forEach(sl => { sl.at = 0; sl.sel = null; });
+    sound.undo();
+    this.renderAll({ quick: true }, true);
+    this.say('Back to the start. Press r to replay your steps.');
+    this.save();
   }
 }
 

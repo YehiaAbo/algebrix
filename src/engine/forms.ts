@@ -4,14 +4,16 @@ import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, 
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, factorize, combineFractions, standardOrder, hasExpandable } from './rewrite';
-import { verify, MoveOk } from './moves';
+import { verify, MoveOk, relAfter } from './moves';
 import { gcd } from './terms';
+import { longDivide, partialFractions, rationalize, trigForms } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
 
 const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
   'factored': 'f', 'split into terms': 't', 'highest power first': 'o', 'log rules': 'l', 'as powers': 'p', 'as roots': 'r',
+  'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n',
 };
 
 const one = () => 1;
@@ -23,6 +25,9 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     if (seen.has(key(next))) return;
     const f: Form = { name, chord: CHORDS[name] ?? (name.startsWith('clear') ? 'd' : ''), eq: next, label: name, hints: h, factor, select: select && find(next, select) ? select : null };
     if (verify(e, f)) return;
+    const rel = relAfter(e, f);
+    if (typeof rel !== 'string') return;
+    f.eq = eq(f.eq.lhs, f.eq.rhs, rel);
     seen.add(key(next));
     out.push(f);
   };
@@ -63,6 +68,10 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   at('log rules', () => logRules(target));
   at('as powers', () => asPowers(target));
   at('as roots', () => asRoots(target));
+  at('long division', () => longDivide(target));
+  at('partial fractions', () => partialFractions(target));
+  at('rationalized', () => rationalize(target));
+  for (const f of trigForms(target)) at(`trig: ${f.name}`, () => f.node);
   return out;
 }
 

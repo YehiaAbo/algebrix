@@ -2,7 +2,7 @@
 // numerically and refuses anything that isn't provably the same equation.
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
-  evaluate, Env, symbols, hasSymbols, allIds, key,
+  evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -25,6 +25,16 @@ export interface MoveOk {
   check?: (env: Env) => [number, number][];
   /** a tidy-up that follows another step; undo skips over it */
   auto?: boolean;
+  /** which rule this step used (a move name, a form, a technique) */
+  rule?: string;
+  /** a final answer that isn't an equation, like x ∈ (−∞, 2) ∪ (3, ∞) */
+  answer?: string;
+}
+
+/** ⇔: the new equation has exactly the same solutions. ⇒: every old solution survives but new ones may
+ *  appear (squaring both sides, multiplying by something that might be 0), so answers must be checked. */
+export function direction(r: MoveOk): '⇔' | '⇒' {
+  return (r.conditions ?? []).some(c => c.includes('add solutions')) ? '⇒' : '⇔';
 }
 export type MoveResult = MoveOk | { error: string };
 export const isErr = (r: MoveResult): r is { error: string } => 'error' in r;
@@ -182,10 +192,12 @@ const MOVES: Record<MoveName, (e: Eq, sel: string | null) => MoveResult> = {
 };
 
 /* ---------- apply an operation to both sides ---------- */
-export function applyBoth(e: Eq, text: string): MoveResult {
+export function applyBoth(e: Eq, text: string, others: Eq[] = []): MoveResult {
   const m = /^\s*([+\-−*×·/÷])\s*(.+)$/.exec(text);
   if (!m) return { error: 'Start with + − * or /, like “/7” or “+3x”.' };
   const op = ({ '−': '-', '×': '*', '·': '*', '÷': '/' } as Record<string, string>)[m[1]] ?? m[1];
+  const ref = /^(.*?)\s*[*×·]?\s*#\s*(\d)\s*$/.exec(m[2]);
+  if (ref) return addEquation(e, op, ref[1], Number(ref[2]), others);
   let x: Node;
   try { x = parseExpr(m[2]); } catch (err) { return { error: (err as Error).message }; }
   const isZero = !hasSymbols(x) && Math.abs(evaluate(x, {})) < 1e-12;
@@ -207,6 +219,28 @@ export function applyBoth(e: Eq, text: string): MoveResult {
   }
   const sym = { '+': '+', '-': '−', '*': '×', '/': '÷' }[op]!;
   return { eq: eq(L, R), label: `${sym} ${t(x)} both sides`, hints: newHints(), factor, conditions: cond, select: null };
+}
+
+/* ---------- elimination: add or subtract a multiple of another equation ---------- */
+function addEquation(e: Eq, op: string, coefText: string, j: number, others: Eq[]): MoveResult {
+  if (op !== '+' && op !== '-') return { error: 'Equations can be added or subtracted, like “-2#2”.' };
+  const o = others[j - 1];
+  if (!o) return { error: `There is no equation ${j}.` };
+  let k: Node;
+  try { k = coefText.trim() ? parseExpr(coefText) : num(1); } catch (err) { return { error: (err as Error).message }; }
+  if (hasSymbols(k)) return { error: 'Use a plain number to multiply the other equation by.' };
+  const kv = evaluate(k, {});
+  if (!Number.isFinite(kv) || kv === 0) return { error: 'Multiplying an equation by 0 adds nothing.' };
+  const scaled = (side: Node) => { const c = cloneFresh(side); return kv === 1 ? c : mul([cloneFresh(k), c]); };
+  const signed = (n: Node) => (op === '-' ? negate(n) : n);
+  const spread = (n: Node) => (n.k === 'add' ? n.terms : [n]);
+  const lj = scaled(o.lhs), rj = scaled(o.rhs);
+  const L = appendTerms(e.lhs, spread(signed(lj))), R = appendTerms(e.rhs, spread(signed(rj)));
+  const sgn = op === '-' ? -1 : 1;
+  return {
+    eq: eq(L, R), label: `${op === '-' ? '−' : '+'} ${kv === 1 ? '' : t(k) + '× '}equation ${j}`, hints: newHints(), factor: one, select: null, rule: 'eliminate',
+    check: env => [[evaluate(L, env) - evaluate(R, env), evaluate(e.lhs, env) - evaluate(e.rhs, env) + sgn * kv * (evaluate(o.lhs, env) - evaluate(o.rhs, env))]],
+  };
 }
 
 /* ---------- the safety net ---------- */
@@ -237,8 +271,65 @@ export function verify(before: Eq, r: MoveOk): string | null {
   return null;
 }
 
+/* ---------- variable domains: which values each variable may take ---------- */
+export type Domain = 'real' | 'positive' | 'nonneg' | 'integer';
+let DOMAINS: Record<string, Domain> = {};
+/** the app sets this so sign questions ("is x positive?") use what you declared */
+export function setDomains(d: Record<string, Domain>) { DOMAINS = d; }
+export function sampleIn(name: string, i: number): number {
+  const d = DOMAINS[name] ?? 'real';
+  const x = (Math.sin(i * 12.9898 + name.charCodeAt(0) * 78.233) * 43758.5453) % 1;
+  const u = i < 30 ? x * 9 : x * 60;
+  if (d === 'positive') return Math.abs(u) + 0.013;
+  if (d === 'nonneg') return Math.abs(u);
+  if (d === 'integer') return Math.round(u);
+  return u + 0.137;
+}
+
+/** The relation after a step. Equations stay equations. An inequality keeps its direction when
+ *  the step multiplies by something positive, flips for negative, and refuses an unknown sign. An
+ *  expression may only be rewritten, and a proof goal may only rewrite each side into an equal form. */
+export function relAfter(before: Eq, r: MoveOk): Rel | { error: string } {
+  const rel = relOf(before);
+  if (rel === '=') return '=';
+  const vars = symbols(eq(before.lhs, add([before.rhs, r.eq.lhs, r.eq.rhs])));
+  const envs: Env[] = [];
+  for (let i = 0; i < 60; i++) { const env: Env = {}; vars.forEach(v => (env[v] = sampleIn(v, i))); envs.push(env); }
+  const same = (a: Node, b: Node) => envs.every(env => {
+    const x = evaluate(a, env), y = evaluate(b, env);
+    return !Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x - y) <= 1e-7 * (1 + Math.abs(x));
+  });
+  if (rel === 'expr') return key(r.eq.rhs) === key(before.rhs) ? 'expr' : { error: 'This is an expression, so there is no other side. Rewrite it with e, s, d, or the forms.' };
+  if (rel === 'def') {
+    return key(r.eq.lhs) === key(before.lhs) && !r.check && same(r.eq.rhs, before.rhs) ? 'def'
+      : { error: 'This defines a function. You can rewrite its right side, but not move things across.' };
+  }
+  if (rel === '≟') {
+    return !r.check && same(r.eq.lhs, before.lhs) && same(r.eq.rhs, before.rhs) ? '≟'
+      : { error: 'In a proof, rewrite one side at a time. Doing the same thing to both sides assumes what you are proving.' };
+  }
+  if (r.check) {
+    // functions on both sides etc.: the new inequality must be true exactly where the old one was
+    for (const cand of [rel, flipRel(rel)]) {
+      const next = eq(r.eq.lhs, r.eq.rhs, cand);
+      let seen = 0;
+      const ok = envs.every(env => { const a = holds(before, env), b = holds(next, env); if (a === null || b === null) return true; seen++; return a === b; });
+      if (ok && seen >= 5) return cand;
+    }
+    return { error: 'That function doesn’t keep the order of the two sides, so the inequality would change.' };
+  }
+  let pos = 0, neg = 0;
+  for (const env of envs) { const f = r.factor(env); if (Number.isFinite(f)) { if (f > 0) pos++; else if (f < 0) neg++; } }
+  if (pos && !neg) return rel;
+  if (neg && !pos) return flipRel(rel);
+  return { error: 'I can’t tell if that is positive or negative, so I don’t know which way the inequality points. Set the variable’s domain in the rail, or split into cases.' };
+}
+
 export function checked(e: Eq, r: MoveResult): MoveResult {
   if (isErr(r)) return r;
+  const rel = relAfter(e, r);
+  if (typeof rel !== 'string') return rel;
+  if (relOf(r.eq) !== rel) r = { ...r, eq: eq(r.eq.lhs, r.eq.rhs, rel) };
   const problem = verify(e, r);
   if (problem) {
     console.error('[algebrix] refused move', r.label, problem);
@@ -248,11 +339,12 @@ export function checked(e: Eq, r: MoveResult): MoveResult {
 }
 
 export function applyMove(name: MoveName, e: Eq, sel: string | null): MoveResult {
-  return checked(e, MOVES[name](e, sel));
+  const r = checked(e, MOVES[name](e, sel));
+  return isErr(r) ? r : { ...r, rule: r.rule ?? name };
 }
 
-export function applyBothChecked(e: Eq, text: string): MoveResult {
-  return checked(e, applyBoth(e, text));
+export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): MoveResult {
+  return checked(e, applyBoth(e, text, others));
 }
 
 /** Is this equation solved for some variable? Returns that variable. */

@@ -6,7 +6,7 @@ import { negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
 import { simplify, newHints } from './simplify';
 import { expandAll, hasExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
 import { toText } from './print';
-import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor } from './moves';
+import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked } from './moves';
 
 const t = (n: Node) => toText(n);
 const one = () => 1;
@@ -362,6 +362,7 @@ export interface Cases { first: MoveOk; rest: Eq[]; why: string }
 
 /** Split an equation into several simpler ones, if it has that shape. */
 export function splitCases(e: Eq, v?: string): Cases | null {
+  if (e.rel && e.rel !== '=') return null; // |x| < 3 is an "and", not two cases: use the sign chart
   const sides = [['lhs', e.lhs, e.rhs], ['rhs', e.rhs, e.lhs]] as const;
   for (const [, S, B] of sides) {
     if (S.k === 'fn' && S.name === 'abs' && (!v || has(S, v)) && !(v && has(B, v))) {
@@ -476,4 +477,39 @@ export function simplifySpot(e: Eq): Spot | null {
   children(n).forEach(gone);
   for (const [from, to] of h.absorbs) if (left.has(to) && marks.includes(from) && !marks.includes(to) && find(e, to)) marks.push(to);
   return { node: n.id, marks: marks.length ? marks : [n.id], move };
+}
+
+/* ---------- elimination: the multiple of another equation that cancels v ---------- */
+const linearCoef = (e: Eq, v: string): number | null => {
+  const others = symbols(e).filter(s => s !== v);
+  let coef: number | null = null;
+  for (const seed of [0.31, 1.7, -2.2]) {
+    const env: Env = {};
+    others.forEach((s, i) => (env[s] = seed + i * 0.83));
+    const f = (x: number) => { env[v] = x; return evaluate(e, env); };
+    const a = f(1) - f(0), b = f(2) - f(1);
+    if (!Number.isFinite(a) || Math.abs(a - b) > 1e-9 * (1 + Math.abs(a))) return null;
+    if (coef !== null && Math.abs(coef - a) > 1e-9 * (1 + Math.abs(a))) return null;
+    coef = a;
+  }
+  return coef;
+};
+const ratText = (x: number): string | null => {
+  for (let q = 1; q <= 200; q++) { const p = Math.round(x * q); if (Math.abs(p / q - x) < 1e-9) return q === 1 ? String(p) : `(${p}/${q})`; }
+  return null;
+};
+
+export function eliminate(e: Eq, other: Eq, j: number, v?: string): MoveResult {
+  const shared = symbols(e).filter(s => symbols(other).includes(s));
+  const vars = v ? [v] : shared;
+  for (const name of vars) {
+    const a = linearCoef(e, name), b = linearCoef(other, name);
+    if (!a || !b) continue;
+    const k = a / b;
+    const txt = ratText(Math.abs(k));
+    if (!txt) continue;
+    const r = applyBothChecked(e, `${k > 0 ? '-' : '+'}${txt === '1' ? '' : txt}#${j}`, Object.assign([], { [j - 1]: other }));
+    if (!isErr(r)) return { ...r, label: `eliminate ${name} with equation ${j}` };
+  }
+  return { error: shared.length ? `Equation ${j} can't cancel ${vars.join(', ')} here: it needs to appear linearly in both.` : `Equation ${j} shares no variable with this one.` };
 }

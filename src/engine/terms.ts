@@ -43,6 +43,7 @@ export function negate(n: Node): Node {
       return neg(n);
     }
     case 'frac': return { ...n, num: negate(n.num) };
+    case 'add': return { ...n, terms: n.terms.map(negate) };
     default: return neg(n);
   }
 }
