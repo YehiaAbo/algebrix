@@ -89,7 +89,7 @@ Feedback: single keys only (no Shift for ×), E as a real chord hub for techniqu
 
 - **Free, guarded arithmetic.** Typing `=` (+), `-`, `.` (×) or `/` opens a small both-sides bar above the aim, prefilled with whatever cancels the aimed piece and pre-selected so typing replaces it. The stage previews the result live; Enter applies; a tidy step follows a beat later (and undo skips over it). Every result still goes through the numeric check.
 - **`m` moves anything across.** Terms subtract, factors divide, denominators multiply, exponents and outer functions are undone.
-- **`p` functions on both sides.** `p` again peels the outer function (√ for squares, ln for e^, e^ for ln, …). Also square, cube, roots, ln, log, e^, 1/(…). Each notes its assumption (sides ≥ 0, > 0, extra solutions).
+- **Hold `f` for functions on both sides** (round 3.1: moved from `p`; factoring moved to `e`+`f`). `f`+`i` is the inverse that peels the outer function (√ for squares, ln for e^, e^ for ln, …). Also square, cube, roots, ln, log, e^, 1/(…). Each notes its assumption (sides ≥ 0, > 0, extra solutions).
 - **Hold `e`.** Techniques: `i` solve for a variable (plays the steps), `a` split |X| = B into two equations, digits substitute from that equation (solving a copy if needed). Forms have chord letters (`c t f x s z d w o l p r`); arrows browse and releasing applies. Tap `e` to keep it open.
 - **Functions.** sin, cos, tan, ln, log, |x|, √, ∛, e, π; parsing, layout, evaluation, simplification of inverse pairs, log and power forms.
 - **Systems.** Up to nine equations in the rail, `1`–`9` switch, `n` adds, Delete twice removes. The graph shows the others faintly.

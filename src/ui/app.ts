@@ -20,7 +20,6 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const MOVE_KEYS: { key: string; name: MoveName | 'any'; verb: string; pitch: number }[] = [
   { key: 'm', name: 'any', verb: 'move across', pitch: 1 },
   { key: 's', name: 'simplify', verb: 'simplify', pitch: 1.2 },
-  { key: 'f', name: 'factor', verb: 'factor', pitch: 0.85 },
   { key: 'd', name: 'distribute', verb: 'distribute', pitch: 1.1 },
   { key: 'x', name: 'swap', verb: 'swap sides', pitch: 0.8 },
 ];
@@ -226,7 +225,7 @@ export class App {
     }
     if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
     if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>e</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
-    if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Pick a function to apply to both sides. <kbd>p</kbd> again undoes the outer function. <kbd>Esc</kbd> cancels.</span>`; return; }
+    if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Holding <kbd>f</kbd>: <kbd>i</kbd> undoes the outer function, or pick one to apply to both sides. <kbd>Esc</kbd> cancels.</span>`; return; }
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
@@ -240,7 +239,7 @@ export class App {
         if (k.name !== 'any' && !isErr(applyMove(k.name, this.eq, this.sel))) parts.push(`<span class="hint"><kbd>${k.key}</kbd> ${k.verb}</span>`);
       }
     }
-    parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>e</kbd> techniques</span><span class="hint"><kbd>p</kbd> functions</span>`);
+    parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>e</kbd> algebra</span><span class="hint"><kbd>f</kbd> functions</span>`);
     parts.push(`<span class="spacer"></span><span class="hint dim"><kbd>u</kbd> undo</span><span class="hint dim"><kbd>?</kbd> keys</span>`);
     host.innerHTML = parts.join('');
   }
@@ -711,7 +710,8 @@ export class App {
     }
     const form = h.forms.find(f => f.chord === k);
     if (form) { h.i = h.forms.indexOf(form); return this.applyForm(); }
-    const known = 'zdxswcftolpr';
+    if (k === 'f') { this.closeHub(false); return this.apply(applyMove('factor', this.eq, this.sel), 0.85); }
+    const known = 'zdxswctolpr';
     if (known.includes(k)) return this.refuse('That form doesn\'t apply to what is aimed.');
   }
 
@@ -790,10 +790,13 @@ export class App {
     host.querySelector('.form-card.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
-  /* ---------------- P: functions on both sides ---------------- */
+  /* ---------------- F: functions on both sides ---------------- */
 
-  openPal() {
+  private palSticky = false;
+
+  openPal(sticky: boolean) {
     this.flush();
+    this.palSticky = sticky;
     this.setMode('fnpal');
     const host = $('forms');
     host.replaceChildren();
@@ -803,12 +806,12 @@ export class App {
     const row = document.createElement('div');
     row.className = 'hub-row';
     row.innerHTML = `<span class="hub-title">Both sides</span>`
-      + `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="p"><kbd>p</kbd>${isErr(pe) ? 'peel (nothing to undo)' : `undo the outside: ${escapeHtml(pe.label)}`}</button>`
+      + `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse (nothing to undo)' : `inverse: ${escapeHtml(pe.label)}`}</button>`
       + WRAPS.map(w => `<button class="chip${inv?.f === w.f ? ' rec' : ''}" data-k="${w.key}"><kbd>${w.key}</kbd><span class="fx">${w.show}</span></button>`).join('');
     host.append(row);
     const tip = document.createElement('div');
     tip.className = 'forms-tip';
-    tip.innerHTML = 'squares and roots note what they assume on the left. <kbd>Esc</kbd> closes';
+    tip.innerHTML = this.palSticky ? 'press a key. <kbd>f</kbd> or <kbd>Esc</kbd> closes. Squares and roots note what they assume on the left' : 'keep holding <kbd>f</kbd> and press a key';
     host.append(tip);
     host.hidden = false;
     this.place(host);
@@ -826,7 +829,8 @@ export class App {
     const k = e.key;
     if (k === 'Escape') return this.closePal();
     if (e.repeat) return;
-    if (k === 'p' || k === 'Enter') { this.closePal(); return this.applyTidy(peel(this.eq, this.sel), 0.9); }
+    if (k === 'i' || k === 'Enter') { this.closePal(); return this.applyTidy(peel(this.eq, this.sel), 0.9); }
+    if (k === 'f' && this.palSticky) return this.closePal();
     const w = WRAPS.find(x => x.key === k);
     if (w) { this.closePal(); return this.applyTidy(checked(this.eq, wrapBoth(this.eq, w.f)), 0.9); }
   }
@@ -903,6 +907,7 @@ export class App {
     $('add-eq').addEventListener('click', () => this.edit(true));
     window.addEventListener('keydown', e => this.key(e));
     window.addEventListener('keyup', e => {
+      if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal' && !this.palSticky) { this.openPal(true); return; }
       if (e.key.toLowerCase() !== 'e' || this.mode !== 'hub' || !this.hub || this.hub.sticky) return;
       if (this.hub.moved) this.applyForm();
       else { this.hub.sticky = true; this.renderHub(); }
@@ -996,7 +1001,7 @@ export class App {
       case 'o': handled(); return this.openOp('+');
       case 'e': case 'E': handled(); if (!e.repeat) this.openHub(false); return;
       case 'Enter': handled(); return this.openHub(true);
-      case 'p': handled(); return this.openPal();
+      case 'f': case 'F': handled(); if (!e.repeat) this.openPal(false); return;
       case 'i': handled(); return this.edit(false);
       case 'n': handled(); return this.edit(true);
       case 'Delete': case 'Backspace': handled(); return this.removeCurrent();
