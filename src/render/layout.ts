@@ -1,7 +1,7 @@
 // Math layout: turns a tree into positioned glyphs. Every glyph carries a stable
 // key derived from node ids, and the ids of all nodes that own it, so the stage
 // can animate glyphs between layouts and draw selection boxes.
-import { Node } from '../engine/ast';
+import { Node, FN_TEXT } from '../engine/ast';
 import { isNeg, absOf, signKey } from '../engine/terms';
 
 export type GlyphKind = 'text' | 'sign' | 'eq' | 'bar' | 'paren' | 'rad';
@@ -191,7 +191,7 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     case 'fn': {
       const a = L(n.arg, s, me, c);
       if (n.name === 'abs') return parens(a, s, n.id, me, from, true);
-      const name = text(n.name, s, `f${n.id}`, me, false, from && `f${from}`);
+      const name = text(FN_TEXT[n.name] ?? n.name, s, `f${n.id}`, me, false, from && `f${from}`);
       const simple = n.arg.k === 'sym' || (n.arg.k === 'num' && n.arg.v >= 0);
       return simple ? row([name, 0.12 * s, a]) : row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
     }

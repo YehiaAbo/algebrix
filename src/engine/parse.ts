@@ -6,7 +6,7 @@ import { negate, gcd } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
 
-const FNS = ['sqrt', 'cbrt', 'sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
+const FNS = ['sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
 
 const GREEK: Record<string, string> = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π',
@@ -131,7 +131,8 @@ class Parser {
       }
       if (t.v === 'cbrt') return pow(this.fnArg(), frac(num(1), num(3)));
       if (t.v === 'exp') return pow(sym('e'), this.fnArg());
-      if (['sin', 'cos', 'tan', 'ln', 'log', 'abs'].includes(t.v)) return fn(t.v as FnName, this.fnArg());
+      if (t.v.startsWith('arc')) return fn(('a' + t.v.slice(3)) as FnName, this.fnArg());
+      if (['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'ln', 'log', 'abs'].includes(t.v)) return fn(t.v as FnName, this.fnArg());
       throw new ParseError(`\\${t.v} isn't supported yet.`);
     }
     if (t.v === '|') {

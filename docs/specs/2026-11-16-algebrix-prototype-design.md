@@ -94,3 +94,11 @@ Feedback: single keys only (no Shift for ×), E as a real chord hub for techniqu
 - **Functions.** sin, cos, tan, ln, log, |x|, √, ∛, e, π; parsing, layout, evaluation, simplification of inverse pairs, log and power forms.
 - **Systems.** Up to nine equations in the rail, `1`–`9` switch, `n` adds, Delete twice removes. The graph shows the others faintly.
 - Verification gained a custom relation (`check`) for moves that aren't "same equation times a factor": functions on both sides (pointwise), substitution (holds given the other equation), and case splits.
+
+## Round 4 (2026-11-16): mechanics pass and the f menu
+
+- A sweep runs every move, form, peel and both-sides op over ~45 equations (`scripts/sweep.test.ts`, copy into `tests/` to run) and flags crashes, refusals, ugly output and unsolved cases.
+- Solve for (e+i) now clears number fractions first, handles quadratics (factor, else complete the square), squares away a root when the variable is on both sides, flips a negative coefficient, detects a variable that cancels out, and stops instead of looping.
+- Cases: |X| = B and products = 0 split into separate equations. Solve for splits automatically and solves every case. Each solved case is checked against the equation it came from, and a failing answer is marked "not a solution" in the rail.
+- Exact values: ln of perfect powers, √(a/b²), sin/cos/tan at multiples of π/6 and π/4, arcsin/arccos/arctan of those values, e^(ln a + b) = a·e^b, (b^(1/n))^n = b.
+- f menu: tabs Powers, Roots, Exp and log, Trig. Every item has a key that works from any tab; arrows browse with a live preview and releasing f applies; items marked n or b ask for a number. `i` is the inverse of the outer function, including arcsin for sin (principal value, with a note that other solutions exist).

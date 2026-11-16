@@ -1,6 +1,6 @@
 // Linear text form. `ascii` is what the input bar shows when you edit;
 // the pretty form is for labels like "÷ 7" and conditions like "x ≠ 0".
-import { Node } from './ast';
+import { Node, FN_TEXT } from './ast';
 import { isNeg, absOf } from './terms';
 
 export function toText(n: Node, ascii = false): string {
@@ -25,16 +25,17 @@ export function toText(n: Node, ascii = false): string {
         const s = p(f, wrap);
         const prev = n.factors[i - 1];
         const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || (prev && prev.k === 'num' && /^\d/.test(s)));
-        out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && f.k === 'fn' && f.name !== 'abs' ? ' ' : '') + s;
+        out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && (f.k === 'fn' && f.name !== 'abs') || f.k === 'sqrt' ? ' ' : '') + s;
       });
       return out;
     }
     case 'frac': {
-      const simple = (m: Node): boolean => m.k === 'num' && m.v >= 0 || m.k === 'sym' || m.k === 'pow' || (m.k === 'mul' && !isNeg(m) && m.factors.every(f => f.k !== 'add' && f.k !== 'frac'));
+      const simple = (m: Node): boolean => m.k === 'num' && m.v >= 0 || m.k === 'sym' || m.k === 'pow' || m.k === 'sqrt' || m.k === 'fn' || (m.k === 'mul' && !isNeg(m) && m.factors.every(f => f.k !== 'add' && f.k !== 'frac'));
+      if (isNeg(n.num) && n.num.k !== 'add') return minus + toText({ ...n, num: absOf(n.num) }, ascii);
       return `${p(n.num, !simple(n.num))}/${p(n.den, !(n.den.k === 'num' && n.den.v >= 0 || n.den.k === 'sym'))}`;
     }
     case 'pow': return `${p(n.base, n.base.k !== 'num' && n.base.k !== 'sym' || isNeg(n.base))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
-    case 'fn': return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${n.name}(${toText(n.arg, ascii)})`;
+    case 'fn': return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${FN_TEXT[n.name] ?? n.name}(${toText(n.arg, ascii)})`;
   }
 }

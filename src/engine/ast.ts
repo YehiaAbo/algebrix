@@ -10,7 +10,9 @@ export interface Neg extends Base { k: 'neg'; arg: Node }
 export interface Frac extends Base { k: 'frac'; num: Node; den: Node }
 export interface Pow extends Base { k: 'pow'; base: Node; exp: Node }
 export interface Sqrt extends Base { k: 'sqrt'; arg: Node }
-export type FnName = 'sin' | 'cos' | 'tan' | 'ln' | 'log' | 'abs';
+/** how a function name is written */
+export const FN_TEXT: Record<string, string> = { asin: 'arcsin', acos: 'arccos', atan: 'arctan' };
+export type FnName = 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan' | 'ln' | 'log' | 'abs';
 export interface Fn extends Base { k: 'fn'; name: FnName; arg: Node }
 export interface Eq extends Base { k: 'eq'; lhs: Node; rhs: Node }
 export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Eq;
@@ -140,6 +142,9 @@ export function evaluate(n: Node, env: Env): number {
         case 'sin': return Math.sin(a);
         case 'cos': return Math.cos(a);
         case 'tan': return Math.abs(Math.cos(a)) < 1e-9 ? NaN : Math.tan(a);
+        case 'asin': return Math.asin(a);
+        case 'acos': return Math.acos(a);
+        case 'atan': return Math.atan(a);
         case 'ln': return a > 0 ? Math.log(a) : NaN;
         case 'log': return a > 0 ? Math.log10(a) : NaN;
         case 'abs': return Math.abs(a);

@@ -1,10 +1,10 @@
 // Bigger tools built from the small moves: apply a function to both sides, peel
 // the outer function off a side, move anything across "=", isolate a variable
 // in several steps, substitute one equation into another, split |X| = B.
-import { Node, Eq, findPath, cloneFresh, num, sym, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace } from './ast';
-import { negate } from './terms';
+import { Node, Eq, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace } from './ast';
+import { negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
 import { simplify, newHints } from './simplify';
-import { expandAll, hasExpandable, factorCommon } from './rewrite';
+import { expandAll, hasExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
 import { toText } from './print';
 import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor } from './moves';
 
@@ -14,79 +14,122 @@ const has = (n: Node, v: string) => symbols(n).includes(v);
 
 /* ---------- functions on both sides ---------- */
 
-export type Wrap = 'square' | 'cube' | 'sqrt' | 'cbrt' | 'root' | 'ln' | 'exp' | 'log' | 'pow10' | 'recip';
+export type Wrap = 'square' | 'cube' | 'power' | 'recip' | 'sqrt' | 'cbrt' | 'root'
+  | 'exp' | 'pow10' | 'powb' | 'ln' | 'log' | 'logb' | 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan';
 
-export const WRAPS: { key: string; f: Wrap; label: string; show: string }[] = [
-  { key: '2', f: 'square', label: 'square both sides', show: '( )²' },
-  { key: '3', f: 'cube', label: 'cube both sides', show: '( )³' },
-  { key: 'r', f: 'sqrt', label: 'square root both sides', show: '√( )' },
-  { key: 'c', f: 'cbrt', label: 'cube root both sides', show: '∛( )' },
-  { key: 'l', f: 'ln', label: 'ln both sides', show: 'ln( )' },
-  { key: 'e', f: 'exp', label: 'e to both sides', show: 'e^( )' },
-  { key: 'g', f: 'log', label: 'log₁₀ both sides', show: 'log( )' },
-  { key: '1', f: 'recip', label: 'flip both sides', show: '1/( )' },
+export interface WrapItem { key: string; f: Wrap; label: string; show: string; ask?: string }
+/** The f menu: tabs of functions you can apply to both sides. `ask` items need a number typed in. */
+export const FN_TABS: { name: string; items: WrapItem[] }[] = [
+  { name: 'Powers', items: [
+    { key: '2', f: 'square', label: 'square', show: '( )²' },
+    { key: '3', f: 'cube', label: 'cube', show: '( )³' },
+    { key: 'n', f: 'power', label: 'power n', show: '( )ⁿ', ask: 'n' },
+    { key: '1', f: 'recip', label: 'flip', show: '1/( )' },
+  ] },
+  { name: 'Roots', items: [
+    { key: 'r', f: 'sqrt', label: 'square root', show: '√( )' },
+    { key: 'c', f: 'cbrt', label: 'cube root', show: '∛( )' },
+    { key: 'k', f: 'root', label: 'nth root', show: 'ⁿ√( )', ask: 'n' },
+  ] },
+  { name: 'Exp and log', items: [
+    { key: 'e', f: 'exp', label: 'e to the', show: 'e^( )' },
+    { key: 'x', f: 'pow10', label: '10 to the', show: '10^( )' },
+    { key: 'b', f: 'powb', label: 'b to the', show: 'b^( )', ask: 'b' },
+    { key: 'l', f: 'ln', label: 'natural log', show: 'ln( )' },
+    { key: 'g', f: 'log', label: 'log base 10', show: 'log( )' },
+    { key: 'h', f: 'logb', label: 'log base b', show: 'log_b( )', ask: 'b' },
+  ] },
+  { name: 'Trig', items: [
+    { key: 's', f: 'sin', label: 'sine', show: 'sin( )' },
+    { key: 'o', f: 'cos', label: 'cosine', show: 'cos( )' },
+    { key: 't', f: 'tan', label: 'tangent', show: 'tan( )' },
+    { key: 'a', f: 'asin', label: 'arcsine', show: 'arcsin( )' },
+    { key: 'w', f: 'acos', label: 'arccosine', show: 'arccos( )' },
+    { key: 'y', f: 'atan', label: 'arctangent', show: 'arctan( )' },
+  ] },
 ];
+export const WRAPS: WrapItem[] = FN_TABS.flatMap(t => t.items);
 
 const nonNeg = (n: Node) => (n.k === 'num' && n.v >= 0) || n.k === 'sqrt' || (n.k === 'fn' && n.name === 'abs') || (n.k === 'pow' && n.exp.k === 'num' && n.exp.v % 2 === 0) || (n.k === 'pow' && n.base.k === 'sym' && n.base.name === 'e');
 const positive = (n: Node) => (n.k === 'num' && n.v > 0) || (n.k === 'pow' && n.base.k === 'sym' && n.base.name === 'e') || (n.k === 'pow' && n.base.k === 'num' && n.base.v > 0);
+const fresh = (n: Node) => { const c = cloneFresh(n); walk(c, m => { m.from = undefined; }); return c; };
 
-function wrapNode(s: Node, f: Wrap, k = 2): Node {
+function wrapNode(s: Node, f: Wrap, arg: Node): Node {
   switch (f) {
     case 'square': return pow(s, num(2));
     case 'cube': return pow(s, num(3));
+    case 'power': return pow(s, fresh(arg));
+    case 'recip': return frac(num(1), s);
     case 'sqrt': return sqrt(s);
     case 'cbrt': return pow(s, frac(num(1), num(3)));
-    case 'root': return pow(s, frac(num(1), num(k)));
-    case 'ln': return fn('ln', s);
-    case 'log': return fn('log', s);
+    case 'root': return pow(s, frac(num(1), fresh(arg)));
     case 'exp': return pow(sym('e'), s);
     case 'pow10': return pow(num(10), s);
-    case 'recip': return frac(num(1), s);
+    case 'powb': return pow(fresh(arg), s);
+    case 'ln': return fn('ln', s);
+    case 'log': return fn('log', s);
+    case 'logb': return frac(fn('ln', s), fn('ln', fresh(arg)));
+    default: return fn(f, s);
   }
 }
 
 const NUMERIC: Record<Wrap, (v: number, k: number) => number> = {
-  square: v => v * v, cube: v => v ** 3, sqrt: v => Math.sqrt(v), cbrt: v => (v < 0 ? NaN : Math.cbrt(v)),
-  root: (v, k) => Math.pow(v, 1 / k), ln: v => (v > 0 ? Math.log(v) : NaN), log: v => (v > 0 ? Math.log10(v) : NaN),
-  exp: v => Math.exp(v), pow10: v => 10 ** v, recip: v => 1 / v,
+  square: v => v * v, cube: v => v ** 3, power: (v, k) => Math.pow(v, k), recip: v => 1 / v,
+  sqrt: v => Math.sqrt(v), cbrt: v => (v < 0 ? NaN : Math.cbrt(v)), root: (v, k) => Math.pow(v, 1 / k),
+  exp: v => Math.exp(v), pow10: v => 10 ** v, powb: (v, k) => Math.pow(k, v),
+  ln: v => (v > 0 ? Math.log(v) : NaN), log: v => (v > 0 ? Math.log10(v) : NaN), logb: (v, k) => (v > 0 ? Math.log(v) / Math.log(k) : NaN),
+  sin: Math.sin, cos: Math.cos, tan: v => Math.tan(v), asin: Math.asin, acos: Math.acos, atan: Math.atan,
 };
 
-const NAMES: Record<Wrap, string> = {
-  square: '²', cube: '³', sqrt: '√', cbrt: '∛', root: 'root', ln: 'ln', log: 'log', exp: 'e^', pow10: '10^', recip: '1/',
+const LABELS: Partial<Record<Wrap, string>> = {
+  square: 'square both sides', cube: 'cube both sides', recip: 'flip both sides', sqrt: 'square root both sides',
+  cbrt: 'cube root both sides', exp: 'e to both sides', pow10: '10 to both sides', ln: 'ln both sides', log: 'log both sides',
 };
 
 /** Wrap both sides in f. Pointwise checked: new side = f(old side). */
-export function wrapBoth(e: Eq, f: Wrap, k = 2): MoveResult {
+export function wrapBoth(e: Eq, f: Wrap, arg: Node = num(2)): MoveResult {
+  if (hasSymbols(arg)) return { error: 'Use a plain number here, like 4 or 1/2.' };
+  const k = evaluate(arg, {});
+  const a = t(arg);
+  if (!Number.isFinite(k)) return { error: `${a} isn't a usable number.` };
+  if (f === 'root' && k === 0) return { error: 'There is no 0th root.' };
+  if (f === 'power' && k === 0) return { error: 'Raising to the power 0 turns both sides into 1 and loses the equation.' };
+  if ((f === 'powb' || f === 'logb') && (k <= 0 || k === 1)) return { error: 'The base has to be positive and not 1.' };
   if (f === 'recip' && (key(e.lhs) === '0' || key(e.rhs) === '0')) return { error: 'A side is 0, and 1/0 is undefined.' };
-  const L = wrapNode(e.lhs, f, k), R = wrapNode(e.rhs, f, k);
+  const L = wrapNode(e.lhs, f, arg), R = wrapNode(e.rhs, f, arg);
   const conditions: string[] = [];
   const sides = [e.lhs, e.rhs];
-  if (f === 'square' || (f === 'root' && k % 2 === 0)) conditions.push('squaring can add solutions: check answers');
-  if (f === 'sqrt' || (f === 'root' && k % 2 === 0)) sides.filter(s => !nonNeg(s) && hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≥ 0`));
-  if (f === 'cbrt') sides.filter(s => !nonNeg(s) && hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≥ 0`));
-  if (f === 'ln' || f === 'log') sides.filter(s => !positive(s)).forEach(s => conditions.push(`${t(s)} > 0`));
-  if (f === 'recip') sides.filter(s => hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≠ 0`));
+  const even = (x: number) => Number.isInteger(x) && x % 2 === 0;
+  if (f === 'square' || (f === 'power' && even(k)) || f === 'sin' || f === 'cos' || f === 'tan') conditions.push('this can add solutions: check answers');
+  if (f === 'sqrt' || f === 'cbrt' || (f === 'root' && !(Number.isInteger(k) && k % 2 === 1)) || (f === 'power' && !Number.isInteger(k))) sides.filter(s => !nonNeg(s) && hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≥ 0`));
+  if (f === 'ln' || f === 'log' || f === 'logb') sides.filter(s => !positive(s)).forEach(s => conditions.push(`${t(s)} > 0`));
+  if (f === 'recip' || (f === 'power' && k < 0)) sides.filter(s => hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≠ 0`));
+  if (f === 'asin' || f === 'acos') sides.filter(s => hasSymbols(s)).forEach(s => conditions.push(`−1 ≤ ${t(s)} ≤ 1`));
   const g = NUMERIC[f];
-  const label = f === 'root' ? `${k}th root both sides` : WRAPS.find(w => w.f === f)?.label ?? `${NAMES[f]} both sides`;
+  const label = LABELS[f] ?? ({ power: `power ${a} both sides`, root: `${a}th root both sides`, powb: `${a} to both sides`, logb: `log base ${a} both sides` } as Record<string, string>)[f] ?? `${FN_LABEL[f] ?? f} both sides`;
   return {
     eq: eq(L, R), label, hints: newHints(), factor: one, select: null, conditions,
     check: env => [[evaluate(L, env), g(evaluate(e.lhs, env), k)], [evaluate(R, env), g(evaluate(e.rhs, env), k)]],
   };
 }
+const FN_LABEL: Partial<Record<Wrap, string>> = { asin: 'arcsin', acos: 'arccos', atan: 'arctan' };
 
 /** The function that undoes the outer layer of a side, if there is one. */
-export function inverseOf(side: Node): { f: Wrap; k?: number } | null {
+export function inverseOf(side: Node): { f: Wrap; arg?: Node } | null {
   if (side.k === 'pow') {
     const { base, exp } = side;
-    if (exp.k === 'num' && Number.isInteger(exp.v) && exp.v >= 2) return exp.v === 2 ? { f: 'sqrt' } : exp.v === 3 ? { f: 'cbrt' } : { f: 'root', k: exp.v };
+    if (exp.k === 'num' && Number.isInteger(exp.v) && exp.v >= 2) return exp.v === 2 ? { f: 'sqrt' } : exp.v === 3 ? { f: 'cbrt' } : { f: 'root', arg: num(exp.v) };
+    if (exp.k === 'num' && exp.v === -1) return { f: 'recip' };
     if (base.k === 'sym' && base.name === 'e') return { f: 'ln' };
     if (base.k === 'num' && base.v === 10) return { f: 'log' };
-    if (base.k === 'num' && base.v > 0 && hasSymbols(exp)) return { f: 'ln' };
-    if (exp.k === 'frac' && exp.num.k === 'num' && exp.num.v === 1 && exp.den.k === 'num') return exp.den.v === 3 ? { f: 'cube' } : null;
+    if (base.k === 'num' && base.v > 0 && base.v !== 1 && hasSymbols(exp)) return { f: 'logb', arg: num(base.v) };
+    if (exp.k === 'frac' && exp.num.k === 'num' && exp.num.v === 1 && !hasSymbols(exp.den)) return key(exp.den) === '3' ? { f: 'cube' } : { f: 'power', arg: exp.den };
   }
   if (side.k === 'sqrt') return { f: 'square' };
-  if (side.k === 'fn' && side.name === 'ln') return { f: 'exp' };
-  if (side.k === 'fn' && side.name === 'log') return { f: 'pow10' };
+  if (side.k === 'fn') {
+    const m: Partial<Record<string, Wrap>> = { ln: 'exp', log: 'pow10', sin: 'asin', cos: 'acos', tan: 'atan', asin: 'sin', acos: 'cos', atan: 'tan' };
+    if (m[side.name]) return { f: m[side.name]! };
+  }
   if (side.k === 'frac' && side.num.k === 'num' && side.num.v === 1 && hasSymbols(side.den)) return { f: 'recip' };
   return null;
 }
@@ -103,13 +146,36 @@ function sideFor(e: Eq, sel: string | null): 'lhs' | 'rhs' {
   return hasSymbols(e.lhs) || !hasSymbols(e.rhs) ? 'lhs' : 'rhs';
 }
 
+const TRIG_MORE: Record<string, string> = {
+  sin: 'one solution of many: also π − that, and every 2π more',
+  cos: 'one solution of many: also minus that, and every 2π more',
+  tan: 'one solution of many: also every π more',
+};
+
+/** sin(X) = B → X = arcsin(B). Checked by sin(arcsin B) = B; the lost solutions are noted. */
+function peelTrig(e: Eq, s: 'lhs' | 'rhs'): MoveResult {
+  const side = e[s] as Extract<Node, { k: 'fn' }>;
+  const B = s === 'lhs' ? e.rhs : e.lhs;
+  const inv = ('a' + side.name) as 'asin';
+  if (!hasSymbols(B) && side.name !== 'tan' && Math.abs(evaluate(B, {})) > 1) return { error: `${side.name} never reaches ${t(B)}: no solutions.` };
+  const R = fn(inv, B);
+  const next = s === 'lhs' ? eq(side.arg, R) : eq(R, side.arg);
+  const f = NUMERIC[side.name as Wrap];
+  return {
+    eq: next, label: `${FN_LABEL[inv]} both sides`, hints: newHints(), factor: one, select: null,
+    conditions: [TRIG_MORE[side.name], ...(hasSymbols(B) && side.name !== 'tan' ? [`−1 ≤ ${t(B)} ≤ 1`] : [])],
+    check: env => [[f(evaluate(R, env), 0), evaluate(B, env)]],
+  };
+}
+
 export function peel(e: Eq, sel: string | null): MoveResult {
   const s = sideFor(e, sel);
   const side = e[s];
-  if (side.k === 'fn' && side.name === 'abs') return { error: 'Absolute value has two cases. Hold E and press a to split it.' };
+  if (side.k === 'fn' && side.name === 'abs') return { error: 'Absolute value has two cases. Hold e and press a to split it.' };
+  if (side.k === 'fn' && (side.name === 'sin' || side.name === 'cos' || side.name === 'tan')) return peelTrig(e, s);
   const inv = inverseOf(side);
-  if (!inv) return { error: `Nothing to peel off ${t(side)}. Peel works on powers, roots, ln, log, e^ and 1/( ).` };
-  return wrapBoth(e, inv.f, inv.k);
+  if (!inv) return { error: `Nothing to undo on ${t(side)}. This works on powers, roots, exponentials, logs and trig.` };
+  return wrapBoth(e, inv.f, inv.arg);
 }
 
 /** "Move it across": the engine picks the inverse operation from what is aimed. */
@@ -139,24 +205,101 @@ export function tidy(e: Eq): MoveOk | null {
 }
 
 /* ---------- isolate a variable: a short chain of moves ---------- */
+/** Multiply both sides by the LCD of the number denominators, then expand. */
+export function clearFractions(e: Eq, v?: string): MoveOk | null {
+  let L = 1, holds = !v;
+  walk(e, n => {
+    if (n.k === 'frac' && n.den.k === 'num' && Number.isInteger(n.den.v) && n.den.v > 1) {
+      L = (L * n.den.v) / gcd(L, n.den.v);
+      if (v && has(n, v)) holds = true;
+    }
+  });
+  if (!holds) return null;
+  if (L <= 1 || L > 1e6) return null;
+  const h = newHints();
+  const clear = (s: Node) => simplify(expandAll(mul([num(L), s]), h), h);
+  const r = checked(e, { eq: eq(clear(e.lhs), clear(e.rhs)), label: `× ${L} to clear fractions`, hints: h, factor: () => L, select: null });
+  return isErr(r) ? null : r;
+}
+
+/** Quadratic in v: everything to one side, then factor, else complete the square. */
+function quadratic(e: Eq, v: string): MoveOk[] | null {
+  const h = newHints();
+  let zero = simplify(expandAll(add([e.lhs, negate(fresh(e.rhs))]), h), h);
+  let P = polyOf(zero);
+  if (!P || P.v !== v || P.c.length !== 3) return null;
+  let flip = 1;
+  if (P.c[2].p < 0) { zero = simplify(expandAll(add([e.rhs, negate(fresh(e.lhs))]), h), h); P = polyOf(zero)!; flip = -1; }
+  zero = standardOrder(zero) ?? zero;
+  const out: MoveOk[] = [];
+  let cur = e;
+  if (!(e.rhs.k === 'num' && e.rhs.v === 0 && key(zero) === key(e.lhs))) {
+    const r = checked(cur, { eq: eq(zero, num(0)), label: 'everything on one side', hints: h, factor: () => flip, select: null });
+    if (isErr(r)) return null;
+    out.push(r); cur = r.eq;
+  }
+  const hf = newHints();
+  const f = factorize(cur.lhs, hf);
+  if (f && f.k === 'mul' && f.factors.filter(x => has(x, v)).length >= 2) {
+    const r = checked(cur, { eq: eq(f, cur.rhs), label: 'factor', hints: hf, factor: one, select: null });
+    if (!isErr(r)) { out.push(r); return out; }
+  }
+  // a v² + b v + c = 0  →  (v + b/2a)² = (b² − 4ac)/4a²
+  const [c, b, A] = P.c;
+  const shift = rdiv(b, rmul(rat(2), A));
+  const D = radd(rmul(b, b), rmul(rat(-4), rmul(A, c)));
+  const rhs = rdiv(D, rmul(rat(4), rmul(A, A)));
+  if (rhs.p < 0) return null;
+  const rn = (r: { p: number; q: number }) => (r.q === 1 ? num(r.p) : frac(num(r.p), num(r.q)));
+  const inner = shift.p === 0 ? sym(v) : add([sym(v), rn(shift)]);
+  const r = checked(cur, { eq: eq(pow(inner, num(2)), rn(rhs)), label: 'complete the square', hints: newHints(), factor: () => A.q / A.p, select: null });
+  if (isErr(r)) return null;
+  out.push(r);
+  return out;
+}
+
 export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
   if (!has(e, v)) return { error: `There is no ${v} in this equation.` };
   const steps: MoveOk[] = [];
   let cur = e;
+  const take = (r: MoveOk) => { steps.push(r); cur = r.eq; };
   const push = (r: MoveResult): boolean => {
     const c = checked(cur, r);
     if (isErr(c)) return false;
-    steps.push(c); cur = c.eq;
+    take(c);
     const td = tidy(cur);
-    if (td) { steps.push(td); cur = td.eq; }
+    if (td) take(td);
     return true;
   };
   const stuck = (why: string) => (steps.length ? steps : { error: why });
   const td0 = tidy(cur);
-  if (td0) { steps.push(td0); cur = td0.eq; }
+  if (td0) take(td0);
+  if (!has(cur, v)) return { error: `${v} cancels out completely, so there is nothing to solve for.` };
+  const cf = clearFractions(cur, v);
+  if (cf) take(cf);
+  const seen = new Set<string>();
   for (let i = 0; i < 24; i++) {
+    if (splitCases(cur, v)) return steps; // the caller splits into cases
+    if (seen.has(key(cur))) return stuck(`I'm going in circles isolating ${v}. Try a form (hold e) first.`);
+    seen.add(key(cur));
     const hl = has(cur.lhs, v), hr = has(cur.rhs, v);
+    if (!hl && !hr) return stuck(`${v} cancelled out.`);
+    const poly = polyOf(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()));
+    const lone = hl !== hr ? cur[hl ? 'lhs' : 'rhs'] : null;
+    const peelable = !!lone && !!inverseOf(lone) && lone.k !== 'frac';
+    if (poly && poly.v === v && poly.c.length === 3 && !peelable) {
+      const q = quadratic(cur, v);
+      if (!q) return stuck(`This quadratic has no real solutions.`);
+      q.forEach(take);
+      continue;
+    }
     if (hl && hr) {
+      // undo an outer function first (√(x + 1) = x − 1 → square), else gather the v terms on the left
+      const wrapped = (['lhs', 'rhs'] as const).find(k => inverseOf(cur[k]) && cur[k].k !== 'frac');
+      if (wrapped && push(peel(cur, cur[wrapped].id))) {
+        if (hasExpandable(cur)) push({ eq: eq(expandAll(cur.lhs, newHints()), expandAll(cur.rhs, newHints())), label: 'expand', hints: newHints(), factor: one, select: null });
+        continue;
+      }
       const rt = cur.rhs.k === 'add' ? cur.rhs.terms : [cur.rhs];
       const term = rt.find(x => has(x, v))!;
       if (!push(moveAcross(cur, term.id))) return stuck(`Couldn't gather the ${v} terms.`);
@@ -183,22 +326,68 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     } else if (side.k === 'mul') {
       const withV = side.factors.filter(x => has(x, v));
       const other = side.factors.find(x => !has(x, v) && !(x.k === 'num' && x.v === 1));
-      if (other) ok = push(divideBoth(cur, other.id));
+      const c = coefOf(side);
+      if (c && c.v < 0) ok = push({ eq: eq(negAll(cur.lhs), negAll(cur.rhs)), label: '× −1 both sides', hints: newHints(), factor: () => -1, select: null });
+      else if (other) ok = push(divideBoth(cur, other.id));
       else if (withV.length > 1 && hasExpandable(side)) { const h = newHints(); ok = push({ eq: replace(cur, side.id, expandAll(side, h)), label: 'expand', hints: h, factor: one, select: null }); }
     } else if (side.k === 'neg') {
-      const L = negate(cur.lhs), R = negate(cur.rhs);
+      const L = negAll(cur.lhs), R = negAll(cur.rhs);
       ok = push({ eq: eq(L, R), label: '× −1 both sides', hints: newHints(), factor: () => -1, select: null });
     } else if (side.k === 'frac') {
       ok = push(multiplyBoth(cur, side.den.id));
       if (!ok && !has(side.den, v) && side.num.k !== 'num') ok = push(multiplyBoth(cur, side.id));
-    } else if (side.k === 'fn' && side.name === 'abs') {
-      return stuck(`${t(side)} has two cases. Hold E and press a to split it.`);
-    } else if (inverseOf(side)) {
+    } else if (inverseOf(side) || (side.k === 'fn' && side.name !== 'abs')) {
       ok = push(peel(cur, side.id));
     }
-    if (!ok) return stuck(`I can't isolate ${v} here: it isn't linear in ${v} (try factoring or another form).`);
+    if (!ok) return stuck(`I can't isolate ${v} here yet. Try factoring or another form.`);
   }
   return stuck(`Gave up isolating ${v}.`);
+}
+
+/** −S with the sign pushed into each term, keeping a positive term first: −(7y − 20) → 20 − 7y */
+function negAll(n: Node): Node {
+  if (n.k !== 'add') return negate(n);
+  const ts = n.terms.map(negate);
+  const i = ts.findIndex(x => !isNeg(x));
+  return i > 0 ? { ...n, terms: [ts[i], ...ts.filter((_, j) => j !== i)] } : { ...n, terms: ts };
+}
+
+/* ---------- cases: |X| = B and A·B = 0 ---------- */
+
+export interface Cases { first: MoveOk; rest: Eq[]; why: string }
+
+/** Split an equation into several simpler ones, if it has that shape. */
+export function splitCases(e: Eq, v?: string): Cases | null {
+  const sides = [['lhs', e.lhs, e.rhs], ['rhs', e.rhs, e.lhs]] as const;
+  for (const [, S, B] of sides) {
+    if (S.k === 'fn' && S.name === 'abs' && (!v || has(S, v)) && !(v && has(B, v))) {
+      if (B.k === 'num' && B.v < 0) return null;
+      const X = S.arg;
+      const A = eq(X, B);
+      const other = eq(fresh(X), negate(fresh(B)));
+      const first: MoveOk = {
+        eq: A, label: `split |${t(X)}| into two cases`, hints: newHints(), factor: one, select: null,
+        conditions: hasSymbols(B) ? [`${t(B)} ≥ 0`] : [],
+        check: env => [[evaluate(A, env) * evaluate(other, env), evaluate(S, env) ** 2 - evaluate(B, env) ** 2]],
+      };
+      const c = checked(e, first);
+      return isErr(c) ? null : { first: c, rest: [other], why: 'two cases' };
+    }
+    if (S.k === 'mul' && B.k === 'num' && B.v === 0) {
+      const parts = S.factors.filter(f => hasSymbols(f) && (!v || has(f, v)));
+      if (parts.length < 2) continue;
+      const eqs = parts.map((p, i) => eq(i === 0 ? p : fresh(p), num(0)));
+      const others = S.factors.filter(f => !parts.includes(f));
+      const first: MoveOk = {
+        eq: eqs[0], label: 'zero product: one factor is 0', hints: newHints(), factor: one, select: null,
+        conditions: others.filter(hasSymbols).map(o => `${t(o)} ≠ 0`),
+        check: env => [[eqs.reduce((p, q) => p * evaluate(q, env), 1) * others.reduce((p, o) => p * evaluate(o, env), 1), evaluate(S, env)]],
+      };
+      const c = checked(e, first);
+      return isErr(c) ? null : { first: c, rest: eqs.slice(1), why: `${parts.length} cases` };
+    }
+  }
+  return null;
 }
 
 /* ---------- substitution between equations ---------- */
@@ -251,27 +440,9 @@ export function substitute(e: Eq, src: Eq, aimVar: string | null, srcName: strin
 
 const count = (n: Node, v: string) => { let c = 0; walk(n, m => { if (m.k === 'sym' && m.name === v) c++; }); return c; };
 
-/* ---------- |X| = B → X = B or X = −B ---------- */
+/* ---------- |X| = B → X = B or X = −B (kept for the tests) ---------- */
 export function splitAbs(e: Eq): { a: MoveOk; b: Eq } | { error: string } {
-  const s = e.lhs.k === 'fn' && e.lhs.name === 'abs' ? 'lhs' : e.rhs.k === 'fn' && e.rhs.name === 'abs' ? 'rhs' : null;
-  if (!s) return { error: 'Split needs a side that is |something|.' };
-  const X = (e[s] as Extract<Node, { k: 'fn' }>).arg, B = s === 'lhs' ? e.rhs : e.lhs;
-  if (B.k === 'num' && B.v < 0) return { error: `|${t(X)}| can't equal a negative number: no solutions.` };
-  const A = eq(X, B);
-  const Bn = cloneFresh(B); walk(Bn, m => { m.from = undefined; });
-  const Xc = cloneFresh(X); walk(Xc, m => { m.from = undefined; });
-  const other = eq(Xc, negate(Bn));
-  // (X − B)(X + B) = X² − B² = (|X| − B)(|X| + B)
-  const a: MoveOk = {
-    eq: A, label: `split |${t(X)}| into two cases`, hints: newHints(), factor: one, select: null,
-    conditions: hasSymbols(B) ? [`${t(B)} ≥ 0`] : [],
-    check: env => {
-      const x = evaluate(X, env), b = evaluate(B, env);
-      return [[(evaluate(A, env)) * (evaluate(other, env)), evaluate(e[s], env) ** 2 - b * b], [x * x - b * b, (Math.abs(x) - b) * (Math.abs(x) + b)]];
-    },
-  };
-  const c = checked(e, a);
-  if (isErr(c)) return c;
-  return { a: c, b: other };
+  const c = splitCases(e);
+  if (!c) return { error: 'Split needs |something| = b, or a product = 0.' };
+  return { a: c.first, b: c.rest[0] };
 }
-

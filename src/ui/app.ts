@@ -4,15 +4,18 @@ import { toText } from '../engine/print';
 import { applyMove, applyBothChecked, checked, isErr, MoveName, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { absOf, coefOf } from '../engine/terms';
 import { formsFor, Form } from '../engine/forms';
-import { moveAny, peel, wrapBoth, inverseOf, WRAPS, tidy, isolate, substitute, splitAbs } from '../engine/techniques';
+import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, tidy, isolate, substitute, splitCases } from '../engine/techniques';
+import { parseExpr } from '../engine/parse';
+import { evaluate } from '../engine/ast';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition } from '../render/stage';
 import { Graph } from './graph';
 import { sound } from './sound';
 
 interface Step { eq: Eq; label: string; conditions: string[]; auto?: boolean }
-interface Slot { steps: Step[]; at: number; sel: string | null }
-type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal';
+/** origin: the equation a case came from, to check answers against. bad: why its answer fails */
+interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string }
+type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -182,7 +185,9 @@ export class App {
       mini.style.height = lay.asc + lay.desc + 'px';
       btn.append(badge, mini);
       const solved = solvedFor(e);
-      if (solved) { const tag = document.createElement('span'); tag.className = 'solved'; tag.textContent = solved; btn.append(tag); }
+      const bad = this.slots[i].bad;
+      if (bad) { btn.classList.add('bad'); btn.title = bad; }
+      if (solved) { const tag = document.createElement('span'); tag.className = bad ? 'solved no' : 'solved'; tag.textContent = bad ? 'not a solution' : '✓'; btn.append(tag); }
       li.append(btn);
       list.append(li);
       new Stage(mini).show(lay, 0, 0, null);
@@ -225,7 +230,8 @@ export class App {
     }
     if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
     if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>e</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
-    if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Holding <kbd>f</kbd>: <kbd>i</kbd> undoes the outer function, or pick one to apply to both sides. <kbd>Esc</kbd> cancels.</span>`; return; }
+    if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`; return; }
+    if (this.mode === 'fnask') { host.innerHTML = `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`; return; }
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
@@ -284,7 +290,7 @@ export class App {
     this.renderAll(null);
     if (!quiet) this.entrance();
     this.save();
-    if (quiet) this.say('Space aims. m moves it across. = − . / do anything to both sides. Hold e for techniques. ? shows every key.');
+    if (quiet) this.say('Space aims. m moves it across. = − . / do anything to both sides. Hold e for algebra, f for functions. ? shows every key.');
     else if (this.slots.length > 1) this.say(`Equation ${this.cur + 1}. Press 1–${this.slots.length} to switch between them.`);
   }
 
@@ -306,7 +312,9 @@ export class App {
     this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
     if (!opts.quietLabel) this.bubble(r.label, false, r.focus ?? this.sel);
     const now = solvedFor(r.eq);
-    if (now && now !== wasSolved) { setTimeout(() => sound.solved(), 140); this.say(`Solved for ${now}.`); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); }
+    const bad = now ? this.judge(this.cur) : null;
+    if (bad) { this.say(bad, true); this.renderRail(); }
+    else if (now && now !== wasSolved) { setTimeout(() => sound.solved(), 140); this.say(`Solved for ${now}.`); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); }
     if (r.conditions?.length) this.say(`Noted on the left: ${r.conditions.join(', ')}.`);
     this.save();
     if (opts.tidy) this.later(430, () => { const td = tidy(this.eq); if (td) this.apply(td, 1.25, { quietLabel: true }); });
@@ -329,18 +337,16 @@ export class App {
   }
 
   /** play several steps one after another, like a short animation */
-  play(steps: MoveOk[]) {
+  play(steps: MoveOk[], done?: () => void) {
     if (!steps.length) return;
-    const [first, ...rest] = steps;
-    this.apply(first, 1.05, { quietLabel: !!first.auto });
     let i = 0;
     const next = () => {
-      if (i >= rest.length) return;
-      const s = rest[i++];
-      this.apply(s, 1.05 + 0.04 * i, { quietLabel: !!s.auto });
-      if (i < rest.length) this.later(s.auto ? 300 : 420, next);
+      const s = steps[i++];
+      this.apply(s, 1.05 + 0.03 * i, { quietLabel: !!s.auto });
+      if (i < steps.length) this.later(s.auto ? 300 : 420, next);
+      else if (done) this.later(460, done);
     };
-    if (rest.length) this.later(first.auto ? 300 : 420, next);
+    next();
   }
 
   undo() {
@@ -652,8 +658,7 @@ export class App {
       key: 'i', label: aimVar ? `solve for ${aimVar}` : 'solve for…', ok: vars.length > 0,
       run: () => (aimVar ? this.solveFor(aimVar) : this.askVar()),
     }];
-    const abs = (eq.lhs.k === 'fn' && eq.lhs.name === 'abs') || (eq.rhs.k === 'fn' && eq.rhs.name === 'abs');
-    out.push({ key: 'a', label: 'split |…| into cases', ok: abs, run: () => this.split() });
+    out.push({ key: 'a', label: 'split into cases', ok: !!splitCases(eq), run: () => this.split() });
     this.slots.forEach((_, j) => {
       if (j === this.cur) return;
       const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));
@@ -792,31 +797,59 @@ export class App {
 
   /* ---------------- F: functions on both sides ---------------- */
 
-  private palSticky = false;
+  /** tab and item being browsed; moved = the person browsed with the arrows */
+  private pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
 
   openPal(sticky: boolean) {
     this.flush();
-    this.palSticky = sticky;
+    const inv = inverseOf(this.peelSide());
+    const tab = inv ? FN_TABS.findIndex(t => t.items.some(x => x.f === inv.f)) : -1;
+    this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null };
     this.setMode('fnpal');
+    sound.labels();
+    this.renderPal();
+    this.renderHints();
+  }
+
+  private renderPal() {
+    const P = this.pal;
     const host = $('forms');
     host.replaceChildren();
-    host.className = 'forms hub';
+    host.className = 'forms hub pal';
     const inv = inverseOf(this.peelSide());
     const pe = peel(this.eq, this.sel);
+    const lead = document.createElement('div');
+    lead.className = 'hub-row';
+    lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button>`;
+    host.append(lead);
+    const tabs = document.createElement('div');
+    tabs.className = 'pal-tabs';
+    tabs.innerHTML = FN_TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('');
+    host.append(tabs);
     const row = document.createElement('div');
-    row.className = 'hub-row';
-    row.innerHTML = `<span class="hub-title">Both sides</span>`
-      + `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse (nothing to undo)' : `inverse: ${escapeHtml(pe.label)}`}</button>`
-      + WRAPS.map(w => `<button class="chip${inv?.f === w.f ? ' rec' : ''}" data-k="${w.key}"><kbd>${w.key}</kbd><span class="fx">${w.show}</span></button>`).join('');
+    row.className = 'hub-row pal-items';
+    row.innerHTML = FN_TABS[P.tab].items.map((w, j) => `<button class="chip${inv?.f === w.f ? ' rec' : ''}${P.moved && j === P.i ? ' on' : ''}" data-k="${w.key}"><kbd>${w.key}</kbd><span class="fx">${w.show}</span><span class="pal-name">${w.label}</span></button>`).join('');
     host.append(row);
+    if (P.ask) {
+      const ask = document.createElement('div');
+      ask.className = 'pal-ask';
+      ask.innerHTML = `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">type a number, Enter applies</span>`;
+      host.append(ask);
+    }
     const tip = document.createElement('div');
     tip.className = 'forms-tip';
-    tip.innerHTML = this.palSticky ? 'press a key. <kbd>f</kbd> or <kbd>Esc</kbd> closes. Squares and roots note what they assume on the left' : 'keep holding <kbd>f</kbd> and press a key';
+    tip.innerHTML = P.ask ? '<kbd>Enter</kbd> apply <kbd>Esc</kbd> back'
+      : P.sticky ? '<kbd>←</kbd><kbd>→</kbd> tabs <kbd>↑</kbd><kbd>↓</kbd> browse <kbd>Enter</kbd> apply. Every key works from any tab. <kbd>f</kbd> closes'
+      : 'keep holding <kbd>f</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> and release';
     host.append(tip);
     host.hidden = false;
     this.place(host);
-    sound.labels();
-    this.renderHints();
+    if (P.ask) {
+      const input = $<HTMLInputElement>('pal-input');
+      input.addEventListener('keydown', e => this.askKey(e));
+      input.addEventListener('input', () => this.askPreview());
+      input.focus();
+    }
   }
 
   private peelSide(): Node {
@@ -825,19 +858,103 @@ export class App {
     return inverseOf(this.eq.lhs) || !inverseOf(this.eq.rhs) ? this.eq.lhs : this.eq.rhs;
   }
 
-  palKey(e: KeyboardEvent) {
-    const k = e.key;
-    if (k === 'Escape') return this.closePal();
-    if (e.repeat) return;
-    if (k === 'i' || k === 'Enter') { this.closePal(); return this.applyTidy(peel(this.eq, this.sel), 0.9); }
-    if (k === 'f' && this.palSticky) return this.closePal();
-    const w = WRAPS.find(x => x.key === k);
-    if (w) { this.closePal(); return this.applyTidy(checked(this.eq, wrapBoth(this.eq, w.f)), 0.9); }
+  /** what an item would do, tidied, for the live preview */
+  private palResult(w: WrapItem, arg?: Node): MoveResult {
+    const r = checked(this.eq, wrapBoth(this.eq, w.f, arg));
+    return r;
   }
 
-  closePal() {
+  private palPeek() {
+    const P = this.pal;
+    const w = FN_TABS[P.tab].items[P.i];
+    const r = w.ask ? null : this.palResult(w);
+    const td = r && !isErr(r) ? tidy(r.eq) : null;
+    this.peek = r && !isErr(r) ? (td ? td.eq : r.eq) : null;
+    this.renderMain({ quick: true });
+  }
+
+  palKey(e: KeyboardEvent) {
+    const P = this.pal;
+    const k = e.key;
+    if (k === 'Escape') return this.closePal(true);
+    if (e.repeat) return;
+    const items = FN_TABS[P.tab].items;
+    const dt = k === 'ArrowRight' ? 1 : k === 'ArrowLeft' ? -1 : 0;
+    const di = k === 'ArrowDown' || k === 'Tab' ? 1 : k === 'ArrowUp' ? -1 : 0;
+    if (dt) { P.tab = (P.tab + dt + FN_TABS.length) % FN_TABS.length; P.i = 0; P.moved = true; sound.tick(1); this.renderPal(); return this.palPeek(); }
+    if (di) { P.i = P.moved ? (P.i + di + items.length) % items.length : 0; P.moved = true; sound.tick(2); this.renderPal(); return this.palPeek(); }
+    if (k === 'Enter') return P.moved ? this.choose(items[P.i]) : this.palInverse();
+    if (k === 'i') return this.palInverse();
+    if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
+    const w = WRAPS.find(x => x.key === k);
+    if (w) return this.choose(w);
+  }
+
+  /** on releasing f: apply what was browsed, else keep the menu open */
+  palRelease() {
+    const P = this.pal;
+    if (P.sticky || P.ask) return;
+    if (P.moved) return this.choose(FN_TABS[P.tab].items[P.i]);
+    P.sticky = true;
+    this.renderPal();
+  }
+
+  private palInverse() {
+    this.closePal(false);
+    this.applyTidy(peel(this.eq, this.sel), 0.9);
+  }
+
+  private choose(w: WrapItem) {
+    if (w.ask) {
+      this.pal.ask = w;
+      this.pal.sticky = true;
+      this.pal.tab = FN_TABS.findIndex(t => t.items.includes(w));
+      this.pal.i = FN_TABS[this.pal.tab].items.indexOf(w);
+      this.pal.moved = true;
+      this.setMode('fnask');
+      sound.tick(2);
+      this.renderPal();
+      return;
+    }
+    this.closePal(false);
+    this.applyTidy(this.palResult(w), 0.9);
+  }
+
+  private askArg(): Node | { error: string } {
+    const v = $<HTMLInputElement>('pal-input').value.trim();
+    if (!v) return { error: 'Type a number.' };
+    try { return parseExpr(v); } catch (e) { return { error: (e as Error).message }; }
+  }
+
+  private askPreview() {
+    const a = this.askArg();
+    const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
+    $('pal-note').textContent = isErr(r) ? r.error : 'Enter applies';
+    $('pal-note').classList.toggle('bad', isErr(r) && !!$<HTMLInputElement>('pal-input').value.trim());
+    const td = !isErr(r) ? tidy(r.eq) : null;
+    this.peek = !isErr(r) ? (td ? td.eq : r.eq) : null;
+    this.renderMain({ quick: true });
+  }
+
+  private askKey(e: KeyboardEvent) {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); this.pal.ask = null; this.setMode('fnpal'); this.peek = null; this.renderMain({ quick: true }); this.renderPal(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const a = this.askArg();
+      const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
+      if (isErr(r)) { this.refuse(r.error); return; }
+      this.closePal(false);
+      this.applyTidy(r, 0.9);
+    }
+  }
+
+  closePal(animateBack = false) {
     $('forms').hidden = true;
+    const peeked = !!this.peek;
+    this.peek = null;
     this.setMode('solve');
+    if (animateBack && peeked) this.renderAll({ quick: true }, true);
     this.renderHints();
   }
 
@@ -851,20 +968,56 @@ export class App {
     if (!Array.isArray(r)) { this.refuse(r.error); return; }
     if (!r.length) { this.refuse(`Already solved for ${v}.`); return; }
     r.forEach(s => { s.select = null; s.focus = undefined; });
-    this.play(r);
-    const last = r[r.length - 1].eq;
-    if (solvedFor(last) !== v) this.later(420 * r.length + 200, () => this.say(`Got as far as I could isolating ${v}. Try a form or factoring.`, true));
+    this.play(r, () => this.afterSolve(v));
   }
 
-  split() {
-    const r = splitAbs(this.eq);
-    if ('error' in r) { this.refuse(r.error); return; }
-    if (this.slots.length >= 9) { this.refuse('Nine equations is the limit for now.'); return; }
-    this.apply(r.a, 1.1);
-    this.slots.splice(this.cur + 1, 0, { steps: [{ eq: r.b, label: 'case 2', conditions: [...this.step.conditions] }], at: 0, sel: null });
+  /** after isolating: split into cases and solve each one, or say where it got stuck */
+  private afterSolve(v: string) {
+    if (solvedFor(this.eq) === v) return;
+    if (splitCases(this.eq, v)) { this.split(v); return; }
+    this.say(`Got as far as I could isolating ${v}. Try a form (hold e) or a function (hold f).`, true);
+  }
+
+  /** split this equation into cases; the others become new equations. With v, solve every case too. */
+  split(v?: string) {
+    const c = splitCases(this.eq, v);
+    if (!c) { this.refuse('Splitting needs |something| = b, or a product = 0.'); return; }
+    if (this.slots.length + c.rest.length > 9) { this.refuse('Nine equations is the limit for now.'); return; }
+    const origin = this.slot!.origin ?? this.steps[0].eq;
+    const at = this.cur;
+    this.apply(c.first, 1.1);
+    c.rest.forEach((e, j) => {
+      const slot: Slot = { steps: [{ eq: e, label: `case ${j + 2}`, conditions: [...this.step.conditions] }], at: 0, sel: null, origin };
+      if (v) {
+        const r = isolate(e, v);
+        if (Array.isArray(r)) for (const st of r) { slot.steps.push({ eq: st.eq, label: st.label, conditions: [...new Set([...slot.steps[slot.at].conditions, ...(st.conditions ?? [])])], auto: st.auto }); slot.at++; }
+      }
+      this.slots.splice(at + 1 + j, 0, slot);
+      this.judge(at + 1 + j);
+    });
+    if (!this.slot!.origin) this.slot!.origin = origin;
     this.renderRail();
     this.save();
-    this.say(`Case 2 is now equation ${this.cur + 2}. Press ${this.cur + 2} to work on it.`);
+    const nums = c.rest.map((_, j) => at + 2 + j).join(' and ');
+    this.say(`${c.why[0].toUpperCase()}${c.why.slice(1)}: the ${c.rest.length > 1 ? 'others are' : 'other is'} equation ${nums}.`);
+    if (v) this.later(450, () => this.solveFor(v));
+  }
+
+  /** a solved slot: does its answer work in the equation it came from? */
+  private judge(i: number): string | null {
+    const slot = this.slots[i];
+    const e = slot.steps[slot.at].eq;
+    const v = solvedFor(e);
+    slot.bad = undefined;
+    if (!v) return null;
+    const rhs = e.lhs.k === 'sym' && e.lhs.name === v ? e.rhs : e.lhs;
+    const origin = slot.origin ?? slot.steps[0].eq;
+    if (symbols(rhs).length || symbols(origin).some(s => s !== v)) return null;
+    const x = evaluate(rhs, {});
+    const L = evaluate(origin.lhs, { [v]: x }), R = evaluate(origin.rhs, { [v]: x });
+    if (Number.isFinite(L) && Number.isFinite(R) && Math.abs(L - R) <= 1e-7 * (1 + Math.abs(L) + Math.abs(R))) return null;
+    slot.bad = `${v} = ${toText(rhs)} doesn't work in the original ${toText(origin)}${Number.isFinite(L) && Number.isFinite(R) ? '' : ' (it is undefined there)'}, so it is not a solution.`;
+    return slot.bad;
   }
 
   substituteFrom(j: number) {
@@ -907,7 +1060,7 @@ export class App {
     $('add-eq').addEventListener('click', () => this.edit(true));
     window.addEventListener('keydown', e => this.key(e));
     window.addEventListener('keyup', e => {
-      if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal' && !this.palSticky) { this.openPal(true); return; }
+      if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') { this.palRelease(); return; }
       if (e.key.toLowerCase() !== 'e' || this.mode !== 'hub' || !this.hub || this.hub.sticky) return;
       if (this.hub.moved) this.applyForm();
       else { this.hub.sticky = true; this.renderHub(); }
@@ -924,6 +1077,8 @@ export class App {
         if (this.mode === 'hub') this.hubKey(ev);
         else if (this.mode === 'fnpal') this.palKey(ev);
       }
+      const tab = t.closest<HTMLElement>('.pal-tab');
+      if (tab && this.mode === 'fnpal') { this.pal.tab = Number(tab.dataset.tab); this.pal.i = 0; this.pal.sticky = true; this.renderPal(); }
     });
   }
 
@@ -931,7 +1086,7 @@ export class App {
     if (this.mode === 'write') this.cancelEdit();
     if (this.mode === 'op') this.closeOp();
     if (this.mode === 'hub') this.closeHub(true);
-    if (this.mode === 'fnpal') this.closePal();
+    if (this.mode === 'fnpal' || this.mode === 'fnask') this.closePal(true);
     if (this.mode !== 'solve') this.setMode('solve');
     const host = $('stage').getBoundingClientRect();
     const x = e.clientX - host.left, y = e.clientY - host.top;
@@ -956,7 +1111,7 @@ export class App {
   }
 
   key(e: KeyboardEvent) {
-    if (this.mode === 'write' || this.mode === 'op') return;
+    if (this.mode === 'write' || this.mode === 'op' || this.mode === 'fnask') return;
     if (!$('help').hidden) { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); } return; }
     if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
     const k = e.key;

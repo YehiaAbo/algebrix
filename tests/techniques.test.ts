@@ -3,7 +3,7 @@ import { parseEquation, parseExpr } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { isErr, MoveOk, applyBothChecked } from '../src/engine/moves';
 import { Eq, Node, walk } from '../src/engine/ast';
-import { isolate, substitute, wrapBoth, peel, moveAny, tidy, splitAbs } from '../src/engine/techniques';
+import { isolate, substitute, wrapBoth, peel, moveAny, tidy, splitAbs, splitCases } from '../src/engine/techniques';
 import { evaluate } from '../src/engine/ast';
 
 const T = (e: Node) => toText(e);
@@ -46,7 +46,19 @@ describe('isolate', () => {
     ['ln(x) = 2', 'x', 'x = e^2'],
     ['-x = 4', 'x', 'x = −4'],
   ])('%s for %s', (src, v, want) => expect(last(ok(isolate(parseEquation(src), v)))).toBe(want));
-  it('refuses nonlinear', () => expect(isErr(isolate(parseEquation('x^2 + x = 2'), 'x') as never)).toBe(true));
+  it.each([
+    ['x^2 + x = 2', '(x − 1)(x + 2) = 0'],
+    ['x^2 = 9', '|x| = 3'],
+    ['x^2 + 2x - 1 = 0', '|x + 1| = sqrt(2)'],
+    ['sqrt(x + 1) = x - 1', 'x(x − 3) = 0'],
+    ['(2x + 1)/3 = (x - 1)/2', 'x = −5'],
+    ['-3x/7 + 20/7 = y', 'x = (20 − 7y)/3'],
+    ['2^x = 8', 'x = 3'],
+    ['sin(x) = 1/2', 'x = π/6'],
+    ['x^(-1) = 2', 'x = 1/2'],
+  ])('%s ends at %s', (src, want) => expect(last(ok(isolate(parseEquation(src), 'x')))).toBe(want));
+  it('stops when the variable cancels', () => expect(isErr(isolate(parseEquation('x - x + 1 = y'), 'x') as never)).toBe(true));
+  it('no real solutions', () => expect(isErr(isolate(parseEquation('x^2 + 1 = 0'), 'x') as never)).toBe(true));
 });
 
 describe('free arithmetic + tidy', () => {
@@ -74,7 +86,7 @@ describe('peel and wrap', () => {
   });
   it('ln both sides', () => {
     const r = ok(wrapBoth(parseEquation('2^x = 8'), 'ln'));
-    expect(T(tidy(r.eq)!.eq)).toBe('x ln(2) = ln(8)');
+    expect(T(tidy(r.eq)!.eq)).toBe('x ln(2) = 3 ln(2)');
   });
   it('m on a coefficient divides, on a denominator multiplies, on an exponent roots', () => {
     const e = parseEquation('7y = 20');
@@ -97,4 +109,24 @@ describe('substitute', () => {
     const r = ok(substitute(a, b, 'x', '(2)'));
     expect(T(r.eq)).toBe('2(1 + y) + 3y = 12');
   });
+});
+
+describe('cases', () => {
+  it('zero product splits into each factor', () => {
+    const c = splitCases(parseEquation('(x - 2)(x + 3) = 0'))!;
+    expect(T(c.first.eq)).toBe('x − 2 = 0');
+    expect(c.rest.map(T)).toEqual(['x + 3 = 0']);
+  });
+  it('a number factor stays out of the cases', () => {
+    const c = splitCases(parseEquation('2x(x - 1) = 0'))!;
+    expect([T(c.first.eq), ...c.rest.map(T)]).toEqual(['x = 0', 'x − 1 = 0']);
+  });
+});
+
+describe('function menu', () => {
+  it('nth root of a 4th power', () => expect(T(tidy(ok(peel(parseEquation('x^4 = 16'), null)).eq)!.eq)).toBe('|x| = 2'));
+  it('log base b', () => expect(T(tidy(ok(peel(parseEquation('3^x = 81'), null)).eq)!.eq)).toBe('x = 4'));
+  it('power n typed in', () => expect(T(tidy(ok(wrapBoth(parseEquation('x^(1/5) = 2'), 'power', parseExpr('5'))).eq)!.eq)).toBe('x = 32'));
+  it('arcsin needs |B| ≤ 1', () => expect(isErr(peel(parseEquation('sin(x) = 3'), null))).toBe(true));
+  it('exact trig values', () => expect(T(tidy(parseEquation('y = sin(π/6) + cos(π/4)'))!.eq)).toBe('y = 1/2 + sqrt(2)/2'));
 });
