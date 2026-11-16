@@ -43,6 +43,9 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
       push(`clear fractions (× ${L})`, eq(clear(e.lhs), clear(e.rhs)), h, () => L, null);
     }
     h = newHints();
+    const fl = factorize(e.lhs, h), fr = factorize(e.rhs, h);
+    if (fl || fr) push('factored', eq(fl ?? e.lhs, fr ?? e.rhs), h, one, null);
+    h = newHints();
     push('expanded', eq(expandAll(e.lhs, h), expandAll(e.rhs, h)), h, one, null);
     h = newHints();
     push('simplified', eq(simplify(e.lhs, h), simplify(e.rhs, h)), h, one, null);

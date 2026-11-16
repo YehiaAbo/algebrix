@@ -101,7 +101,7 @@ export class App {
       create: () => this.newWork(),
       afterRemove: () => { if (!this.restore()) this.newWork(); },
     });
-    this.settings = new Settings({ tour: () => this.tour.start() });
+    this.settings = new Settings({ tour: () => this.tour.menu() });
     onPrefs((_, k) => this.prefsChanged(k));
     if (!this.restore()) {
       this.writing = 'new';
@@ -110,7 +110,7 @@ export class App {
     this.themeLabel();
     this.flashLabel();
     $('sound').classList.toggle('off', prefs.muted);
-    if (!toured()) window.setTimeout(() => this.tour.start(), 600);
+    if (!toured()) window.setTimeout(() => this.tour.start('basics'), 600);
   }
 
   get slot(): Slot | undefined { return this.slots[this.cur]; }
@@ -1386,9 +1386,9 @@ export class App {
     $('stage').addEventListener('mousemove', e => this.hover(e));
     $('stage').addEventListener('mouseleave', () => $('hover').classList.remove('on'));
     $('help-close').addEventListener('click', () => this.toggleHelp(false));
-    $('help-tour').addEventListener('click', () => { this.toggleHelp(false); this.tour.start(); });
+    $('help-tour').addEventListener('click', () => { this.toggleHelp(false); this.tour.menu(); });
     $('manual-btn').addEventListener('click', () => this.toggleHelp(true));
-    $('tour-btn').addEventListener('click', () => this.tour.start());
+    $('tour-btn').addEventListener('click', () => this.tour.menu());
     document.querySelectorAll<HTMLElement>('.help-tabs button').forEach(b => b.addEventListener('click', () => this.helpTab(b.dataset.tab!)));
     $('sound').addEventListener('click', () => this.toggleSound());
     $('add-eq').addEventListener('click', () => this.edit(true));
@@ -1453,6 +1453,14 @@ export class App {
 
   toggleHelp(show = $('help').hidden) { $('help').hidden = !show; }
 
+  /** close the manual, library and settings (a tour starting or ending) */
+  closeOverlays() {
+    this.toggleHelp(false);
+    this.library.close();
+    this.settings.close();
+    this.closeModes();
+  }
+
   helpTab(tab: string) {
     document.querySelectorAll<HTMLElement>('.help-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     document.querySelectorAll<HTMLElement>('.help-pane').forEach(p => { p.hidden = p.dataset.pane !== tab; });
@@ -1467,12 +1475,13 @@ export class App {
 
   key(e: KeyboardEvent) {
     if (this.mode === 'write' || this.mode === 'op' || this.mode === 'fnask') return;
+    if (this.tour.menuOpen) return this.tour.menuKey(e);
     if (this.library.isOpen) return this.library.key(e);
     if (this.settings.isOpen) return this.settings.key(e);
     if (!$('help').hidden) {
       if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); this.helpTab(e.key === 'ArrowLeft' ? 'how' : 'keys'); }
-      if (e.key === 'g') { e.preventDefault(); this.toggleHelp(false); this.tour.start(); }
+      if (e.key === 'g') { e.preventDefault(); this.toggleHelp(false); this.tour.menu(); }
       return;
     }
     if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
@@ -1528,7 +1537,7 @@ export class App {
       case 't': handled(); return this.toggleTheme();
       case '?': handled(); return this.toggleHelp();
       case 'M': handled(); return this.toggleSound();
-      case 'g': handled(); return this.tour.start();
+      case 'g': handled(); return this.tour.menu();
       case 'w': handled(); this.closeModes(); return this.library.open();
       case ',': handled(); this.closeModes(); return this.settings.open();
       case 'z': handled(); return this.toggleFlash();

@@ -149,3 +149,9 @@ App:
 - The algebra menu moved from `e` to `Tab`. Hold Tab plus a key to act; tap Tab, browse with the arrows, then tap Tab again to apply. Shift+Tab switches to the other side.
 - `e` now solves: it goes straight to the answer for the aimed variable (or the only one), and otherwise asks which variable.
 - Shift+←→ reorders (slides) a term again. Hold Ctrl and tap ← or → to grow the highlight on that side; letting go keeps it.
+
+### Round 6c: tours
+
+- `g` opens a tour menu with six short tours: basics, picking pieces, the algebra menu, systems, beyond equations, and your work and settings. A tour you finish gets a ✓, and the closing message points to the next one. A script plays every tour end to end.
+- Fix: tapping Tab with nothing aimed now offers "factored", which factors either side.
+- Fix: the tour card sits above the library and settings, so the steps that use them stay readable.

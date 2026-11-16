@@ -374,7 +374,7 @@ body:not([data-mode="solve"]) .spots { display: none; }
 @media (max-width: 900px) { .how { grid-template-columns: 1fr; } }
 
 /* tour */
-.tour { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); background: var(--bg); border-radius: 12px; box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgba(10, 20, 40, .12); padding: 12px 16px 0; z-index: 4; overflow: hidden; }
+.tour { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); background: var(--bg); border-radius: 12px; box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgba(10, 20, 40, .12); padding: 12px 16px 0; z-index: 11; overflow: hidden; }
 .tour[hidden] { display: none; }
 .tour-head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
 .tour-tag { font-weight: 600; color: var(--sel); letter-spacing: .02em; text-transform: uppercase; font-size: 10.5px; }
@@ -492,3 +492,13 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .hover { position: absolute; pointer-events: none; opacity: 0; border-radius: 6px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--sel) 45%, transparent); transition: opacity .1s, left calc(.12s * var(--pace, 1)) var(--ease), top calc(.12s * var(--pace, 1)) var(--ease), width calc(.12s * var(--pace, 1)) var(--ease), height calc(.12s * var(--pace, 1)) var(--ease); }
 .hover.on { opacity: 1; }
 .stage { cursor: crosshair; }
+
+/* tour menu */
+.tours-list { display: grid; gap: 4px; }
+.tour-pick { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 12px; align-items: center; text-align: left; border: 0; background: transparent; padding: 10px 12px; border-radius: 10px; cursor: pointer; color: var(--ink); }
+.tour-pick kbd { grid-row: span 2; }
+.tour-pick .tp-name { font-weight: 600; font-size: 14px; }
+.tour-pick .tp-blurb { grid-column: 2; color: var(--muted); font-size: 12.5px; }
+.tour-pick .tp-len { grid-column: 3; grid-row: 1 / span 2; color: var(--faint); font-size: 12px; }
+.tour-pick.focus { background: var(--bg); box-shadow: 0 0 0 1.5px var(--sel) inset; }
+.tour-pick.done .tp-name::after { content: ' ✓'; color: var(--good); }

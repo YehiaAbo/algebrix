@@ -22,7 +22,7 @@ export class Settings {
       { key: 'volume', label: 'Volume', options: [{ v: 0.3, name: 'Low' }, { v: 0.55, name: 'Medium' }, { v: 0.8, name: 'Normal' }, { v: 1, name: 'Loud' }] },
       { key: 'muted', label: 'Sound', options: [{ v: false, name: 'On' }, { v: true, name: 'Off' }] },
       { key: 'hints', label: 'Key hints', options: [{ v: true, name: 'Show' }, { v: false, name: 'Hide', blurb: 'The bottom bar keeps only messages.' }] },
-      { label: 'Tour', action: { name: 'Take the tour again', run: () => { this.close(); actions.tour(); } } },
+      { label: 'Tours', action: { name: 'Pick a tour', run: () => { this.close(); actions.tour(); } } },
     ];
     $('settings').addEventListener('mousedown', e => { if (e.target === $('settings')) this.close(); });
     $('settings-close').addEventListener('click', () => this.close());

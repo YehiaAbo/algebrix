@@ -38,7 +38,7 @@
         </button>
         <button id="tour-btn" class="sound" title="Tour (g)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M8.5 7.3v5.4l4.3-2.7z"/></svg>
-          <span>Take the tour</span>
+          <span>Tours</span>
         </button>
         <button id="settings-btn" class="sound" title="Settings (,)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
@@ -104,7 +104,7 @@
         <h2>Manual</h2>
         <div class="help-tabs" role="tablist"><button data-tab="how" class="on">How it works</button><button data-tab="keys">Keys</button></div>
         <span class="help-spacer"></span>
-        <button id="help-tour" class="help-tour"><kbd>g</kbd> Take the tour</button>
+        <button id="help-tour" class="help-tour"><kbd>g</kbd> Tours</button>
         <button id="help-close" aria-label="Close">Esc</button>
       </div>
       <div class="help-pane" data-pane="how">
@@ -222,6 +222,17 @@
         <button id="settings-close" aria-label="Close">Esc</button>
       </div>
       <div id="settings-rows" class="set-rows"></div>
+    </div>
+  </div>
+  <div id="tours" class="overlay" hidden>
+    <div class="panel-card" role="dialog" aria-label="Tours">
+      <div class="help-head">
+        <h2>Tours</h2>
+        <span class="help-spacer"></span>
+        <span class="lib-keys"><kbd>↑</kbd><kbd>↓</kbd> pick <kbd>Enter</kbd> start <kbd>q</kbd> leaves a tour</span>
+        <button class="tours-close" aria-label="Close" onclick="document.getElementById('tours').hidden = true">Esc</button>
+      </div>
+      <div id="tours-list" class="tours-list"></div>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
