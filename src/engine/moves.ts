@@ -88,7 +88,7 @@ function divideBoth(e: Eq, sel: string | null): MoveResult {
   let divisor: Node;
   if (node === root && root.k === 'mul' && coefOf(root) && coefOf(root)!.v !== 1) divisor = coefOf(root)!;
   else if (parent === root && root.k === 'mul') divisor = node;
-  else if (root.k === 'add') return { error: `This side is a sum. Move the other terms across first, or divide everything with o then /${t(node)}.` };
+  else if (root.k === 'add') return { error: node === root ? 'This side is a sum, so there is no single factor to divide by. Move terms across first, or press o to divide both sides by anything.' : `${t(node)} is one term of a sum. Move the other terms across first, then divide.` };
   else return { error: `${t(node)} isn't a factor of the whole side, so I can't divide it out.` };
   if (divisor.k === 'num' && divisor.v === 0) return { error: 'Dividing by 0 is undefined.' };
   const rest = (root as Mul).factors.filter(f => f !== divisor);

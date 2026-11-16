@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Algebrix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+</head>
+<body data-mode="solve">
+  <div class="app">
+    <aside class="rail">
+      <div class="brand"><span class="mark">a<sub>x</sub></span><span class="word">algebrix</span></div>
+      <section>
+        <h2>Variables</h2>
+        <ul id="vars" class="vars"></ul>
+      </section>
+      <section>
+        <h2>Conditions</h2>
+        <ul id="conds" class="conds"></ul>
+        <p id="conds-empty" class="empty">None yet. Dividing by a variable adds one here.</p>
+      </section>
+      <div class="rail-foot">
+        <div class="progress"><span id="step-count">Start</span><span id="redo-count"></span></div>
+        <button id="sound" class="sound" aria-pressed="true" title="Sound (M)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3v10l-4-3H3z"/><path class="wave" d="M13 7.5a3.5 3.5 0 0 1 0 5M15 5.5a6.3 6.3 0 0 1 0 9"/></svg>
+          <span>Sound</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="desk">
+      <header class="topbar">
+        <div class="field">
+          <input id="input" spellcheck="false" autocomplete="off" placeholder="Type an equation, like 7y + 3x = 20" aria-label="Equation">
+          <button id="original" class="original" title="Edit (e)"></button>
+        </div>
+        <p id="input-error" class="input-error" aria-live="polite"></p>
+      </header>
+      <div id="stage" class="stage">
+        <div id="trail" class="trail"></div>
+        <div id="sel" class="sel"></div>
+        <div id="labels" class="labels"></div>
+      </div>
+      <div id="op" class="op" hidden>
+        <span>Both sides</span>
+        <input id="op-input" spellcheck="false" autocomplete="off" placeholder="/7  or  +3x" aria-label="Operation for both sides">
+      </div>
+      <footer id="hints" class="hints" aria-live="polite"></footer>
+    </main>
+
+    <aside class="side">
+      <div class="graph-wrap"><canvas id="graph"></canvas></div>
+      <p id="graph-note" class="graph-note"></p>
+      <p class="graph-keys"><kbd>[</kbd><kbd>]</kbd> zoom</p>
+    </aside>
+  </div>
+
+  <div id="help" class="help" hidden>
+    <div class="help-card" role="dialog" aria-label="Keys">
+      <div class="help-head"><h2>Keys</h2><button id="help-close" aria-label="Close">Esc</button></div>
+      <div class="help-cols">
+        <section>
+          <h3>Aim</h3>
+          <dl>
+            <dt><kbd>f</kbd> then a letter</dt><dd>jump to any piece</dd>
+            <dt><kbd>h</kbd> <kbd>l</kbd></dt><dd>previous / next piece</dd>
+            <dt><kbd>k</kbd></dt><dd>grow to the bigger piece</dd>
+            <dt><kbd>j</kbd></dt><dd>shrink back inside</dd>
+            <dt><kbd>Tab</kbd></dt><dd>other side</dd>
+            <dt><kbd>a</kbd></dt><dd>whole equation</dd>
+            <dt><kbd>Esc</kbd></dt><dd>clear</dd>
+          </dl>
+        </section>
+        <section>
+          <h3>Move</h3>
+          <dl>
+            <dt><kbd>m</kbd></dt><dd>move a term across =</dd>
+            <dt><kbd>/</kbd></dt><dd>divide both sides by a factor</dd>
+            <dt><kbd>*</kbd></dt><dd>multiply away a denominator</dd>
+            <dt><kbd>d</kbd></dt><dd>distribute, split a fraction</dd>
+            <dt><kbd>s</kbd></dt><dd>simplify (all if nothing aimed)</dd>
+            <dt><kbd>F</kbd></dt><dd>factor out</dd>
+            <dt><kbd>H</kbd> <kbd>L</kbd></dt><dd>slide a term left / right</dd>
+            <dt><kbd>x</kbd></dt><dd>swap sides</dd>
+            <dt><kbd>o</kbd></dt><dd>do anything to both sides</dd>
+          </dl>
+        </section>
+        <section>
+          <h3>Work</h3>
+          <dl>
+            <dt><kbd>u</kbd> <kbd>U</kbd></dt><dd>undo / redo</dd>
+            <dt><kbd>e</kbd></dt><dd>edit this equation</dd>
+            <dt><kbd>n</kbd></dt><dd>new equation</dd>
+            <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>zoom graph</dd>
+            <dt><kbd>M</kbd></dt><dd>sound on / off</dd>
+            <dt><kbd>?</kbd></dt><dd>this sheet</dd>
+          </dl>
+          <p class="help-note">Every move is checked. If it wouldn't keep the equation true, it doesn't happen.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

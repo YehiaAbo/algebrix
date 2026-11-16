@@ -1,4 +1,4 @@
-import { parseEquation, parseExpr } from '../src/engine/parse';
+import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { applyMove, applyBothChecked, isErr, MoveName, MoveOk, solvedFor, verify } from '../src/engine/moves';
 import { Eq, find, walk, Node, allIds } from '../src/engine/ast';
