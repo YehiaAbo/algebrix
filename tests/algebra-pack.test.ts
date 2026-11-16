@@ -123,3 +123,23 @@ describe('common factors that are not letters', () => {
 describe('one fraction with nothing aimed', () => {
   it('1/x + 1/(2x) becomes one fraction', () => expect(form('1/x + 1/(2x)', 'one fraction')).not.toBeNull());
 });
+
+describe('inverse trig', () => {
+  it('prints as sin⁻¹ and reads back', () => {
+    const e = parseEquation('y = arcsin(x)');
+    expect(toText(e)).toBe('y = sin⁻¹(x)');
+    expect(toText(parseEquation(toText(e)))).toBe('y = sin⁻¹(x)');
+    expect(toText(parseEquation('y = sin^-1(x) + cos^(-1)(x) + tan⁻¹(x)'))).toBe('y = sin⁻¹(x) + cos⁻¹(x) + tan⁻¹(x)');
+    expect(toText(parseEquation(toText(e, true)))).toBe('y = sin⁻¹(x)');
+  });
+  it('sin⁻¹(sin x) → x, with the range it holds on as a condition', () => {
+    const e = parseEquation('sin^-1(sin(x))', true);
+    const f = formsFor(e, e.lhs.id).find(x => x.name === 'trig: inverse cancels');
+    expect(f && toText(f.eq)).toBe('x');
+    expect(f!.conditions).toEqual(['−π/2 ≤ x ≤ π/2']);
+  });
+  it('works with nothing aimed too, for cos and tan', () => {
+    expect(form('cos^-1(cos(2x)) = 1', 'trig: inverse cancels')).toBe('2x = 1');
+    expect(form('tan^-1(tan(x))', 'trig: inverse cancels')).toBe('x');
+  });
+});

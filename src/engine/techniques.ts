@@ -44,9 +44,9 @@ export const FN_TABS: { name: string; items: WrapItem[] }[] = [
     { key: 's', f: 'sin', label: 'sine', show: 'sin( )' },
     { key: 'o', f: 'cos', label: 'cosine', show: 'cos( )' },
     { key: 't', f: 'tan', label: 'tangent', show: 'tan( )' },
-    { key: 'a', f: 'asin', label: 'arcsine', show: 'arcsin( )' },
-    { key: 'w', f: 'acos', label: 'arccosine', show: 'arccos( )' },
-    { key: 'y', f: 'atan', label: 'arctangent', show: 'arctan( )' },
+    { key: 'a', f: 'asin', label: 'inverse sine', show: 'sin⁻¹( )' },
+    { key: 'w', f: 'acos', label: 'inverse cosine', show: 'cos⁻¹( )' },
+    { key: 'y', f: 'atan', label: 'inverse tangent', show: 'tan⁻¹( )' },
   ] },
 ];
 export const WRAPS: WrapItem[] = FN_TABS.flatMap(t => t.items);
@@ -113,7 +113,7 @@ export function wrapBoth(e: Eq, f: Wrap, arg: Node = num(2)): MoveResult {
     check: env => [[evaluate(L, env), g(evaluate(e.lhs, env), k)], [evaluate(R, env), g(evaluate(e.rhs, env), k)]],
   };
 }
-const FN_LABEL: Partial<Record<Wrap, string>> = { asin: 'arcsin', acos: 'arccos', atan: 'arctan' };
+const FN_LABEL: Partial<Record<Wrap, string>> = { asin: 'sin⁻¹', acos: 'cos⁻¹', atan: 'tan⁻¹' };
 
 /** The function that undoes the outer layer of a side, if there is one. */
 export function inverseOf(side: Node): { f: Wrap; arg?: Node } | null {
@@ -153,7 +153,7 @@ const TRIG_MORE: Record<string, string> = {
   tan: 'one solution of many: also every π more',
 };
 
-/** sin(X) = B → X = arcsin(B). Checked by sin(arcsin B) = B; the lost solutions are noted. */
+/** sin(X) = B → X = sin⁻¹(B). Checked by sin(arcsin B) = B; the lost solutions are noted. */
 function peelTrig(e: Eq, s: 'lhs' | 'rhs'): MoveResult {
   const side = e[s] as Extract<Node, { k: 'fn' }>;
   const B = s === 'lhs' ? e.rhs : e.lhs;

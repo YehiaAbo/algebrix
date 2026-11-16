@@ -6,6 +6,7 @@ import { rat, Rat, rmul, radd, rdiv, negate, coefOf, gcd } from './terms';
 import { simplify, newHints } from './simplify';
 import { expandAll, polyOf } from './rewrite';
 import { parseExpr } from './parse';
+import { toText } from './print';
 
 const hints = () => newHints();
 const isZero = (r: Rat) => r.p === 0;
@@ -161,7 +162,9 @@ export function completeSquare(n: Node): Node | null {
   return parseExpr(text);
 }
 
-export interface TrigForm { name: string; node: Node }
+/** where a form holds: u must lie in [lo, hi] (the range of the inverse function) */
+export interface Range { u: Node; lo: number; hi: number; text: string }
+export interface TrigForm { name: string; node: Node; range?: Range }
 type TrigFn = 'sin' | 'cos' | 'tan';
 const isF = (n: Node, name: TrigFn): n is Extract<Node, { k: 'fn' }> => n.k === 'fn' && n.name === name;
 const sq = (n: Node, name: TrigFn) => n.k === 'pow' && n.exp.k === 'num' && n.exp.v === 2 && isF(n.base, name) ? n.base.arg : null;
@@ -186,7 +189,13 @@ function half(a: Node): Node | null {
 
 export function trigForms(n: Node): TrigForm[] {
   const out: TrigForm[] = [];
-  const offer = (name: string, node: Node) => { if (!out.some(o => key(o.node) === key(node))) out.push({ name, node }); };
+  const offer = (name: string, node: Node, range?: Range) => { if (!out.some(o => key(o.node) === key(node))) out.push({ name, node, range }); };
+  // sin⁻¹(sin u) = u only where u is in sin⁻¹'s range, so it is offered with that condition
+  const INV = { asin: ['sin', -Math.PI / 2, Math.PI / 2, '−π/2 ≤ u ≤ π/2'], acos: ['cos', 0, Math.PI, '0 ≤ u ≤ π'], atan: ['tan', -Math.PI / 2, Math.PI / 2, '−π/2 < u < π/2'] } as const;
+  if (n.k === 'fn' && n.name in INV) {
+    const [inner, lo, hi, txt] = INV[n.name as keyof typeof INV];
+    if (isF(n.arg, inner)) offer('inverse cancels', cloneFresh(n.arg.arg), { u: n.arg.arg, lo, hi, text: txt.replace('u', toText(n.arg.arg)) });
+  }
   if (isF(n, 'tan')) offer('as sin / cos', frac(F('sin', n.arg), F('cos', n.arg)));
   if (n.k === 'frac' && isF(n.num, 'sin') && isF(n.den, 'cos') && key(n.num.arg) === key(n.den.arg)) offer('as tan', fn('tan', cloneFresh(n.num.arg)));
   if (isF(n, 'sin')) {

@@ -11,7 +11,7 @@ export interface Frac extends Base { k: 'frac'; num: Node; den: Node }
 export interface Pow extends Base { k: 'pow'; base: Node; exp: Node }
 export interface Sqrt extends Base { k: 'sqrt'; arg: Node }
 /** how a function name is written */
-export const FN_TEXT: Record<string, string> = { asin: 'arcsin', acos: 'arccos', atan: 'arctan' };
+export const FN_TEXT: Record<string, string> = { asin: 'sin⁻¹', acos: 'cos⁻¹', atan: 'tan⁻¹' };
 export type FnName = 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan' | 'ln' | 'log' | 'abs';
 export interface Fn extends Base { k: 'fn'; name: FnName; arg: Node }
 /** a named function you defined, like f(x + 1) */

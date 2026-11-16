@@ -1,12 +1,12 @@
 // Equivalent forms of the aimed expression (or the whole equation), for the
 // forms strip. Every candidate goes through the same numeric check as a move.
-import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath } from './ast';
+import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate } from './ast';
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, factorize, combineFractions, standardOrder, hasExpandable } from './rewrite';
 import { verify, MoveOk, relAfter } from './moves';
 import { gcd } from './terms';
-import { longDivide, partialFractions, rationalize, trigForms, completeSquare } from './polytools';
+import { longDivide, partialFractions, rationalize, trigForms, completeSquare, Range } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
 
@@ -22,9 +22,14 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   const out: Form[] = [];
   const sides = (q: Eq) => key(q.lhs) + '|' + key(q.rhs);
   const seen = new Set<string>([sides(e)]);
-  const push = (name: string, next: Eq, h: Hints, factor: (env: Env) => number = one, select: string | null = sel) => {
+  const push = (name: string, next: Eq, h: Hints, factor: (env: Env) => number = one, select: string | null = sel, range?: Range) => {
     if (seen.has(sides(next))) return;
     const f: Form = { name, chord: CHORDS[name] ?? (name.startsWith('clear') ? 'd' : ''), eq: next, label: name, hints: h, factor, select: select && find(next, select) ? select : null };
+    if (range) {
+      // true only on a range: say so, and check only there
+      f.conditions = [range.text];
+      f.check = env => { const u = evaluate(range.u, env); return u >= range.lo && u <= range.hi ? [[evaluate(next, env), evaluate(e, env)]] : [[NaN, NaN]]; };
+    }
     if (verify(e, f)) return;
     const rel = relAfter(e, f);
     if (typeof rel !== 'string') return;
@@ -61,14 +66,14 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     const ll = logRules(e.lhs), lr = relOf(e) === 'expr' ? null : logRules(e.rhs);
     if (ll || lr) push('log rules', eq(ll ?? e.lhs, lr ?? e.rhs), newHints(), one, null);
     // identities on a whole side, so sin²x + cos²x needs no aiming
-    for (const side of ['lhs', 'rhs'] as const) for (const f of trigForms(e[side])) push(`trig: ${f.name}`, side === 'lhs' ? eq(f.node, e.rhs) : eq(e.lhs, f.node), newHints(), one, null);
+    for (const side of ['lhs', 'rhs'] as const) for (const f of trigForms(e[side])) push(`trig: ${f.name}`, side === 'lhs' ? eq(f.node, e.rhs) : eq(e.lhs, f.node), newHints(), one, null, f.range);
     return out;
   }
 
-  const at = (name: string, build: (h: Hints) => Node | null) => {
+  const at = (name: string, build: (h: Hints) => Node | null, range?: Range) => {
     const h = newHints();
     const r = build(h);
-    if (r) push(name, replace(e, target.id, r), h, one, r.id);
+    if (r) push(name, replace(e, target.id, r), h, one, r.id, range);
   };
   at('one fraction', h => combineFractions(target, h));
   at('factored', h => factorize(target, h));
@@ -97,7 +102,7 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   at('long division', () => longDivide(target));
   at('partial fractions', () => partialFractions(target));
   at('rationalized', () => rationalize(target));
-  for (const f of trigForms(target)) at(`trig: ${f.name}`, () => f.node);
+  for (const f of trigForms(target)) at(`trig: ${f.name}`, () => f.node, f.range);
   return out;
 }
 

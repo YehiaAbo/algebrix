@@ -41,7 +41,14 @@ function tokenize(s: string): Tok[] {
       continue;
     }
     const word = FNS.find(f => s.startsWith(f, i));
-    if (word) { out.push({ t: 'cmd', v: word }); i += word.length; continue; }
+    if (word) {
+      i += word.length;
+      // sin⁻¹, sin^-1 and sin^(-1) are the inverse, like arcsin
+      const inv = ['sin', 'cos', 'tan'].includes(word) ? /^(?:⁻¹|\^-1|\^\(-1\)|\^\{-1\})/.exec(s.slice(i)) : null;
+      if (inv) i += inv[0].length;
+      out.push({ t: 'cmd', v: inv ? 'a' + word : word });
+      continue;
+    }
     if (s.startsWith('pi', i)) { out.push({ t: 'id', v: 'π' }); i += 2; continue; }
     if (/[a-zA-Zα-ω]/.test(c)) {
       // a subscript makes a new name: x_1, v_0, x_12, a_n, x_{max}

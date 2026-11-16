@@ -46,6 +46,6 @@ export function toText(n: Node, ascii = false): string {
     case 'pow': return `${p(n.base, n.base.k !== 'num' && n.base.k !== 'sym' && n.base.k !== 'fn' || isNeg(n.base))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
     case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
-    case 'fn': return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${FN_TEXT[n.name] ?? n.name}(${toText(n.arg, ascii)})`;
+    case 'fn': return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${(ascii ? FN_TEXT[n.name]?.replace('⁻¹', '^-1') : FN_TEXT[n.name]) ?? n.name}(${toText(n.arg, ascii)})`;
   }
 }
