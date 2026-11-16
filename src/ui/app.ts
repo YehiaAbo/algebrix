@@ -233,8 +233,9 @@ export class App {
       const math = document.createElement('span');
       math.className = 'lane-math';
       const shared = symbols(e).filter(v => mine.includes(v));
-      if (shared.length && !adding) {
-        card.classList.add(aimed ? 'linked' : 'shares');
+      // links show only while the algebra menu is open (Tab), when you'd use them
+      if (shared.length && !adding && this.mode === 'hub') {
+        card.classList.add('linked');
         if (aimed?.k === 'sym' && !linkedHint) linkedHint = `<kbd>Tab</kbd>+<kbd>${i + 1}</kbd> puts in <i>${varHtml(aimed.name)}</i> from (${i + 1})`;
       }
       card.append(head, math);
@@ -576,7 +577,6 @@ export class App {
     this.sel = id;
     if (!quiet) sound.tick(id ? (findPath(this.eq, id)?.length ?? 1) - 1 : 0);
     this.renderSelection();
-    if (this.slots.length > 1) this.renderLanes();
     this.renderHints();
     this.tour.check();
   }
@@ -1090,6 +1090,7 @@ export class App {
     this.hub = { forms, techs: this.techniques(), i: 0, sticky, moved: false, awaitVar: false };
     this.chordUsed = false;
     this.setMode('hub');
+    if (this.slots.length > 1) this.renderLanes();
     sound.labels();
     this.renderHub();
     this.renderHints();
@@ -1165,7 +1166,7 @@ export class App {
     $('forms').hidden = true;
     this.setMode('solve');
     if (animateBack && peeked) { sound.undo(); this.renderAll({ quick: true }, true); }
-    else this.renderHints();
+    else { this.renderHints(); if (this.slots.length > 1) this.renderLanes(); }
   }
 
   renderHub() {
