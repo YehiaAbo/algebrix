@@ -4,17 +4,18 @@ import { toText } from '../engine/print';
 import { applyMove, applyBothChecked, checked, isErr, MoveName, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { absOf, coefOf } from '../engine/terms';
 import { formsFor, Form } from '../engine/forms';
-import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, tidy, isolate, substitute, splitCases } from '../engine/techniques';
+import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, isolate, substitute, splitCases, simplifySpot, Spot } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
 import { evaluate } from '../engine/ast';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition } from '../render/stage';
 import { Graph } from './graph';
+import { Tour, toured } from './tour';
 import { sound } from './sound';
 
 interface Step { eq: Eq; label: string; conditions: string[]; auto?: boolean }
 /** origin: the equation a case came from, to check answers against. bad: why its answer fails */
-interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string }
+export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string }
 type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -55,6 +56,9 @@ export class App {
   private pending: { timer: number; run: () => void }[] = [];
   private deleteArmed = 0;
   private looseSel: string | null = null;
+  /** while the tour runs, your own session isn't overwritten */
+  noSave = false;
+  tour: Tour;
 
   constructor() {
     this.stage = new Stage($('stage'));
@@ -65,11 +69,13 @@ export class App {
       const st = $('stage'), next = `${st.clientWidth}x${st.clientHeight}`;
       if (next !== size) { size = next; this.renderMain(null); }
     }).observe($('stage'));
+    this.tour = new Tour(this);
     if (!this.restore()) {
       this.writing = 'new';
       this.commit('7y + 3x = 20', true);
     }
     this.themeLabel();
+    if (!toured()) window.setTimeout(() => this.tour.start(), 600);
   }
 
   get slot(): Slot | undefined { return this.slots[this.cur]; }
@@ -106,6 +112,7 @@ export class App {
     this.stage.show(lay, Math.round(ox), oy, tr);
     host.classList.toggle('preview', !!this.preview || (!!this.peek && this.mode === 'op'));
     this.renderSelection();
+    this.renderSpot();
   }
 
   renderSelection() {
@@ -127,6 +134,7 @@ export class App {
     this.renderHints();
     if (this.shown) this.graph.draw(this.shown, graphAnim, this.slots.filter((_, i) => i !== this.cur).map((_, j) => this.eqOf(j >= this.cur ? j + 1 : j)));
     document.body.dataset.mode = this.mode;
+    this.tour?.check();
   }
 
   renderTrail() {
@@ -246,7 +254,7 @@ export class App {
       }
     }
     parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>e</kbd> algebra</span><span class="hint"><kbd>f</kbd> functions</span>`);
-    parts.push(`<span class="spacer"></span><span class="hint dim"><kbd>u</kbd> undo</span><span class="hint dim"><kbd>?</kbd> keys</span>`);
+    parts.push(`<span class="spacer"></span><span class="hint dim"><kbd>u</kbd> undo</span><span class="hint dim"><kbd>?</kbd> manual</span>`);
     host.innerHTML = parts.join('');
   }
 
@@ -257,13 +265,15 @@ export class App {
     this.messageTimer = window.setTimeout(() => { this.message = null; this.renderHints(); }, bad ? 3200 : 2200);
   }
 
+  /** a move that isn't allowed: the aimed piece resists (a springy nudge), a low sound, the reason at the bottom */
   refuse(text: string) {
     sound.refuse();
-    this.bubble(text, true);
-    const target = this.sel && this.stage.box(this.sel) ? $('sel') : $('stage');
-    target.animate([{ translate: '0' }, { translate: '-6px' }, { translate: '5px' }, { translate: '-3px' }, { translate: '0' }], { duration: 260, easing: 'ease-out' });
-    $('sel').classList.add('refused');
-    setTimeout(() => $('sel').classList.remove('refused'), 380);
+    this.say(text, true);
+    const id = this.sel && this.sel !== 'eq' && this.stage.box(this.sel) ? this.sel : null;
+    const resist: Keyframe[] = [{ transform: 'none' }, { transform: 'translateX(-5px) scaleX(.97)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(-2px)' }, { transform: 'none' }];
+    for (const el of this.stage.elements(id)) el.animate(resist, { duration: 300, easing: 'cubic-bezier(.3,.7,.3,1)', composite: 'add' });
+    if (id) $('sel').animate(resist, { duration: 300, easing: 'cubic-bezier(.3,.7,.3,1)' });
+    this.tour?.check('refuse');
   }
 
   /* ---------------- state changes ---------------- */
@@ -299,7 +309,7 @@ export class App {
     els.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: i * 14, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
   }
 
-  apply(r: MoveResult, pitch = 1, opts: { tidy?: boolean; quietLabel?: boolean } = {}) {
+  apply(r: MoveResult, pitch = 1, opts: { quietLabel?: boolean } = {}) {
     if (isErr(r)) { this.refuse(r.error); return false; }
     const before = this.eq;
     const wasSolved = solvedFor(before);
@@ -317,7 +327,6 @@ export class App {
     else if (now && now !== wasSolved) { setTimeout(() => sound.solved(), 140); this.say(`Solved for ${now}.`); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); }
     if (r.conditions?.length) this.say(`Noted on the left: ${r.conditions.join(', ')}.`);
     this.save();
-    if (opts.tidy) this.later(430, () => { const td = tidy(this.eq); if (td) this.apply(td, 1.25, { quietLabel: true }); });
     return true;
   }
 
@@ -388,6 +397,49 @@ export class App {
     if (!quiet) sound.tick(id ? (findPath(this.eq, id)?.length ?? 1) - 1 : 0);
     this.renderSelection();
     this.renderHints();
+    this.tour.check();
+  }
+
+  /* ---------------- simplification on offer ---------------- */
+
+  private spot: Spot | null = null;
+
+  /** mark what could simplify with dashed boxes and a small prompt; nothing changes until you press s */
+  renderSpot() {
+    const host = $('spots');
+    host.replaceChildren();
+    this.spot = this.mode === 'solve' && !this.peek && !this.preview && this.eq ? simplifySpot(this.eq) : null;
+    if (!this.spot) return;
+    const boxes = this.spot.marks.map(id => this.stage.box(id)).filter((r): r is Rect => !!r);
+    if (!boxes.length) { this.spot = null; return; }
+    const S = this.stage.layout?.glyphs[0]?.s ?? 60;
+    const p = Math.max(3, S * 0.06);
+    for (const r of boxes) {
+      const b = document.createElement('div');
+      b.className = 'spot';
+      Object.assign(b.style, { left: `${r.x - p}px`, top: `${r.y - p}px`, width: `${r.w + 2 * p}px`, height: `${r.h + 2 * p}px` });
+      host.append(b);
+    }
+    const first = boxes.reduce((a, b) => (b.y < a.y ? b : a));
+    const chip = document.createElement('button');
+    chip.className = 'spot-chip';
+    chip.innerHTML = '<kbd>s</kbd> simplify';
+    chip.title = 'Simplify the marked part';
+    const x = Math.min(...boxes.map(b => b.x)), x2 = Math.max(...boxes.map(b => b.x + b.w));
+    chip.style.left = `${(x + x2) / 2}px`;
+    chip.style.top = `${first.y + first.h + p + 10}px`;
+    chip.addEventListener('mousedown', e => { e.stopPropagation(); this.simplifyKey(true); });
+    host.append(chip);
+  }
+
+  /** s: simplify what is aimed if it can, otherwise take the offered simplification */
+  simplifyKey(offered = false) {
+    if (!offered && this.sel) {
+      const r = applyMove('simplify', this.eq, this.sel);
+      if (!isErr(r)) return this.apply(r, 1.2);
+    }
+    if (this.spot) return this.apply(this.spot.move, 1.2);
+    this.refuse('Already as simple as it gets.');
   }
 
   /* ---------------- the system of equations ---------------- */
@@ -476,22 +528,44 @@ export class App {
       const sibs = this.visibleKids(p);
       const i = sibs.findIndex(s => s.id === id);
       const j = i + dir;
-      if (j >= 0 && j < sibs.length) {
+      // top and bottom of a fraction aren't left/right of each other: step out instead (Tab flips between them)
+      if (p.k !== 'frac' && j >= 0 && j < sibs.length) {
         let n = sibs[j];
         for (let d = 0; d < climbed; d++) {
           const ks = this.visibleKids(n);
-          if (!ks.length) break;
+          if (!ks.length || ['frac', 'pow', 'sqrt', 'fn'].includes(n.k)) break;
           n = dir > 0 ? ks[0] : ks[ks.length - 1];
         }
         return this.select(n.id);
       }
-      id = p.id; climbed++;
+      id = p.id;
+      // leaving a fraction, power, root or function lands on the next piece itself, not deep inside it
+      climbed = ['frac', 'pow', 'sqrt', 'fn'].includes(p.k) ? 0 : climbed + 1;
     }
   }
 
   toggleSide() {
+    // inside a fraction, Tab flips between its top and bottom; otherwise between the two sides
+    const path = this.sel && this.sel !== 'eq' ? findPath(this.eq, this.sel) : null;
+    if (path) {
+      for (let i = path.length - 2; i >= 1; i--) {
+        const f = path[i];
+        if (f.k !== 'frac') continue;
+        const inTop = path[i + 1] === f.num;
+        const target = inTop ? f.den : f.num;
+        this.memory.set(f.id, target.id);
+        return this.select(this.dive(target).id);
+      }
+    }
     const onLeft = this.sel && this.sel !== 'eq' && findPath(this.eq, this.sel)?.[1] === this.eq.lhs;
     this.select(onLeft ? this.eq.rhs.id : this.eq.lhs.id);
+  }
+
+  /** the outermost piece with its own box (a number in a product with a hidden 1 etc.) */
+  private dive(n: Node): Node {
+    let cur = n;
+    while (!this.stage.box(cur.id)) { const k = children(cur)[0]; if (!k) break; cur = k; }
+    return cur;
   }
 
   showLabels() {
@@ -824,6 +898,7 @@ export class App {
     host.append(lead);
     const tabs = document.createElement('div');
     tabs.className = 'pal-tabs';
+    tabs.className = 'pal-tabs' + (P.moved ? '' : ' focus');
     tabs.innerHTML = FN_TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('');
     host.append(tabs);
     const row = document.createElement('div');
@@ -839,8 +914,8 @@ export class App {
     const tip = document.createElement('div');
     tip.className = 'forms-tip';
     tip.innerHTML = P.ask ? '<kbd>Enter</kbd> apply <kbd>Esc</kbd> back'
-      : P.sticky ? '<kbd>←</kbd><kbd>→</kbd> tabs <kbd>↑</kbd><kbd>↓</kbd> browse <kbd>Enter</kbd> apply. Every key works from any tab. <kbd>f</kbd> closes'
-      : 'keep holding <kbd>f</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> and release';
+      : P.moved ? '<kbd>←</kbd><kbd>→</kbd> functions <kbd>↑</kbd> back to categories ' + (P.sticky ? '<kbd>Enter</kbd> apply <kbd>f</kbd> closes' : 'release <kbd>f</kbd> to apply')
+      : '<kbd>←</kbd><kbd>→</kbd> categories <kbd>↓</kbd> open one. Or press a function\'s key directly';
     host.append(tip);
     host.hidden = false;
     this.place(host);
@@ -868,8 +943,7 @@ export class App {
     const P = this.pal;
     const w = FN_TABS[P.tab].items[P.i];
     const r = w.ask ? null : this.palResult(w);
-    const td = r && !isErr(r) ? tidy(r.eq) : null;
-    this.peek = r && !isErr(r) ? (td ? td.eq : r.eq) : null;
+    this.peek = r && !isErr(r) ? r.eq : null;
     this.renderMain({ quick: true });
   }
 
@@ -879,11 +953,13 @@ export class App {
     if (k === 'Escape') return this.closePal(true);
     if (e.repeat) return;
     const items = FN_TABS[P.tab].items;
-    const dt = k === 'ArrowRight' ? 1 : k === 'ArrowLeft' ? -1 : 0;
-    const di = k === 'ArrowDown' || k === 'Tab' ? 1 : k === 'ArrowUp' ? -1 : 0;
-    if (dt) { P.tab = (P.tab + dt + FN_TABS.length) % FN_TABS.length; P.i = 0; P.moved = true; sound.tick(1); this.renderPal(); return this.palPeek(); }
-    if (di) { P.i = P.moved ? (P.i + di + items.length) % items.length : 0; P.moved = true; sound.tick(2); this.renderPal(); return this.palPeek(); }
-    if (k === 'Enter') return P.moved ? this.choose(items[P.i]) : this.palInverse();
+    // arrows only: ← → pick a category, ↓ steps into it, ← → pick a function (live preview), ↑ steps back out
+    const dx = k === 'ArrowRight' || k === 'Tab' ? 1 : k === 'ArrowLeft' ? -1 : 0;
+    if (dx && !P.moved) { P.tab = (P.tab + dx + FN_TABS.length) % FN_TABS.length; sound.tick(1); return this.renderPal(); }
+    if (dx && P.moved) { P.i = (P.i + dx + items.length) % items.length; sound.tick(2); this.renderPal(); return this.palPeek(); }
+    if (k === 'ArrowDown' && !P.moved) { P.moved = true; P.i = 0; sound.tick(2); this.renderPal(); return this.palPeek(); }
+    if (k === 'ArrowUp' && P.moved) { P.moved = false; sound.tick(1); this.peek = null; this.renderMain({ quick: true }); return this.renderPal(); }
+    if (k === 'Enter') { if (P.moved) return this.choose(items[P.i]); P.moved = true; P.i = 0; this.renderPal(); return this.palPeek(); }
     if (k === 'i') return this.palInverse();
     if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
     const w = WRAPS.find(x => x.key === k);
@@ -931,8 +1007,7 @@ export class App {
     const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
     $('pal-note').textContent = isErr(r) ? r.error : 'Enter applies';
     $('pal-note').classList.toggle('bad', isErr(r) && !!$<HTMLInputElement>('pal-input').value.trim());
-    const td = !isErr(r) ? tidy(r.eq) : null;
-    this.peek = !isErr(r) ? (td ? td.eq : r.eq) : null;
+    this.peek = !isErr(r) ? r.eq : null;
     this.renderMain({ quick: true });
   }
 
@@ -958,8 +1033,8 @@ export class App {
     this.renderHints();
   }
 
-  /** apply, and after a beat tidy up what it made (3x − 3x, √(x²), ln(eˣ) …) */
-  applyTidy(r: MoveResult, pitch = 1) { this.apply(isErr(r) ? r : checked(this.eq, r), pitch, { tidy: true }); }
+  /** apply a move built outside applyMove (so not yet checked); leftovers are offered as a simplification */
+  applyTidy(r: MoveResult, pitch = 1) { this.apply(isErr(r) ? r : checked(this.eq, r), pitch); }
 
   /* ---------------- techniques ---------------- */
 
@@ -1049,13 +1124,17 @@ export class App {
         const r = this.opResult();
         if (isErr(r)) { this.refuse(r.error); return; }
         this.closeOp();
-        this.apply(r, 1.05, { tidy: true });
+        this.apply(r, 1.05);
       }
     });
     $('original').addEventListener('click', () => this.edit(false));
     $('trail').addEventListener('mousedown', e => e.stopPropagation());
     $('stage').addEventListener('mousedown', e => this.click(e));
     $('help-close').addEventListener('click', () => this.toggleHelp(false));
+    $('help-tour').addEventListener('click', () => { this.toggleHelp(false); this.tour.start(); });
+    $('manual-btn').addEventListener('click', () => this.toggleHelp(true));
+    $('tour-btn').addEventListener('click', () => this.tour.start());
+    document.querySelectorAll<HTMLElement>('.help-tabs button').forEach(b => b.addEventListener('click', () => this.helpTab(b.dataset.tab!)));
     $('sound').addEventListener('click', () => this.toggleSound());
     $('add-eq').addEventListener('click', () => this.edit(true));
     window.addEventListener('keydown', e => this.key(e));
@@ -1103,6 +1182,12 @@ export class App {
   }
 
   toggleHelp(show = $('help').hidden) { $('help').hidden = !show; }
+
+  helpTab(tab: string) {
+    document.querySelectorAll<HTMLElement>('.help-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    document.querySelectorAll<HTMLElement>('.help-pane').forEach(p => { p.hidden = p.dataset.pane !== tab; });
+    sound.tick(1);
+  }
   toggleSound() {
     const m = sound.toggle();
     $('sound').classList.toggle('off', m);
@@ -1112,7 +1197,12 @@ export class App {
 
   key(e: KeyboardEvent) {
     if (this.mode === 'write' || this.mode === 'op' || this.mode === 'fnask') return;
-    if (!$('help').hidden) { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); } return; }
+    if (!$('help').hidden) {
+      if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); this.helpTab(e.key === 'ArrowLeft' ? 'how' : 'keys'); }
+      if (e.key === 'g') { e.preventDefault(); this.toggleHelp(false); this.tour.start(); }
+      return;
+    }
     if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
     const k = e.key;
     const ctrl = e.ctrlKey || e.metaKey;
@@ -1138,6 +1228,7 @@ export class App {
     if (move) {
       handled();
       if (move.name === 'any') { const r = moveAny(this.eq, this.sel); return isErr(r) || !r.check ? this.apply(r, move.pitch) : this.applyTidy(r, move.pitch); }
+      if (move.name === 'simplify') return this.simplifyKey();
       return this.apply(applyMove(move.name, this.eq, this.sel), move.pitch);
     }
     switch (k) {
@@ -1163,6 +1254,7 @@ export class App {
       case 't': handled(); return this.toggleTheme();
       case '?': handled(); return this.toggleHelp();
       case 'M': handled(); return this.toggleSound();
+      case 'g': handled(); return this.tour.start();
       case '[': handled(); return this.graph.zoom(1.25);
       case ']': handled(); return this.graph.zoom(0.8);
     }
@@ -1220,7 +1312,23 @@ export class App {
 
   /* ---------------- persistence ---------------- */
 
+  /** start over with one equation (the tour uses this) */
+  loadFresh(src: string) {
+    this.slots = []; this.cur = 0; this.writing = 'new';
+    this.commit(src, true);
+    this.message = null; this.renderHints();
+  }
+
+  restoreSlots(slots: Slot[], cur: number) {
+    this.slots = slots; this.cur = cur;
+    this.setMode('solve');
+    this.stage.clear();
+    this.renderAll(null);
+    this.save();
+  }
+
   save() {
+    if (this.noSave) return;
     try { localStorage.setItem('algebrix.session', JSON.stringify({ v: 3, slots: this.slots, cur: this.cur })); } catch { /* storage blocked */ }
   }
 

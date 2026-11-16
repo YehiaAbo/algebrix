@@ -3,7 +3,7 @@ import { parseEquation, parseExpr } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { isErr, MoveOk, applyBothChecked } from '../src/engine/moves';
 import { Eq, Node, walk } from '../src/engine/ast';
-import { isolate, substitute, wrapBoth, peel, moveAny, tidy, splitAbs, splitCases } from '../src/engine/techniques';
+import { isolate, substitute, wrapBoth, peel, moveAny, tidy, splitAbs, splitCases, simplifySpot } from '../src/engine/techniques';
 import { evaluate } from '../src/engine/ast';
 
 const T = (e: Node) => toText(e);
@@ -79,6 +79,10 @@ describe('peel and wrap', () => {
     const r = ok(peel(parseEquation('x^2 = 9'), null));
     expect(T(tidy(r.eq)!.eq)).toBe('|x| = 3');
   });
+  it('undoing cancels on its own side and leaves the other side for you', () => {
+    expect(T(ok(peel(parseEquation('x^2 = 9'), null)).eq)).toBe('|x| = sqrt(9)');
+    expect(T(ok(peel(parseEquation('e^(2x) = 5'), null)).eq)).toBe('2x = ln(5)');
+  });
   it('splits |x| = 3', () => {
     const r = ok(splitAbs(parseEquation('|x - 1| = 3')));
     expect(T(r.a.eq)).toBe('x − 1 = 3');
@@ -130,3 +134,19 @@ describe('function menu', () => {
   it('arcsin needs |B| ≤ 1', () => expect(isErr(peel(parseEquation('sin(x) = 3'), null))).toBe(true));
   it('exact trig values', () => expect(T(tidy(parseEquation('y = sin(π/6) + cos(π/4)'))!.eq)).toBe('y = 1/2 + sqrt(2)/2'));
 });
+
+describe('simplify suggestions', () => {
+  it('points at the terms that cancel', () => {
+    const e = parseEquation('7y + 3x - 3x = 20 - 3x');
+    const s = simplifySpot(e)!;
+    expect(s.marks.map(id => T(walkFind(e, id)))).toEqual(['3x', '−3x']);
+    expect(T(s.move.eq)).toBe('7y = 20 − 3x');
+  });
+  it('nothing to suggest on a tidy equation', () => expect(simplifySpot(parseEquation('7y = 20 - 3x'))).toBeNull());
+  it('a small piece, not the whole side', () => {
+    const e = parseEquation('x^2 + 2·3x = sqrt(9)');
+    const s = simplifySpot(e)!;
+    expect(T(walkFind(e, s.node))).toBe('2·3x');
+  });
+});
+function walkFind(e: Eq, id: string): Node { let hit: Node | null = null; walk(e, n => { if (n.id === id) hit = n; }); return hit!; }

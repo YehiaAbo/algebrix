@@ -52,7 +52,7 @@ button { font: inherit; color: inherit; }
 
 .app {
   display: grid;
-  grid-template-columns: 216px minmax(0, 1fr) 340px;
+  grid-template-columns: 216px minmax(0, 1fr) 400px;
   height: 100%;
   gap: 10px;
   padding: 10px;
@@ -327,3 +327,49 @@ kbd.wide { padding: 0 7px; }
 .op-note.bad { color: var(--bad); }
 .eq-slot.bad .mini { opacity: .5; text-decoration: line-through; }
 .eq-slot .solved.no { font: 600 11px var(--ui-font); color: var(--bad); }
+
+/* a simplification on offer: dashed marks and a quiet prompt */
+.spots { position: absolute; inset: 0; pointer-events: none; }
+.spot { position: absolute; border: 1.5px dashed color-mix(in srgb, var(--copy) 75%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--copy) 7%, transparent); animation: spot-in .35s .25s var(--ease) backwards; }
+.spot-chip { position: absolute; transform: translateX(-50%); pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 4px; border: 0; border-radius: 7px; background: var(--desk); color: var(--muted); font-size: 12px; cursor: pointer; box-shadow: 0 0 0 1px var(--line), 0 4px 12px var(--shadow); animation: spot-in .35s .35s var(--ease) backwards; }
+.spot-chip:hover { color: var(--ink); }
+.spot-chip kbd { min-width: 17px; height: 17px; font-size: 10px; }
+@keyframes spot-in { from { opacity: 0; transform: translateY(3px); } }
+.spot-chip { animation-name: chip-in; }
+@keyframes chip-in { from { opacity: 0; transform: translate(-50%, 3px); } }
+body:not([data-mode="solve"]) .spots { display: none; }
+.pal-tabs.focus .pal-tab.on { background: var(--sel-fill); border-radius: 6px 6px 0 0; }
+.pal-tabs:not(.focus) .pal-tab.on { color: var(--muted); }
+#graph { cursor: grab; touch-action: none; }
+.graph-keys span { display: inline-flex; gap: 4px; align-items: center; }
+.graph-keys span + span::before { content: '·'; margin-right: 6px; color: var(--faint); }
+
+/* manual */
+.help-head { gap: 16px; }
+.help-tabs { display: flex; gap: 2px; background: var(--bg); border-radius: 8px; padding: 3px; }
+.help-tabs button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: background .15s, color .15s; }
+.help-tabs button.on { background: var(--desk); color: var(--ink); box-shadow: 0 1px 2px rgba(10, 20, 40, .12); }
+.help-spacer { flex: 1; }
+.help-head .help-tour { color: var(--ink); display: inline-flex; gap: 6px; align-items: center; }
+.help-pane[hidden] { display: none; }
+.how { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 28px; }
+.how h3 { color: var(--ink); margin-bottom: 6px; }
+.how p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.how kbd { font-size: 10.5px; }
+@media (max-width: 900px) { .how { grid-template-columns: 1fr; } }
+
+/* tour */
+.tour { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); background: var(--bg); border-radius: 12px; box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgba(10, 20, 40, .12); padding: 12px 16px 0; z-index: 4; overflow: hidden; }
+.tour[hidden] { display: none; }
+.tour-head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.tour-tag { font-weight: 600; color: var(--sel); letter-spacing: .02em; text-transform: uppercase; font-size: 10.5px; }
+.tour-count { flex: 1; }
+.tour-quit { border: 0; background: none; color: var(--faint); font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; }
+.tour-quit kbd { font-size: 10px; min-width: 16px; height: 16px; }
+.tour-text { margin: 6px 0 12px; font-size: 14px; line-height: 1.55; color: var(--ink); }
+.tour-text kbd { font-size: 11px; }
+.tour-text b { font-family: var(--math-font); font-size: 16px; font-weight: 500; }
+.tour-bar { height: 3px; margin: 0 -16px; background: var(--line); }
+.tour-bar i { display: block; height: 100%; width: 0; background: var(--sel); transition: width .4s var(--ease); }
+.tour.done { box-shadow: 0 0 0 1.5px var(--good), 0 10px 30px rgba(10, 20, 40, .12); transition: box-shadow .2s; }
+.tour.done .tour-tag::after { content: ' ✓'; color: var(--good); }

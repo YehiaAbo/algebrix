@@ -1,7 +1,7 @@
 // Bigger tools built from the small moves: apply a function to both sides, peel
 // the outer function off a side, move anything across "=", isolate a variable
 // in several steps, substitute one equation into another, split |X| = B.
-import { Node, Eq, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace } from './ast';
+import { Node, Eq, find, children, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace } from './ast';
 import { negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
 import { simplify, newHints } from './simplify';
 import { expandAll, hasExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
@@ -175,7 +175,11 @@ export function peel(e: Eq, sel: string | null): MoveResult {
   if (side.k === 'fn' && (side.name === 'sin' || side.name === 'cos' || side.name === 'tan')) return peelTrig(e, s);
   const inv = inverseOf(side);
   if (!inv) return { error: `Nothing to undo on ${t(side)}. This works on powers, roots, exponentials, logs and trig.` };
-  return wrapBoth(e, inv.f, inv.arg);
+  const r = wrapBoth(e, inv.f, inv.arg);
+  if (isErr(r)) return r;
+  // undoing means the function cancels on its own side; the other side is left for you to simplify
+  const h = newHints();
+  return { ...r, eq: s === 'lhs' ? eq(simplify(r.eq.lhs, h), r.eq.rhs) : eq(r.eq.lhs, simplify(r.eq.rhs, h)) };
 }
 
 /** "Move it across": the engine picks the inverse operation from what is aimed. */
@@ -445,4 +449,31 @@ export function splitAbs(e: Eq): { a: MoveOk; b: Eq } | { error: string } {
   const c = splitCases(e);
   if (!c) return { error: 'Split needs |something| = b, or a product = 0.' };
   return { a: c.first, b: c.rest[0] };
+}
+
+/* ---------- a possible simplification, offered instead of done automatically ---------- */
+
+export interface Spot { node: string; marks: string[]; move: MoveOk }
+
+/** The smallest piece that would simplify, the parts that would change, and the move that does it. */
+export function simplifySpot(e: Eq): Spot | null {
+  let hit: { n: Node; r: Node; h: ReturnType<typeof newHints> } | null = null;
+  const visit = (n: Node) => {
+    for (const c of children(n)) { visit(c); if (hit) return; }
+    if (hit || n.k === 'eq') return;
+    const h = newHints();
+    const r = simplify(n, h);
+    if (key(r) !== key(n)) hit = { n, r, h };
+  };
+  visit(e);
+  if (!hit) return null;
+  const { n, r, h } = hit as { n: Node; r: Node; h: ReturnType<typeof newHints> };
+  const move = checked(e, { eq: replace(e, n.id, r), label: 'simplify', hints: h, factor: one, select: null });
+  if (isErr(move)) return null;
+  const left = new Set(allIds(move.eq));
+  const marks: string[] = [];
+  const gone = (m: Node) => { if (!left.has(m.id)) { marks.push(m.id); return; } children(m).forEach(gone); };
+  children(n).forEach(gone);
+  for (const [from, to] of h.absorbs) if (left.has(to) && marks.includes(from) && !marks.includes(to) && find(e, to)) marks.push(to);
+  return { node: n.id, marks: marks.length ? marks : [n.id], move };
 }

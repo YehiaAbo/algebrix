@@ -182,6 +182,11 @@ export class Stage {
     a.onfinish = () => { ghost.remove(); this.ghosts.delete(ghost); };
   }
 
+  /** the drawn elements belonging to a node (all of them when id is null) */
+  elements(id: string | null): Element[] {
+    return [...this.entries.values()].filter(e => !id || e.g.owners.includes(id)).map(e => e.el);
+  }
+
   clear() {
     for (const e of this.entries.values()) e.el.remove();
     for (const g of this.ghosts) g.remove();
