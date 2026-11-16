@@ -1,6 +1,6 @@
 // Node-level rewrites shared by single moves and the forms strip:
 // distribute, expand, factor, combine fractions, tidy order.
-import { Node, Add, Frac, num, add, mul, frac, pow, cloneFresh, children, replace, symbols, key, newId } from './ast';
+import { Node, Add, Frac, num, add, mul, frac, pow, cloneFresh, children, replace, symbols, key, newId, evaluate } from './ast';
 import { negate, isNeg, coefOf, termInfo, buildTerm, gcd, rat, rdiv, Rat } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { parseExpr } from './parse';
@@ -23,7 +23,7 @@ export function distributeNode(n: Node, h: Hints): Node | null {
       const innerNum = bodyFs.find(f => f.k === 'num') as NumN | undefined;
       let fs: Node[] = [...outs, ...bodyFs];
       if (outerNums.length && innerNum) {
-        const v = [...outerNums, innerNum].reduce((p, x) => p * x.v, 1);
+        const v = [...outerNums, ...bodyFs.filter(f => f.k === 'num') as NumN[]].reduce((p, x) => p * x.v, 1);
         outerNums.forEach(x => (j === 0 ? h.absorbs.set(x.id, innerNum.id) : h.flights.push({ from: x.from!, to: innerNum.id })));
         fs = [num(v, innerNum.id), ...fs.filter(f => f.k !== 'num')];
       } else if (innerNum) {
@@ -48,16 +48,19 @@ export function factorCommon(n: Add, h: Hints): Node | null {
   const infos = n.terms.map(termInfo);
   let g = infos.every(i => i.coef.q === 1) ? infos.reduce((a, i) => gcd(a, i.coef.p), 0) : 1;
   if (isNeg(n.terms[0]) && g > 0) g = -g;
-  const powerOf = (mono: Node[], name: string) => mono.reduce((s, f) =>
-    s + (f.k === 'sym' && f.name === name ? 1 : f.k === 'pow' && f.base.k === 'sym' && f.base.name === name && f.exp.k === 'num' ? f.exp.v : 0), 0);
-  const common: { name: string; p: number }[] = [];
-  for (const name of symbols(n)) {
+  // a factor is base^power; bases are compared by shape, so sin(x) or (x + 1) count like x does
+  const split = (f: Node): { base: Node; p: number } =>
+    f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? { base: f.base, p: f.exp.v } : { base: f, p: 1 };
+  const powerOf = (mono: Node[], name: string) => mono.reduce((s, f) => { const b = split(f); return s + (key(b.base) === name ? b.p : 0); }, 0);
+  const common: { name: string; p: number; base: Node }[] = [];
+  const names = [...new Set([...symbols(n), ...infos[0].mono.map(f => key(split(f).base))])];
+  for (const name of names) {
     const p = Math.min(...infos.map(i => powerOf(i.mono, name)));
-    if (p > 0) common.push({ name, p });
+    const src = infos[0].mono.find(f => key(split(f).base) === name);
+    if (p > 0 && src) common.push({ name, p, base: split(src).base });
   }
   if ((g === 1 || g === 0) && common.length === 0) return null;
   const first = n.terms[0];
-  const firstMono = infos[0].mono;
   const outer: Node[] = [];
   if (g !== 1 && g !== 0) {
     const c = coefOf(first) ?? (first.k === 'num' ? first : null);
@@ -65,20 +68,20 @@ export function factorCommon(n: Add, h: Hints): Node | null {
     outer.push(o);
   }
   for (const c of common) {
-    const src = firstMono.find(f => (f.k === 'sym' && f.name === c.name) || (f.k === 'pow' && f.base.k === 'sym' && f.base.name === c.name));
-    const base = src ? cloneFresh(src.k === 'pow' ? src.base : src) : { k: 'sym' as const, id: newId(), name: c.name };
+    const base = cloneFresh(c.base);
     outer.push(c.p === 1 ? base : pow(base, num(c.p)));
   }
   const inner = n.terms.map((term, i) => {
     const mono: Node[] = [];
     const left = new Map(common.map(c => [c.name, c.p]));
     for (const f of infos[i].mono) {
-      const name = f.k === 'sym' ? f.name : f.k === 'pow' && f.base.k === 'sym' && f.exp.k === 'num' ? f.base.name : null;
-      const have = name ? (f.k === 'sym' ? 1 : ((f as Extract<Node, { k: 'pow' }>).exp as NumN).v) : 0;
-      const take = name ? Math.min(left.get(name) ?? 0, have) : 0;
-      if (name && take) left.set(name, (left.get(name) ?? 0) - take);
+      const b = split(f);
+      const name = key(b.base);
+      const have = b.p;
+      const take = Math.min(left.get(name) ?? 0, have);
+      if (take) left.set(name, (left.get(name) ?? 0) - take);
       const remain = have - take;
-      if (!name || take === 0) mono.push(f);
+      if (take === 0) mono.push(f);
       else if (remain === 0) h.absorbs.set(f.id, outer[outer.length - 1]?.id ?? n.id);
       else if (remain === 1) mono.push(f.k === 'pow' ? f.base : f);
       else { const pw = f as Extract<Node, { k: 'pow' }>; mono.push(pow(pw.base, num(remain, pw.exp.id), pw.id)); }
@@ -143,6 +146,20 @@ function factorQuadratic(n: Node): Node | null {
   return parseExpr(text);
 }
 
+/** the k-th root of a term, if it is a perfect k-th power: 8x⁶ → 2x², k = 2 or 3 */
+function rootTerm(i: ReturnType<typeof termInfo>, k: number): Node | null {
+  const ir = (n: number) => (k === 2 ? isqrt(n) : (r => (r ** 3 === n ? r : -1))(Math.round(Math.cbrt(n))));
+  const p = ir(Math.abs(i.coef.p)), q = ir(i.coef.q);
+  if (p < 0 || q < 0) return null;
+  const mono: Node[] = [];
+  for (const f of i.mono) {
+    if (f.k !== 'pow' || f.exp.k !== 'num' || f.exp.v % k !== 0) return null;
+    const e = f.exp.v / k;
+    mono.push(e === 1 ? cloneFresh(f.base) : pow(cloneFresh(f.base), num(e)));
+  }
+  return buildTerm(rat(p, q), mono, num(1));
+}
+
 /** u² − v² → (u − v)(u + v) */
 function diffSquares(n: Node): Node | null {
   const s = simplify(n, newHints());
@@ -150,21 +167,54 @@ function diffSquares(n: Node): Node | null {
   const infos = s.terms.map(termInfo);
   const posI = infos.findIndex(i => i.coef.p > 0), negI = infos.findIndex(i => i.coef.p < 0);
   if (posI < 0 || negI < 0) return null;
-  const half = (i: ReturnType<typeof termInfo>): Node | null => {
-    const p = isqrt(Math.abs(i.coef.p)), q = isqrt(i.coef.q);
-    if (p < 0 || q < 0) return null;
-    const mono: Node[] = [];
-    for (const f of i.mono) {
-      if (f.k !== 'pow' || f.exp.k !== 'num' || f.exp.v % 2 !== 0) return null;
-      const e = f.exp.v / 2;
-      mono.push(e === 1 ? cloneFresh(f.base) : pow(cloneFresh(f.base), num(e)));
-    }
-    return buildTerm(rat(p, q), mono, num(1));
-  };
-  const u = half(infos[posI]), w = half(infos[negI]);
+  const u = rootTerm(infos[posI], 2), w = rootTerm(infos[negI], 2);
   if (!u || !w) return null;
   return mul([add([u, negate(w)]), add([cloneFresh(u), cloneFresh(w)])]);
 }
+
+/** u³ + v³ → (u + v)(u² − uv + v²), u³ − v³ → (u − v)(u² + uv + v²) */
+function sumCubes(n: Node): Node | null {
+  const s = simplify(n, newHints());
+  if (s.k !== 'add' || s.terms.length !== 2) return null;
+  const infos = s.terms.map(termInfo);
+  if (infos[0].coef.p < 0) return null; // keep a leading minus for the common-factor step
+  const u = rootTerm(infos[0], 3);
+  const minus = infos[1].coef.p < 0;
+  const w = rootTerm({ ...infos[1], coef: rat(Math.abs(infos[1].coef.p), infos[1].coef.q) }, 3);
+  if (!u || !w || (u.k === 'num' && w.k === 'num')) return null;
+  const h = newHints();
+  const sq = (x: Node) => {
+    const i = termInfo(x);
+    return buildTerm(rat(i.coef.p ** 2, i.coef.q ** 2), i.mono.map(f => (f.k === 'pow' && f.exp.k === 'num' ? pow(cloneFresh(f.base), num(f.exp.v * 2)) : pow(cloneFresh(f), num(2)))), num(1));
+  };
+  const uw = simplify(mul([cloneFresh(u), cloneFresh(w)]), h);
+  return mul([add([u, minus ? negate(w) : w]), add([sq(u), minus ? uw : negate(uw), sq(w)])]);
+}
+
+/** u² ± 2uv + v² → (u ± v)², for any two square terms */
+function perfectSquare(n: Node): Node | null {
+  const s = simplify(n, newHints());
+  if (s.k !== 'add' || s.terms.length !== 3) return null;
+  const infos = s.terms.map(termInfo);
+  const vars = symbols(s);
+  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
+    if (infos[i].coef.p < 0 || infos[j].coef.p < 0) continue;
+    const u = rootTerm(infos[i], 2), w = rootTerm(infos[j], 2);
+    if (!u || !w) continue;
+    for (const sign of [1, -1]) {
+      const cand = pow(add([u, sign > 0 ? w : negate(w)]), num(2));
+      const same = [0.37, 1.3, -2.1].every(x => {
+        const env = Object.fromEntries(vars.map((v, k) => [v, x + k * 0.71]));
+        const a = evaluate(cand, env), b = evaluate(s, env);
+        return Math.abs(a - b) <= 1e-9 * (1 + Math.abs(b));
+      });
+      if (same) return cand;
+    }
+  }
+  return null;
+}
+
+let depth = 0;
 
 /** Factor as far as whole numbers allow. Null if nothing factors. */
 export function factorize(n: Node, h: Hints): Node | null {
@@ -182,10 +232,15 @@ export function factorize(n: Node, h: Hints): Node | null {
   const common = factorCommon(n, h);
   const outer = common && common.k === 'mul' ? common.factors.slice(0, -1) : [];
   const base = common && common.k === 'mul' ? common.factors[common.factors.length - 1] : n;
-  const deeper = factorQuadratic(base) ?? diffSquares(base);
+  const deeper = factorQuadratic(base) ?? diffSquares(base) ?? sumCubes(base) ?? perfectSquare(base);
   if (!common && !deeper) return null;
   const parts = [...outer, ...(deeper ? (deeper.k === 'mul' ? deeper.factors : [deeper]) : [base])];
-  return parts.length === 1 ? parts[0] : mul(parts, common?.id ?? newId());
+  if (parts.length === 1) return parts[0];
+  const out = mul(parts, common?.id ?? newId());
+  if (!deeper || depth > 4) return out;
+  // keep going: x⁴ − 16 → (x² − 4)(x² + 4) → (x − 2)(x + 2)(x² + 4)
+  depth++;
+  try { return factorize(out, h) ?? out; } finally { depth--; }
 }
 
 function findExpandable(n: Node): Node | null {

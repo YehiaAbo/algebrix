@@ -1,43 +1,44 @@
 // Equivalent forms of the aimed expression (or the whole equation), for the
 // forms strip. Every candidate goes through the same numeric check as a move.
-import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env } from './ast';
+import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath } from './ast';
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, factorize, combineFractions, standardOrder, hasExpandable } from './rewrite';
 import { verify, MoveOk, relAfter } from './moves';
 import { gcd } from './terms';
-import { longDivide, partialFractions, rationalize, trigForms } from './polytools';
+import { longDivide, partialFractions, rationalize, trigForms, completeSquare } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
 
 const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
   'factored': 'f', 'split into terms': 't', 'highest power first': 'o', 'log rules': 'l', 'as powers': 'p', 'as roots': 'r',
-  'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n',
+  'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
 };
 
 const one = () => 1;
 
 export function formsFor(e: Eq, sel: string | null): Form[] {
   const out: Form[] = [];
-  const seen = new Set<string>([key(e)]);
+  const sides = (q: Eq) => key(q.lhs) + '|' + key(q.rhs);
+  const seen = new Set<string>([sides(e)]);
   const push = (name: string, next: Eq, h: Hints, factor: (env: Env) => number = one, select: string | null = sel) => {
-    if (seen.has(key(next))) return;
+    if (seen.has(sides(next))) return;
     const f: Form = { name, chord: CHORDS[name] ?? (name.startsWith('clear') ? 'd' : ''), eq: next, label: name, hints: h, factor, select: select && find(next, select) ? select : null };
     if (verify(e, f)) return;
     const rel = relAfter(e, f);
     if (typeof rel !== 'string') return;
     f.eq = eq(f.eq.lhs, f.eq.rhs, rel);
-    seen.add(key(next));
+    seen.add(sides(next));
     out.push(f);
   };
 
   const target = sel && sel !== 'eq' ? find(e, sel) : null;
   if (!target) {
     let h = newHints();
-    push('everything on one side', eq(simplify(expandAll(add([e.lhs, negate(e.rhs)]), h), h), num(0)), h, one, null);
+    if (relOf(e) !== 'expr') push('everything on one side', eq(simplify(expandAll(add([e.lhs, negate(e.rhs)]), h), h), num(0)), h, one, null);
     const L = denominatorLcm(e);
-    if (L > 1) {
+    if (L > 1 && relOf(e) !== 'expr') {
       h = newHints();
       const clear = (s: Node) => simplify(expandAll(mul([num(L), s]), h), h);
       push(`clear fractions (× ${L})`, eq(clear(e.lhs), clear(e.rhs)), h, () => L, null);
@@ -46,11 +47,21 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     const fl = factorize(e.lhs, h), fr = factorize(e.rhs, h);
     if (fl || fr) push('factored', eq(fl ?? e.lhs, fr ?? e.rhs), h, one, null);
     h = newHints();
-    push('expanded', eq(expandAll(e.lhs, h), expandAll(e.rhs, h)), h, one, null);
+    const cl = combineFractions(e.lhs, h), cr = relOf(e) === 'expr' ? null : combineFractions(e.rhs, h);
+    if (cl || cr) push('one fraction', eq(cl ?? e.lhs, cr ?? e.rhs), h, one, null);
+    const sl = completeSquare(e.lhs), sr = relOf(e) === 'expr' ? null : completeSquare(e.rhs);
+    if (sl || sr) push('completed square', eq(sl ?? e.lhs, sr ?? e.rhs), newHints(), one, null);
+    h = newHints();
+    // with nothing to multiply out, "expanded" is really a full simplify (the quadratic formula's answer)
+    push(hasExpandable(e) ? 'expanded' : 'simplified', eq(expandAll(e.lhs, h), expandAll(e.rhs, h)), h, one, null);
     h = newHints();
     push('simplified', eq(simplify(e.lhs, h), simplify(e.rhs, h)), h, one, null);
     h = newHints();
-    push('sides swapped', eq(e.rhs, e.lhs), h, () => -1, null);
+    if (relOf(e) !== 'expr') push('sides swapped', eq(e.rhs, e.lhs), h, () => -1, null);
+    const ll = logRules(e.lhs), lr = relOf(e) === 'expr' ? null : logRules(e.rhs);
+    if (ll || lr) push('log rules', eq(ll ?? e.lhs, lr ?? e.rhs), newHints(), one, null);
+    // identities on a whole side, so sin²x + cos²x needs no aiming
+    for (const side of ['lhs', 'rhs'] as const) for (const f of trigForms(e[side])) push(`trig: ${f.name}`, side === 'lhs' ? eq(f.node, e.rhs) : eq(e.lhs, f.node), newHints(), one, null);
     return out;
   }
 
@@ -61,6 +72,18 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   };
   at('one fraction', h => combineFractions(target, h));
   at('factored', h => factorize(target, h));
+  if (!out.some(f => f.name === 'factored')) {
+    // aimed at a piece of a sum: offer factoring the nearest sum around it that factors
+    const path = findPath(e, target.id) ?? [];
+    for (let i = path.length - 2; i >= 0; i--) {
+      const n = path[i];
+      if (n.k !== 'add' && n.k !== 'mul') continue;
+      const h = newHints();
+      const r = factorize(n, h);
+      if (r) { push('factored', replace(e, n.id, r), h, one, r.id); break; }
+    }
+  }
+  at('completed square', () => completeSquare(target));
   at('expanded', h => (hasExpandable(target) ? expandAll(target, h) : null));
   at('split into terms', h => {
     const s = target.k === 'frac' ? distributeNode(target, h) : null;

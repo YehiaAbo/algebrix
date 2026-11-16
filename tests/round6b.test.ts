@@ -46,3 +46,38 @@ describe('subscript variables', () => {
     expect(toText(e)).toBe('v_0 + a_n t = x_max − 2x_1');
   });
 });
+
+describe('factoring without a precise aim', () => {
+  it('factors an expression with nothing aimed', async () => {
+    const { applyMove } = await import('../src/engine/moves');
+    const e = parseEquation('x^2 - 5x + 6', true);
+    expect(toText((applyMove('factor', e, null) as MoveOk).eq)).toBe('(x − 2)(x − 3)');
+    expect(toText((applyMove('factor', e, 'eq') as MoveOk).eq)).toBe('(x − 2)(x − 3)');
+  });
+  it('factors the side that factors when the whole equation is aimed', async () => {
+    const { applyMove } = await import('../src/engine/moves');
+    const e = parseEquation('0 = x^2 - 9');
+    expect(toText((applyMove('factor', e, 'eq') as MoveOk).eq)).toBe('0 = (x − 3)(x + 3)');
+  });
+  it('aiming inside a sum factors the sum around it', async () => {
+    const { applyMove } = await import('../src/engine/moves');
+    const e = parseEquation('3x^2 + 6x = 0');
+    let xid = ''; walk(e, (n: Node) => { if (!xid && n.k === 'sym') xid = n.id; });
+    expect(toText((applyMove('factor', e, xid) as MoveOk).eq)).toBe('3x(x + 2) = 0');
+  });
+  it('an expression is not offered "everything on one side"', () => {
+    expect(formsFor(parseEquation('2x + 4', true), null).map(f => f.name)).not.toContain('everything on one side');
+  });
+});
+
+describe('distribute keeps every number in a term', () => {
+  it('(−1)·(a + 3·(−1)·x) keeps both minus signs', async () => {
+    const { distributeNode } = await import('../src/engine/rewrite');
+    const { newHints } = await import('../src/engine/simplify');
+    const { num, sym, add, mul, evaluate } = await import('../src/engine/ast');
+    const n = mul([num(-1), add([sym('a'), mul([num(3), num(-1), sym('x')])])]);
+    const out = distributeNode(n, newHints())!;
+    const env = { a: 2, x: 1.3 };
+    expect(evaluate(out, env)).toBeCloseTo(evaluate(n, env));
+  });
+});

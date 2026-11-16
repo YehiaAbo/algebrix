@@ -8,7 +8,7 @@ import { toText } from '../engine/print';
 import { applyMove, applyBothChecked, checked, direction, isErr, MoveName, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { absOf, coefOf, negate } from '../engine/terms';
 import { formsFor, Form } from '../engine/forms';
-import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, isolate, substitute, splitCases, simplifySpot, Spot, eliminate, tidy } from '../engine/techniques';
+import { moveAny, peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, isolate, substitute, splitCases, simplifySpot, Spot, eliminate, tidy, quadraticFormula, Cases } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
 import { evaluate } from '../engine/ast';
 import { layout, Rect } from '../render/layout';
@@ -768,6 +768,12 @@ export class App {
 
   /** e: solve. Aimed at a variable (or only one variable): straight to the answer; otherwise pick one */
   solveKey() {
+    if (relOf(this.eq) === 'expr') {
+      // nothing to solve in a lone expression: e tidies it as far as it goes instead
+      const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');
+      if (f) { this.flush(); return this.apply(f, 1.15); }
+      return this.refuse('An expression has nothing to solve, and this one is already tidy. Tab shows its other forms.');
+    }
     const vars = symbols(this.eq);
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     const v = aimed?.k === 'sym' && vars.includes(aimed.name) ? aimed.name : vars.length === 1 ? vars[0] : null;
@@ -1060,11 +1066,14 @@ export class App {
     const aimed = this.sel && this.sel !== 'eq' ? find(eq, this.sel) : null;
     const vars = symbols(eq);
     const aimVar = aimed?.k === 'sym' && vars.includes(aimed.name) ? aimed.name : vars.length === 1 ? vars[0] : null;
-    const out: Tech[] = [{
+    const out: Tech[] = relOf(eq) === 'expr' ? [] : [{
       key: 'i', label: aimVar ? `solve for ${aimVar}` : 'solve for…', ok: vars.length > 0,
       run: () => (aimVar ? this.solveFor(aimVar) : this.askVar()),
     }];
     out.push({ key: 'a', label: 'split into cases', ok: !!splitCases(eq), run: () => this.split() });
+    const qv = aimVar ?? vars.find(v => !isErr(quadraticFormula(eq, v) as never));
+    const q = qv ? quadraticFormula(eq, qv) : null;
+    if (q && !('error' in q)) out.push({ key: 'g', label: `quadratic formula for ${qv}`, ok: true, run: () => this.split(undefined, q) });
     const hasCall = (() => { let c = false; walk(eq, n => { if (n.k === 'call' && DEFS.has(n.name)) c = true; }); return c; })();
     if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
     if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
@@ -1137,7 +1146,7 @@ export class App {
     const form = h.forms.find(f => f.chord === k);
     if (form) { h.i = h.forms.indexOf(form); return this.applyForm(); }
     if (k === 'f') { this.closeHub(false); return this.apply(applyMove('factor', this.eq, this.sel), 0.85); }
-    const known = 'zdxswctolpr';
+    const known = 'zdxswctolprhqvn';
     if (known.includes(k)) return this.refuse('That form doesn\'t apply to what is aimed.');
   }
 
@@ -1417,8 +1426,8 @@ export class App {
   }
 
   /** split this equation into cases; the others become new equations. With v, solve every case too. */
-  split(v?: string) {
-    const c = splitCases(this.eq, v);
+  split(v?: string, cases?: Cases) {
+    const c = cases ?? splitCases(this.eq, v);
     if (!c) { this.refuse('Splitting needs |something| = b, or a product = 0.'); return; }
     if (this.slots.length + c.rest.length > 9) { this.refuse('Nine equations is the limit for now.'); return; }
     const origin = this.slot!.origin ?? this.steps[0].eq;
@@ -1437,7 +1446,8 @@ export class App {
     this.renderRail();
     this.save();
     const nums = c.rest.map((_, j) => at + 2 + j).join(' and ');
-    this.say(`${c.why[0].toUpperCase()}${c.why.slice(1)}: the ${c.rest.length > 1 ? 'others are' : 'other is'} equation ${nums}.`);
+    if (!c.rest.length) this.say('One repeated root, so there is only one case.');
+    else this.say(`${c.why[0].toUpperCase()}${c.why.slice(1)}: the ${c.rest.length > 1 ? 'others are' : 'other is'} equation ${nums}.`);
     if (v) this.later(ms(450), () => this.solveFor(v));
   }
 

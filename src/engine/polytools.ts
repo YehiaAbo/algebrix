@@ -147,12 +147,35 @@ export function rationalize(n: Node): Node | null {
 
 /* ---------- trig identities ---------- */
 
+/** a v² + b v + c → a(v + b/2a)² + (c − b²/4a) */
+export function completeSquare(n: Node): Node | null {
+  const P = poly(n);
+  if (!P || !P.v || P.c.length !== 3 || isZero(P.c[1])) return null;
+  const [c, b, a] = P.c;
+  const shift = rdiv(b, rmul(rat(2), a));
+  const k = radd(c, rmul(rat(-1), rdiv(rmul(b, b), rmul(rat(4), a))));
+  const r = (x: Rat) => (x.q === 1 ? String(Math.abs(x.p)) : `${Math.abs(x.p)}/${x.q}`);
+  const lead = a.p === a.q ? '' : a.p === -a.q ? '-' : a.q === 1 ? String(a.p) : `(${a.p}/${a.q})`;
+  let text = `${lead}(${P.v} ${shift.p < 0 ? '-' : '+'} ${r(shift)})^2`;
+  if (!isZero(k)) text += ` ${k.p < 0 ? '-' : '+'} ${r(k)}`;
+  return parseExpr(text);
+}
+
 export interface TrigForm { name: string; node: Node }
 type TrigFn = 'sin' | 'cos' | 'tan';
 const isF = (n: Node, name: TrigFn): n is Extract<Node, { k: 'fn' }> => n.k === 'fn' && n.name === name;
 const sq = (n: Node, name: TrigFn) => n.k === 'pow' && n.exp.k === 'num' && n.exp.v === 2 && isF(n.base, name) ? n.base.arg : null;
 const F = (name: TrigFn, u: Node) => fn(name, cloneFresh(u));
 const F2 = (name: TrigFn, u: Node) => pow(F(name, u), num(2));
+/** the u in −u (a minus sign or a negative coefficient), or null */
+function minusOf(a: Node): Node | null {
+  if (a.k === 'neg') return a.arg;
+  const c = coefOf(a);
+  if (a.k === 'mul' && c && c.v < 0) return c.v === -1 && a.factors.length === 2 ? a.factors[1] : mul([num(-c.v), ...a.factors.slice(1).map(cloneFresh)]);
+  if (a.k === 'num' && a.v < 0) return num(-a.v);
+  return null;
+}
+
 /** the u in 2u, or null */
 function half(a: Node): Node | null {
   const c = coefOf(a);
@@ -171,7 +194,9 @@ export function trigForms(n: Node): TrigForm[] {
     if (u) offer('double angle', mul([num(2), F('sin', u), F('cos', u)]));
     if (n.arg.k === 'add' && n.arg.terms.length === 2) {
       const [a, b] = n.arg.terms;
-      offer('angle sum', add([mul([F('sin', a), F('cos', b)]), mul([F('cos', a), F('sin', b)])]));
+      const d = minusOf(b);
+      if (d) offer('angle difference', add([mul([F('sin', a), F('cos', d)]), negate(mul([F('cos', a), F('sin', d)]))]));
+      else offer('angle sum', add([mul([F('sin', a), F('cos', b)]), mul([F('cos', a), F('sin', b)])]));
     }
   }
   if (isF(n, 'cos')) {
@@ -183,12 +208,26 @@ export function trigForms(n: Node): TrigForm[] {
     }
     if (n.arg.k === 'add' && n.arg.terms.length === 2) {
       const [a, b] = n.arg.terms;
-      offer('angle sum', add([mul([F('cos', a), F('cos', b)]), negate(mul([F('sin', a), F('sin', b)]))]));
+      const d = minusOf(b);
+      if (d) offer('angle difference', add([mul([F('cos', a), F('cos', d)]), mul([F('sin', a), F('sin', d)])]));
+      else offer('angle sum', add([mul([F('cos', a), F('cos', b)]), negate(mul([F('sin', a), F('sin', b)]))]));
     }
+  }
+  // even and odd: cos(−u) = cos u, sin(−u) = −sin u, tan(−u) = −tan u
+  if (n.k === 'fn' && (n.name === 'sin' || n.name === 'cos' || n.name === 'tan')) {
+    const u = minusOf(n.arg);
+    if (u) offer('even/odd', n.name === 'cos' ? F('cos', u) : negate(F(n.name, u)));
+  }
+  if (isF(n, 'tan')) {
+    const u = half(n.arg);
+    if (u) offer('double angle', frac(mul([num(2), F('tan', u)]), add([num(1), negate(F2('tan', u))])));
   }
   const s2 = sq(n, 'sin'), c2 = sq(n, 'cos');
   if (s2) offer('Pythagorean', add([num(1), negate(F2('cos', s2))]));
   if (c2) offer('Pythagorean', add([num(1), negate(F2('sin', c2))]));
+  const twice = (u: Node) => (u.k === 'mul' && u.factors[0].k === 'num' ? mul([num(2 * u.factors[0].v), ...u.factors.slice(1).map(cloneFresh)]) : mul([num(2), cloneFresh(u)]));
+  if (s2) offer('power reduction', frac(add([num(1), negate(fn('cos', twice(s2)))]), num(2)));
+  if (c2) offer('power reduction', frac(add([num(1), fn('cos', twice(c2))]), num(2)));
   if (n.k === 'mul' && n.factors.length === 3 && n.factors[0].k === 'num' && n.factors[0].v === 2 && isF(n.factors[1], 'sin') && isF(n.factors[2], 'cos') && key(n.factors[1].arg) === key(n.factors[2].arg)) {
     offer('double angle', fn('sin', mul([num(2), cloneFresh(n.factors[1].arg)])));
   }

@@ -495,7 +495,10 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .stage { cursor: crosshair; }
 
 /* tour menu */
-.tours-list { display: grid; gap: 4px; }
+.tours-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; max-height: min(68vh, 640px); overflow-y: auto; }
+.tour-group { grid-column: 1 / -1; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 10px 12px 2px; }
+.tour-group:first-child { padding-top: 0; }
+@media (max-width: 720px) { .tours-list { grid-template-columns: minmax(0, 1fr); } }
 .tour-pick { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 12px; align-items: center; text-align: left; border: 0; background: transparent; padding: 10px 12px; border-radius: 10px; cursor: pointer; color: var(--ink); }
 .tour-pick kbd { grid-row: span 2; }
 .tour-pick .tp-name { font-weight: 600; font-size: 14px; }
@@ -599,3 +602,4 @@ body[data-mode="write"] .input-keys { display: flex; }
 .input-keys button small { font: 10.5px var(--ui-font); color: var(--faint); margin-left: 4px; }
 
 .vars .var sub { font-size: .65em; font-style: normal; }
+#tours .panel-card { width: min(860px, calc(100% - 32px)); }

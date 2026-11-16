@@ -161,12 +161,24 @@ function simplifyMove(e: Eq, sel: string | null): MoveResult {
 
 /* ---------- factor: as far as it goes (common factor, quadratics, difference of squares) ---------- */
 function factorMove(e: Eq, sel: string | null): MoveResult {
-  const n = sel && sel !== 'eq' ? find(e, sel) : null;
-  if (!n || (n.k !== 'add' && n.k !== 'mul')) return { error: 'Aim at a sum to factor it, like x² + 5x + 6.' };
-  const h = newHints();
-  const out = factorize(n, h);
-  if (!out) return { error: `${t(n)} doesn't factor over whole numbers.` };
-  return { eq: replace(e, n.id, out), label: `factor`, hints: h, factor: one, select: out.id };
+  // nothing aimed (or the whole equation): factor each side that factors
+  if (!sel || sel === 'eq') {
+    const h = newHints();
+    const fl = factorize(e.lhs, h), fr = relOf(e) === 'expr' ? null : factorize(e.rhs, h);
+    if (!fl && !fr) return { error: 'Nothing here factors over whole numbers. Aim at a sum, like x² + 5x + 6.' };
+    return { eq: eq(fl ?? e.lhs, fr ?? e.rhs, e.rel), label: 'factor', hints: h, factor: one, select: null };
+  }
+  // aimed inside a sum: climb to the nearest sum or product that factors
+  const path = findPath(e, sel) ?? [];
+  for (let i = path.length - 1; i >= 0; i--) {
+    const n = path[i];
+    if (n.k !== 'add' && n.k !== 'mul') continue;
+    const h = newHints();
+    const out = factorize(n, h);
+    if (out) return { eq: replace(e, n.id, out), label: `factor`, hints: h, factor: one, select: out.id };
+  }
+  const n = find(e, sel);
+  return { error: n && (n.k === 'add' || n.k === 'mul') ? `${t(n)} doesn't factor over whole numbers.` : 'Aim at a sum to factor it, like x² + 5x + 6.' };
 }
 
 /* ---------- reorder inside a sum or product ---------- */

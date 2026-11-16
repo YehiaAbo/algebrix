@@ -20,14 +20,18 @@ const lhs = (a: App) => toText(a.eq.lhs);
 const rhs = (a: App) => toText(a.eq.rhs);
 const aimed = (a: App) => { const n = a.sel && a.sel !== 'eq' ? find(a.eq, a.sel) : null; return n ? toText(n) : ''; };
 
-interface TourDef { id: string; name: string; blurb: string; steps: TourStep[] }
+interface TourDef { id: string; name: string; blurb: string; group?: string; steps: TourStep[] }
 
 const text = (a: App) => toText(a.eq);
 const solved = (a: App) => !!solvedFor(a.eq);
+const allSolved = (a: App) => a.slots.every(s => !!solvedFor(s.steps[s.at].eq));
+const kb = (...keys: string[]) => keys.map(k => `<kbd>${k}</kbd>`).join(' + ');
+const tab = (key: string) => `hold ${kb('Tab')} and press ${kb(key)}`;
+const Tab = (key: string) => `Hold ${kb('Tab')} and press ${kb(key)}`;
 
 export const TOURS: TourDef[] = [
   {
-    id: 'basics', name: 'The basics', blurb: 'Aim, move, simplify, undo. Start here.',
+    id: 'basics', group: 'Getting started', name: 'The basics', blurb: 'Aim, move, simplify, undo. Start here.',
     steps: [
       { load: '3x + 7 = 22', say: 'Here’s an equation to solve. Press <kbd>→</kbd> to aim at a piece of it.', done: t => !!t.app.sel },
       { say: 'Walk with <kbd>←</kbd> <kbd>→</kbd> until the <b>7</b> is aimed. <kbd>↑</kbd> grows the aim, <kbd>↓</kbd> shrinks it.', done: t => aimed(t.app) === '7' },
@@ -97,12 +101,134 @@ export const TOURS: TourDef[] = [
       { say: 'Press <kbd>e</kbd> to see it, then <kbd>z</kbd> again whenever you want normal speed.', done: t => solved(t.app) },
     ],
   },
+  /* ---------------- the algebra pack ---------------- */
+  {
+    id: 'linear', group: 'Algebra pack', name: 'Linear equations', blurb: 'Distribute, gather the x’s, divide.',
+    steps: [
+      { load: '5(x - 2) = 3x + 4', say: 'Brackets first. Aim at <b>5(x − 2)</b> and press <kbd>d</kbd> to distribute.', done: t => lhs(t.app) === '5x − 10' },
+      { say: 'Gather the x’s on the left: aim at <b>3x</b> and press <kbd>m</kbd>.', done: t => !rhs(t.app).includes('x') },
+      { say: 'Press <kbd>s</kbd> to combine 5x − 3x.', done: t => lhs(t.app).startsWith('2x') },
+      { say: 'Finish by hand (move the −10, then the 2), or press <kbd>e</kbd> to watch it done.', done: t => solved(t.app) },
+    ],
+  },
+  {
+    id: 'fractions', group: 'Algebra pack', name: 'Fractions', blurb: 'Clear denominators, one fraction.',
+    steps: [
+      { load: 'x/3 + 1/2 = 5/6', say: `Fractions everywhere. ${Tab('d')} to clear them: both sides get multiplied by 6, the smallest number that works.`, done: t => !text(t.app).includes('/') },
+      { say: 'Press <kbd>e</kbd> to solve.', done: t => solved(t.app) },
+      { load: 'x/(x - 1) = 3', say: 'An x in a denominator. Press <kbd>e</kbd>: it multiplies by x − 1, and keeps a note that x ≠ 1.', done: t => solved(t.app) },
+      { load: '1/x + 1/(2x)', say: `No equals sign, so this is an expression: every move keeps its value. ${Tab('c')} to make it one fraction.`, done: t => (text(t.app).match(/\//g) ?? []).length === 1 },
+    ],
+  },
+  {
+    id: 'factoring', group: 'Algebra pack', name: 'Factoring', blurb: 'Common factors, trinomials, squares, cubes.',
+    steps: [
+      { load: '6x^2 + 9x', say: `${Tab('f')} to factor. With nothing aimed, it factors the whole thing.`, done: t => text(t.app) === '3x(2x + 3)' },
+      { load: 'x^2 - 7x + 12', say: `Aim anywhere inside this one (say the <b>12</b>), then ${tab('f')}. It factors the sum around your aim.`, done: t => text(t.app).includes(')(') },
+      { load: 'x^2 - 9', say: `Difference of squares: a² − b² = (a − b)(a + b). ${Tab('f')}.`, done: t => text(t.app).includes(')(') },
+      { load: 'x^2 + 6x + 9', say: `A perfect square: a² + 2ab + b² = (a + b)². ${Tab('f')}.`, done: t => text(t.app) === '(x + 3)^2' },
+      { load: 'x^3 - 8', say: `Difference of cubes: a³ − b³ = (a − b)(a² + ab + b²). ${Tab('f')}.`, done: t => text(t.app).includes(')(') },
+      { load: 'x^4 - 16', say: `Factoring keeps going as far as whole numbers allow. ${Tab('f')}.`, done: t => text(t.app) === '(x − 2)(x + 2)(x^2 + 4)' },
+    ],
+  },
+  {
+    id: 'square', group: 'Algebra pack', name: 'Completing the square', blurb: 'Turn x² + bx into (x + b/2)².',
+    steps: [
+      { load: 'x^2 + 6x + 5 = 0', say: `${Tab('h')}: x² + 6x becomes (x + 3)², minus the 9 that adds.`, done: t => lhs(t.app).startsWith('(x + 3)^2') },
+      { say: 'Aim at the <b>−4</b> and press <kbd>m</kbd>.', done: t => lhs(t.app) === '(x + 3)^2' },
+      { say: 'Undo the square: hold <kbd>f</kbd> and press <kbd>i</kbd>. The root of a square is an absolute value, so no answer gets lost.', done: t => lhs(t.app).includes('|') },
+      { say: 'Press <kbd>s</kbd> to tidy the √4.', done: t => rhs(t.app) === '2' },
+      { say: `${Tab('a')} to split |x + 3| = 2 into two cases.`, done: t => t.app.slots.length >= 2 },
+      { say: 'Press <kbd>e</kbd> here, then <kbd>Alt</kbd> + <kbd>→</kbd> and <kbd>e</kbd> for the other case.', done: t => allSolved(t.app) },
+    ],
+  },
+  {
+    id: 'formula', group: 'Algebra pack', name: 'The quadratic formula', blurb: 'x = (−b ± √(b² − 4ac)) / 2a, as two cases.',
+    steps: [
+      { load: 'x^2 + 4x + 1 = 0', say: `This one doesn’t factor. ${Tab('g')} for the quadratic formula, with a, b and c plugged in.`, done: t => t.app.slots.length >= 2 },
+      { say: `± means two cases: + is here, − waits at the top right. ${Tab('s')} to work out the numbers (or tap <kbd>s</kbd> a few times to watch each step).`, done: t => text(t.app) === 'x = −2 + sqrt(3)' },
+      { say: `<kbd>Alt</kbd> + <kbd>→</kbd> for the other root, then ${tab('s')}.`, done: t => t.app.cur === 1 && text(t.app) === 'x = −2 − sqrt(3)' },
+      { load: '2x^2 = 3 - 5x', say: `Terms on both sides are fine: the formula gathers them first. ${Tab('g')}.`, done: t => t.app.slots.length >= 2 },
+      { say: `${Tab('s')}. Whole-number answers mean factoring would have worked too.`, done: t => solved(t.app) && !text(t.app).includes('sqrt') },
+    ],
+  },
+  {
+    id: 'identities', group: 'Algebra pack', name: 'Algebraic identities', blurb: 'Prove them, then use them backwards.',
+    steps: [
+      { load: '(a + b)^2 = a^2 + 2ab + b^2', say: `True for every a and b, so this is a proof (≟), not an equation. ${Tab('x')} to expand.`, done: t => isProved(t.app.eq) },
+      { load: '(a - b)(a^2 + a b + b^2) = a^3 - b^3', say: `Proved ∎. The difference of cubes, the same way: ${tab('x')}.`, done: t => isProved(t.app.eq) },
+      { load: 'a^3 + b^3', say: `Identities work backwards too: that is factoring. ${Tab('f')} for the sum of cubes.`, done: t => text(t.app).includes(')(') },
+      { load: '4x^2 - 12x y + 9y^2', say: `A perfect square in two letters. ${Tab('f')}.`, done: t => text(t.app) === '(2x − 3y)^2' },
+    ],
+  },
+  {
+    id: 'trig', group: 'Algebra pack', name: 'Trig identities', blurb: 'Pythagorean, double angle, differences.',
+    steps: [
+      { load: 'sin(x)^2 + cos(x)^2', say: 'Tap <kbd>Tab</kbd>: identities show up as forms. Press <kbd>→</kbd> to highlight <b>trig: Pythagorean</b> and tap <kbd>Tab</kbd> again.', done: t => text(t.app) === '1' },
+      { load: 'sin(2x) = cos(x)', say: 'Tap <kbd>Tab</kbd>, browse to <b>trig: double angle</b>, tap <kbd>Tab</kbd>.', done: t => lhs(t.app) === '2 sin(x) cos(x)' },
+      { say: `Now everything on one side: ${tab('z')}.`, done: t => rhs(t.app) === '0' },
+      { say: `cos(x) is in both terms. ${Tab('f')} to pull it out.`, done: t => lhs(t.app).startsWith('cos(x)(') },
+      { load: 'cos(x - y)', say: 'Angle difference: tap <kbd>Tab</kbd>, highlight it, tap <kbd>Tab</kbd>.', done: t => text(t.app) === 'cos(x) cos(y) + sin(x) sin(y)' },
+      { load: 'cos(-x)', say: 'Cosine is even, cos(−x) = cos x. Apply <b>trig: even/odd</b> the same way.', done: t => text(t.app) === 'cos(x)' },
+    ],
+  },
+  {
+    id: 'inequalities', group: 'Algebra pack', name: 'Inequalities', blurb: 'The sign flips when it must.',
+    steps: [
+      { load: '3 - 2x >= 7', say: 'Aim at the <b>3</b> and press <kbd>m</kbd>.', done: t => lhs(t.app) === '−2x' },
+      { say: 'Press <kbd>s</kbd>.', done: t => rhs(t.app) === '4' },
+      { say: 'Aim at the <b>−2</b> inside −2x (aim −2x, then <kbd>↓</kbd>) and press <kbd>m</kbd>. Dividing by a negative flips ≥ to ≤.', done: t => relOf(t.app.eq) === '≤' },
+      { say: 'Press <kbd>s</kbd> to finish.', done: t => text(t.app) === 'x ≤ −2' },
+      { load: 'x^2 - x - 6 < 0', say: 'A quadratic inequality needs a sign chart. Press <kbd>e</kbd>: the answer shows under the equation and the graph shades it.', done: t => !!t.app.step?.answer },
+    ],
+  },
+  {
+    id: 'abs', group: 'Algebra pack', name: 'Absolute value', blurb: 'Two cases, and the impossible ones.',
+    steps: [
+      { load: '|2x - 1| = 5', say: `|A| = 5 means A = 5 or A = −5. ${Tab('a')} to split.`, done: t => t.app.slots.length >= 2 },
+      { say: 'Press <kbd>e</kbd> here, then <kbd>Alt</kbd> + <kbd>→</kbd> and <kbd>e</kbd> again.', done: t => allSolved(t.app) },
+      { load: '|x + 2| = -3', say: `Now try ${tab('a')} here.`, setup: t => { t.refused = false; }, done: t => t.refused },
+    ],
+  },
+  {
+    id: 'powers', group: 'Algebra pack', name: 'Roots and powers', blurb: 'Undo a root, rewrite powers.',
+    steps: [
+      { load: 'sqrt(x + 3) = 5', say: 'Hold <kbd>f</kbd> and press <kbd>i</kbd>: squaring undoes the root.', done: t => !text(t.app).includes('sqrt') },
+      { say: 'Press <kbd>e</kbd>.', done: t => solved(t.app) },
+      { load: 'sqrt(12) + sqrt(27)', say: 'Press <kbd>s</kbd> until it’s one term: √12 = 2√3 and √27 = 3√3.', done: t => text(t.app) === '5 sqrt(3)' },
+      { load: 'x^(1/2) + x^(-1)', say: `Aim at <b>x^(−1)</b> and ${tab('r')} to write it as a root or fraction.`, done: t => text(t.app).includes('1/x') },
+    ],
+  },
+  {
+    id: 'logs', group: 'Algebra pack', name: 'Exponentials and logs', blurb: 'ln undoes e^, log rules bring powers down.',
+    steps: [
+      { load: 'e^(2x) = 7', say: 'Hold <kbd>f</kbd> and press <kbd>i</kbd>: ln undoes e^.', done: t => lhs(t.app) === '2x' },
+      { say: 'Press <kbd>e</kbd>.', done: t => solved(t.app) },
+      { load: '2^x = 32', say: 'A different base. Hold <kbd>f</kbd> and press <kbd>l</kbd> to take ln of both sides.', done: t => lhs(t.app).startsWith('ln') },
+      { say: `${Tab('l')} for the log rules: the power comes down.`, done: t => lhs(t.app) === 'x ln(2)' },
+      { say: 'Press <kbd>e</kbd>.', done: t => text(t.app) === 'x = 5' },
+    ],
+  },
+  {
+    id: 'expressions', group: 'Algebra pack', name: 'Expressions', blurb: 'No equals sign: simplify, expand, factor.',
+    steps: [
+      { load: '2x + 4x - 3(x - 1)', say: 'Type something with no = and you get an expression. Press <kbd>s</kbd> to combine 2x + 4x.', done: t => lhs(t.app).startsWith('6x') },
+      { say: 'Aim at <b>−3(x − 1)</b> and press <kbd>d</kbd>.', done: t => !text(t.app).includes('(') },
+      { say: 'With nothing to solve, <kbd>e</kbd> tidies an expression all the way. Press it.', done: t => text(t.app) === '3x + 3' },
+      { say: `${Tab('f')} to factor it back.`, done: t => text(t.app) === '3(x + 1)' },
+    ],
+  },
 ];
+
+
+/** menu keys: digits, then letters that aren't already menu keys (g closes, j k move) */
+const MENU_KEYS = [...'123456789abcdefhilmnopqrstuvwxy'];
 
 export class Tour {
   i = -1;
   tour: TourDef = TOURS[0];
   private pick = 0;
+  private scrollPick = false;
   mark = 0;
   refused = false;
   finished = false;
@@ -142,24 +268,35 @@ export class Tour {
     const done = doneTours();
     const list = document.getElementById('tours-list')!;
     list.replaceChildren();
+    let group = '';
     TOURS.forEach((t, k) => {
+      if (t.group && t.group !== group) {
+        group = t.group;
+        const h = document.createElement('div');
+        h.className = 'tour-group';
+        h.textContent = group;
+        list.append(h);
+      }
       const b = document.createElement('button');
       b.className = 'tour-pick' + (k === this.pick ? ' focus' : '') + (done.includes(t.id) ? ' done' : '');
-      b.innerHTML = `<kbd>${k + 1}</kbd><span class="tp-name">${t.name}</span><span class="tp-blurb">${t.blurb}</span><span class="tp-len">${t.steps.length} steps</span>`;
+      b.innerHTML = `<kbd>${MENU_KEYS[k]}</kbd><span class="tp-name">${t.name}</span><span class="tp-blurb">${t.blurb}</span><span class="tp-len">${t.steps.length} steps</span>`;
       b.addEventListener('click', () => this.start(t.id));
       b.addEventListener('mouseenter', () => { this.pick = k; this.renderMenu(); });
       list.append(b);
     });
+    if (this.scrollPick) list.querySelector('.tour-pick.focus')?.scrollIntoView({ block: 'nearest' });
+    this.scrollPick = false;
   }
 
   menuKey(e: KeyboardEvent) {
     e.preventDefault();
     const k = e.key;
     if (k === 'Escape' || k === 'g') return this.closeMenu();
-    if (k === 'ArrowDown' || k === 'j') { this.pick = (this.pick + 1) % TOURS.length; sound.tick(0); return this.renderMenu(); }
-    if (k === 'ArrowUp' || k === 'k') { this.pick = (this.pick + TOURS.length - 1) % TOURS.length; sound.tick(0); return this.renderMenu(); }
+    if (k === 'ArrowDown' || k === 'j') { this.pick = (this.pick + 1) % TOURS.length; this.scrollPick = true; sound.tick(0); return this.renderMenu(); }
+    if (k === 'ArrowUp' || k === 'k') { this.pick = (this.pick + TOURS.length - 1) % TOURS.length; this.scrollPick = true; sound.tick(0); return this.renderMenu(); }
     if (k === 'Enter' || k === ' ') return this.start(TOURS[this.pick].id);
-    if (/^[1-9]$/.test(k) && TOURS[Number(k) - 1]) return this.start(TOURS[Number(k) - 1].id);
+    const at = MENU_KEYS.indexOf(k);
+    if (at >= 0 && TOURS[at]) return this.start(TOURS[at].id);
   }
 
   start(id = 'basics') {

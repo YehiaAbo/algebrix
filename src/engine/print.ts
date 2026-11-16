@@ -34,7 +34,7 @@ export function toText(n: Node, ascii = false): string {
         const fnLike = (f.k === 'fn' && f.name !== 'abs') || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs');
         // after a subscripted name (a_n) a space keeps the next letter out of the subscript
         const afterSub = i > 0 && /_[a-zA-Z0-9]+$/.test(out) && /^[a-zA-Zα-ω]/.test(s);
-        out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && fnLike || f.k === 'sqrt' || afterSub ? ' ' : '') + s;
+        out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && (fnLike || f.k === 'sqrt' || afterSub) ? ' ' : '') + s;
       });
       return out;
     }

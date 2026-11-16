@@ -1,7 +1,8 @@
 // Bigger tools built from the small moves: apply a function to both sides, peel
 // the outer function off a side, move anything across "=", isolate a variable
 // in several steps, substitute one equation into another, split |X| = B.
-import { Node, Eq, find, children, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace } from './ast';
+import { Node, Eq, find, children, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf } from './ast';
+import { parseExpr } from './parse';
 import { negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
 import { simplify, newHints } from './simplify';
 import { expandAll, hasExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
@@ -399,6 +400,31 @@ export function splitCases(e: Eq, v?: string): Cases | null {
     }
   }
   return null;
+}
+
+/* ---------- the quadratic formula ---------- */
+
+/** a v² + b v + c = 0  →  v = (−b ± √(b² − 4ac)) / 2a, as two cases with a, b, c plugged in. */
+export function quadraticFormula(e: Eq, v: string): Cases | { error: string } {
+  if (relOf(e) !== '=') return { error: 'The quadratic formula needs an equation.' };
+  const P = polyOf(expandAll(add([fresh(e.lhs), negate(fresh(e.rhs))]), newHints()));
+  if (!P || P.v !== v || P.c.length !== 3) return { error: `The quadratic formula needs a${v}² + b${v} + c = 0.` };
+  const [c, b, a] = P.c;
+  const D = radd(rmul(b, b), rmul(rat(-4), rmul(a, c)));
+  if (D.p < 0) return { error: `b² − 4ac = ${D.q === 1 ? D.p : `${D.p}/${D.q}`} is negative, so there are no real solutions.` };
+  const r = (x: { p: number; q: number }) => { const s = x.q === 1 ? String(x.p) : `${x.p}/${x.q}`; return x.p < 0 || x.q !== 1 ? `(${s})` : s; };
+  const root = (sign: '+' | '-') => eq(sym(v), parseExpr(`(-${r(b)} ${sign} sqrt(${r(b)}^2 - 4*${r(a)}*${r(c)}))/(2*${r(a)})`));
+  const E1 = root('+'), E2 = root('-');
+  const A = a.p / a.q;
+  const ev = (q: Eq, env: Env) => evaluate(q.lhs, env) - evaluate(q.rhs, env);
+  const one_ = D.p === 0;
+  const first: MoveOk = {
+    eq: E1, label: one_ ? 'quadratic formula (one repeated root)' : 'quadratic formula: + and − cases', hints: newHints(), factor: one, select: null,
+    check: env => [[A * ev(E1, env) * ev(one_ ? E1 : E2, env), ev(e, env)]],
+  };
+  const ok = checked(e, first);
+  if (isErr(ok)) return ok;
+  return { first: ok, rest: one_ ? [] : [E2], why: 'two cases' };
 }
 
 /* ---------- substitution between equations ---------- */
