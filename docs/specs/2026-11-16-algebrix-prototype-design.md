@@ -164,3 +164,10 @@ App:
 - Substituting, eliminating, or `#j` in a both-sides operation flies a copy of the source lane into the work.
 - Typing previews the equation live: unclosed brackets are closed and a trailing operator is left off, so the preview shows faded while what you've typed is unfinished.
 - Panels can be resized by dragging the gaps (double-click resets). The graph can sit on the right, below, or be hidden (Shift+G or Settings). Layout is saved in prefs.
+
+### Round 7b: dock instead of lanes (user sketch)
+
+- Full lanes felt cramped. Now the working equation gets the whole stage, and the other equations sit as small cards in a dock at the top right, under a brace, like side work (a u-substitution kept beside the main problem).
+- Switching morphs: the card's glyphs grow into place, and the equation you left shrinks into its card.
+- The typing box moved to the bottom (above the hints). It shows a live status (✓ equation / inequality / expression / function, or "keep going…") and quick-insert buttons (power, subscript, √, fraction, |x|, ≤, ≥, π, f(x) =).
+- Subscript variables: x_1, v_0, a_n and x_{max} parse as their own names and draw with real subscripts.

@@ -93,14 +93,14 @@ button { font: inherit; color: inherit; }
 .desk {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   background: var(--desk);
   border-radius: 14px;
   box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 0 0 1px var(--line);
   min-width: 0; min-height: 0;
   overflow: hidden;
 }
-.topbar { padding: 14px 16px 0; }
+.topbar { padding: 4px 16px 6px; }
 .field { position: relative; height: 44px; }
 #input {
   position: absolute; inset: 0; width: 100%;
@@ -518,36 +518,39 @@ body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
 @keyframes nudge-l { 50% { transform: translateX(-3px); } }
 @keyframes nudge-r { 50% { transform: translateX(3px); } }
 
-/* ---------- the sheet: every equation in its own lane ---------- */
-.board { display: flex; min-height: 0; min-width: 0; gap: 0; }
+/* ---------- the sheet: your equation gets the room, the others wait in a dock ---------- */
+.board { position: relative; display: flex; min-height: 0; min-width: 0; }
 .board > .stage { flex: 1 1 0; min-width: 0; }
-.board.multi > .stage { flex: 2.3 1 0; background: var(--desk); box-shadow: 0 0 0 1px color-mix(in srgb, var(--sel) 22%, transparent) inset; border-radius: 12px; margin: 6px 0; }
 .board.multi > .stage::before {
-  content: attr(data-n); position: absolute; top: 10px; left: 12px; z-index: 2;
+  content: attr(data-n); position: absolute; top: 10px; left: 14px; z-index: 2;
   font: 600 11px/18px var(--ui-font); min-width: 18px; height: 18px; text-align: center; border-radius: 5px;
   background: var(--sel); color: var(--on-sel);
 }
+.board.multi .trail { padding-right: calc(var(--dock-w, 0px) + 24px); padding-left: 40px; }
+.dock { position: absolute; top: 8px; right: 12px; z-index: 3; display: grid; justify-items: end; gap: 4px; max-width: min(56%, 620px); pointer-events: none; }
+.dock[hidden] { display: none; }
+.dock-brace { position: relative; justify-self: stretch; height: 7px; margin: 0 14px; border: 1.5px solid var(--line); border-bottom: 0; border-radius: 7px 7px 0 0; }
+.dock-brace::after { content: ''; position: absolute; left: 50%; top: -6px; width: 1.5px; height: 6px; background: var(--line); }
+.dock-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; pointer-events: auto; }
 .lane {
-  position: relative; flex: 1 1 0; min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
-  margin: 6px 4px; padding: 8px 8px 10px; border-radius: 12px; cursor: pointer; color: var(--ink);
-  background: color-mix(in srgb, var(--bg) 55%, transparent); transition: background .15s, box-shadow .15s, opacity .15s;
-  animation: rise calc(.24s * var(--pace, 1)) var(--ease) backwards;
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; max-width: 220px;
+  padding: 6px 10px 7px; border: 0; border-radius: 10px; cursor: pointer; color: var(--ink); font: inherit;
+  background: var(--bg); box-shadow: 0 0 0 1px var(--line); transition: box-shadow .15s, background .15s, transform .15s var(--ease);
 }
-.lane:first-child { margin-left: 8px; } .lane:last-child { margin-right: 8px; }
-.lane:hover { background: var(--bg); }
-.lane-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.lane-head kbd { font-size: 10.5px; min-width: 18px; height: 18px; }
-.lane-tag { font-size: 11.5px; font-weight: 600; color: var(--good); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lane-tag.no { color: var(--bad); } .lane-tag.goal { color: var(--copy); } .lane-tag.ans { font-family: var(--math-font); font-weight: 500; font-size: 13px; }
-.lane-math { display: grid; place-items: center; min-height: 0; overflow: hidden; opacity: .82; }
+.lane:hover { box-shadow: 0 0 0 1.5px var(--sel); transform: translateY(-1px); }
+.lane-head { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.lane-head kbd { font-size: 10px; min-width: 16px; height: 16px; }
+.lane-tag { font-size: 11px; font-weight: 600; color: var(--good); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lane-tag.no { color: var(--bad); } .lane-tag.goal { color: var(--copy); } .lane-tag.ans { font-family: var(--math-font); font-weight: 500; font-size: 12.5px; }
+.lane-math { display: block; opacity: .85; }
+.lane-math .mini { display: block; }
 .lane:hover .lane-math { opacity: 1; }
-.lane-foot { min-height: 18px; font-size: 11.5px; color: var(--faint); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lane-foot i { font-family: var(--math-font); font-size: 13px; color: var(--muted); }
-.lane-foot kbd { font-size: 10px; min-width: 15px; height: 15px; }
-.lane.shares { box-shadow: 0 0 0 1px var(--line) inset; }
-.lane.linked { box-shadow: 0 0 0 1.5px var(--copy) inset; background: color-mix(in srgb, var(--copy) 8%, transparent); }
-.lane.linked .lane-foot { color: var(--copy); }
+.lane.shares { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sel) 30%, var(--line)); }
+.lane.linked { box-shadow: 0 0 0 1.5px var(--copy); background: color-mix(in srgb, var(--copy) 9%, var(--bg)); }
 .lane.linked .lane-math { opacity: 1; }
+.dock-hint { min-height: 16px; font-size: 11.5px; color: var(--copy); white-space: nowrap; }
+.dock-hint kbd { font-size: 10px; min-width: 15px; height: 15px; }
+.dock-hint i { font-family: var(--math-font); font-size: 13px; }
 .fly { pointer-events: none; }
 .fly .g { color: var(--copy); }
 /* the rail no longer lists equations: the sheet does */
@@ -576,3 +579,23 @@ body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
 .app[data-graph="hidden"] .split-side { display: none; }
 body.resizing, body.resizing * { cursor: inherit !important; user-select: none; }
 @media (max-width: 820px) { .split { display: none !important; } }
+
+/* ---------- the typing box (at the bottom, above the hints) ---------- */
+body[data-mode="write"] .field { height: 52px; }
+.field { transition: height .15s var(--ease); }
+#input { padding-right: 150px; }
+body[data-mode="write"] #input { font-size: 21px; }
+.input-state { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); pointer-events: none; }
+body[data-mode="write"] .input-state { display: inline-flex; }
+.input-state .ok { color: var(--good); font-weight: 600; }
+.input-state .wip { color: var(--copy); font-weight: 600; }
+.input-state kbd { font-size: 10.5px; }
+.input-under { display: flex; align-items: center; gap: 12px; min-height: 18px; margin: 4px 4px 0; }
+.input-under .input-error { margin: 0; flex: 1; }
+.input-keys { display: none; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+body[data-mode="write"] .input-keys { display: flex; }
+.input-keys button { border: 0; background: var(--bg); color: var(--ink); border-radius: 6px; padding: 2px 8px; font: 14px var(--math-font); cursor: pointer; box-shadow: 0 0 0 1px var(--line) inset; }
+.input-keys button:hover { box-shadow: 0 0 0 1px var(--sel) inset; }
+.input-keys button small { font: 10.5px var(--ui-font); color: var(--faint); margin-left: 4px; }
+
+.vars .var sub { font-size: .65em; font-style: normal; }

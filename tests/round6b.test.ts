@@ -39,3 +39,10 @@ describe('inequalities keep their sign', () => {
     expect(toText(r.eq)).toBe('y − y = 2x + 1 − x + 3');
   });
 });
+
+describe('subscript variables', () => {
+  it('reads x_1, v_0, a_n and x_{max} as their own names', () => {
+    const e = parseEquation('v_0 + a_n t = x_{max} - 2x_1');
+    expect(toText(e)).toBe('v_0 + a_n t = x_max − 2x_1');
+  });
+});

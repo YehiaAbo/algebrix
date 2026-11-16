@@ -114,7 +114,16 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const digits = text(String(Math.abs(n.v)), s, `n${n.id}`, me, false, from && `n${from}`);
       return n.v < 0 ? row([sign(true, s, `sg${n.id}`, me), 0.04 * s, digits]) : digits;
     }
-    case 'sym': return text(n.name, s, `s${n.id}`, me, true, from && `s${from}`);
+    case 'sym': {
+      const u = n.name.indexOf('_');
+      if (u < 0) return text(n.name, s, `s${n.id}`, me, true, from && `s${from}`);
+      // x_1: the name, then its subscript smaller and lower (digits upright)
+      const base = text(n.name.slice(0, u), s, `s${n.id}`, me, true, from && `s${from}`);
+      const t = n.name.slice(u + 1), ss = 0.64 * s, drop = 0.24 * s;
+      const sub = text(t, ss, `s${n.id}_`, me, !/^[0-9]+$/.test(t), from && `s${from}_`);
+      for (const g of sub.gs) { g.x += base.w; g.y += drop; g.base! += drop; }
+      return { w: base.w + sub.w + 0.02 * s, asc: base.asc, desc: Math.max(base.desc, drop + sub.desc), gs: [...base.gs, ...sub.gs] };
+    }
     case 'eq': {
       const l = L(n.lhs, s, me, c);
       if (n.rel === 'expr') return termBox(n.lhs, l, s, me);

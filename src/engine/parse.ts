@@ -43,7 +43,12 @@ function tokenize(s: string): Tok[] {
     const word = FNS.find(f => s.startsWith(f, i));
     if (word) { out.push({ t: 'cmd', v: word }); i += word.length; continue; }
     if (s.startsWith('pi', i)) { out.push({ t: 'id', v: 'π' }); i += 2; continue; }
-    if (/[a-zA-Zα-ω]/.test(c)) { out.push({ t: 'id', v: c }); i++; continue; }
+    if (/[a-zA-Zα-ω]/.test(c)) {
+      // a subscript makes a new name: x_1, v_0, x_12, a_n, x_{max}
+      const sub = /^_(?:\{([a-zA-Z0-9]+)\}|([0-9]+|[a-zA-Z]))/.exec(s.slice(i + 1));
+      if (sub) { out.push({ t: 'id', v: `${c}_${sub[1] ?? sub[2]}` }); i += 1 + sub[0].length; continue; }
+      out.push({ t: 'id', v: c }); i++; continue;
+    }
     if ((c === '<' || c === '>') && s[i + 1] === '=') { out.push({ t: 'op', v: c === '<' ? '≤' : '≥' }); i += 2; continue; }
     const map: Record<string, string> = { '−': '-', '×': '*', '·': '*', '÷': '/', '√': 'sqrt', '⩽': '≤', '⩾': '≥' };
     const v = map[c] ?? c;

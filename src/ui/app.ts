@@ -199,74 +199,72 @@ export class App {
     return null;
   }
 
-  /** The sheet: every other equation in its own lane beside the one you work on,
-   *  in order, so a system reads left to right like columns on a board. */
+  /** The sheet: the equation you work on gets the room; every other one sits small in a
+   *  dock at the top right, in order, one key (or click, or Alt + ← →) away. */
   renderLanes() {
-    const board = $('board'), stage = $('stage');
+    const board = $('board'), dock = $('dock');
     const before = new Map<string, DOMRect>();
-    board.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => before.set(el.dataset.lane!, el.getBoundingClientRect()));
-    board.querySelectorAll('.lane').forEach(l => l.remove());
+    dock.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => before.set(el.dataset.lane!, el.getBoundingClientRect()));
+    const row = $('dock-row');
+    row.replaceChildren();
     const adding = this.mode === 'write' && this.writing === 'new' && this.slots.length > 0;
     const active = adding ? this.slots.length : this.cur;
     const n = this.slots.length + (adding ? 1 : 0);
     board.classList.toggle('multi', n > 1);
-    stage.dataset.lane = String(active);
-    stage.dataset.n = String(active + 1);
+    $('stage').dataset.n = String(active + 1);
+    dock.hidden = n < 2;
     if (n < 2) return;
-    // variables the aimed piece (or the whole equation) uses: lanes that share them are linked
+    // variables the aimed piece (or the whole equation) uses: equations that share them are linked
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     const mine = this.shown ? symbols(aimed ?? this.shown) : [];
+    let linkedHint = '';
     for (let i = 0; i < this.slots.length; i++) {
       if (i === active) continue;
       const e = this.eqOf(i);
-      const lane = document.createElement('div');
-      lane.className = 'lane';
-      lane.dataset.lane = String(i);
-      const head = document.createElement('div');
+      const card = document.createElement('button');
+      card.className = 'lane';
+      card.dataset.lane = String(i);
+      card.title = `Equation ${i + 1} (Alt + ← →, or ${i + 1})`;
+      const head = document.createElement('span');
       head.className = 'lane-head';
       head.innerHTML = `<kbd>${i + 1}</kbd>`;
       const tag = this.slotTag(i, e);
       if (tag) { const t = document.createElement('span'); t.className = 'lane-tag ' + tag.cls; t.textContent = tag.text; head.append(t); }
-      const math = document.createElement('div');
+      const math = document.createElement('span');
       math.className = 'lane-math';
       const shared = symbols(e).filter(v => mine.includes(v));
-      const foot = document.createElement('div');
-      foot.className = 'lane-foot';
       if (shared.length && !adding) {
-        lane.classList.add(aimed ? 'linked' : 'shares');
-        foot.innerHTML = aimed?.k === 'sym'
-          ? `<kbd>Tab</kbd>+<kbd>${i + 1}</kbd> puts in ${escapeHtml(aimed.name)} from here`
-          : `shares <i>${shared.map(escapeHtml).join(', ')}</i>`;
+        card.classList.add(aimed ? 'linked' : 'shares');
+        if (aimed?.k === 'sym' && !linkedHint) linkedHint = `<kbd>Tab</kbd>+<kbd>${i + 1}</kbd> puts in <i>${varHtml(aimed.name)}</i> from (${i + 1})`;
       }
-      lane.append(head, math, foot);
-      lane.addEventListener('mousedown', ev => { ev.stopPropagation(); this.switchTo(i); });
-      if (i < active) board.insertBefore(lane, stage); else board.append(lane);
-      requestAnimationFrame(() => {
-        const W = math.clientWidth - 12, H = math.clientHeight - 8;
-        let lay = layout(e, 26);
-        const f = Math.min(1, W / lay.w, H / (lay.asc + lay.desc));
-        if (f < 1) lay = layout(e, Math.max(9, 26 * f));
-        const box = document.createElement('div');
-        box.className = 'mini';
-        box.style.width = lay.w + 'px';
-        box.style.height = lay.asc + lay.desc + 'px';
-        math.append(box);
-        new Stage(box).show(lay, 0, 0, null);
-      });
+      card.append(head, math);
+      card.addEventListener('mousedown', ev => { ev.stopPropagation(); ev.preventDefault(); this.switchTo(i); });
+      row.append(card);
+      let lay = layout(e, 19);
+      const f = Math.min(1, 190 / lay.w, 40 / (lay.asc + lay.desc));
+      if (f < 1) lay = layout(e, Math.max(8, 19 * f));
+      const box = document.createElement('span');
+      box.className = 'mini';
+      box.style.width = lay.w + 'px';
+      box.style.height = lay.asc + lay.desc + 'px';
+      math.append(box);
+      new Stage(box).show(lay, 0, 0, null);
     }
-    // lanes and the stage slide to their new places (FLIP)
-    board.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => {
+    $('dock-hint').innerHTML = linkedHint;
+    board.style.setProperty('--dock-w', `${dock.offsetWidth}px`);
+    // cards slide to their new places (FLIP)
+    dock.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => {
       const was = before.get(el.dataset.lane!);
       if (!was) return;
       const now = el.getBoundingClientRect();
-      const dx = was.left - now.left;
-      if (Math.abs(dx) > 1) el.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: ms(280), easing: 'cubic-bezier(.2,.8,.16,1)' });
+      const dx = was.left - now.left, dy = was.top - now.top;
+      if (Math.abs(dx) + Math.abs(dy) > 1) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: ms(260), easing: 'cubic-bezier(.2,.8,.16,1)' });
     });
   }
 
   /** a copy of another equation flies into this one (substitute, add an equation) */
   private flyFrom(j: number) {
-    const src = $('board').querySelector<HTMLElement>(`.lane[data-lane="${j}"] .lane-math .mini`);
+    const src = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${j}"] .lane-math .mini`);
     const dst = this.stage.box('eq');
     if (!src || !dst) return;
     const a = src.getBoundingClientRect(), host = $('stage').getBoundingClientRect();
@@ -377,7 +375,7 @@ export class App {
       const li = document.createElement('li');
       const conds = (this.step?.conditions ?? []).filter(c => new RegExp(`(^|[^a-zα-ω])${v}([^a-zα-ω]|$)`).test(c));
       const dom = this.domains[v] ?? 'real';
-      li.innerHTML = `<span class="var">${v}</span><button class="dom" title="Click to change what ${v} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? '<span class="solved">solved</span>' : ''}`;
+      li.innerHTML = `<span class="var">${varHtml(v)}</span><button class="dom" title="Click to change what ${escapeHtml(v)} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? '<span class="solved">solved</span>' : ''}`;
       li.querySelector('.dom')!.addEventListener('click', () => this.cycleDomain(v));
       if (conds.length) li.title = conds.join(', ');
       vars.append(li);
@@ -631,11 +629,30 @@ export class App {
     if (i < 0 || i >= this.slots.length) { this.refuse(`There is no equation ${i + 1}. Press n to add one.`); return; }
     if (i === this.cur) return;
     if (this.mode === 'write') this.cancelEdit();
+    const host = $('stage').getBoundingClientRect();
+    const from = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${i}"] .mini`)?.getBoundingClientRect();
+    const eqBox = this.stage.box('eq');
+    const old = this.cur;
     this.cur = i;
     sound.tick(1);
     this.stage.clear();
     this.renderAll(null);
-    this.entrance();
+    const to = this.stage.box('eq');
+    if (from && to && from.width) {
+      // every glyph starts where it sat in the small card and grows into place
+      const k = from.width / to.w;
+      $('stage').querySelectorAll<HTMLElement>('.g').forEach(el => {
+        const gx = el.offsetLeft, gy = el.offsetTop;
+        const sx = from.left - host.left + (gx - to.x) * k, sy = from.top - host.top + (gy - to.y) * k;
+        el.animate([{ transform: `translate(${sx - gx}px, ${sy - gy}px) scale(${k})`, opacity: 0.6 }, { transform: 'none', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });
+      });
+    } else this.entrance();
+    // and the equation you left shrinks into its card
+    const card = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${old}"] .mini`);
+    if (card && eqBox) {
+      const c = card.getBoundingClientRect(), k = eqBox.w / c.width;
+      card.animate([{ transform: `translate(${host.left + eqBox.x - c.left}px, ${host.top + eqBox.y - c.top}px) scale(${k})`, transformOrigin: '0 0', opacity: 0.3 }, { transform: 'none', transformOrigin: '0 0', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });
+    }
     this.save();
   }
 
@@ -959,6 +976,8 @@ export class App {
     err.textContent = '';
     const got = livePreview(src);
     $('stage').classList.toggle('preview', !!got && got.partial);
+    const kind = got ? ({ '=': 'equation', 'expr': 'expression', 'def': 'function', '≟': 'proof' } as Record<string, string>)[relOf(got.eq)] ?? 'inequality' : '';
+    $('input-state').innerHTML = !got ? '' : got.partial ? '<span class="wip">keep going…</span>' : `<span class="ok">✓ ${kind}</span><kbd>Enter</kbd>`;
     if (!got) {
       // nothing readable yet: keep what was there, explain only if you stop typing
       if (src.trim()) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 900);
@@ -1490,6 +1509,21 @@ export class App {
   bind() {
     const input = $<HTMLInputElement>('input');
     input.addEventListener('input', () => this.onType());
+    // quick inserts under the box, for what's awkward to type
+    const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', '']];
+    for (const [label, ins, hint] of KEYS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = escapeHtml(label) + (hint ? `<small>${hint}</small>` : '');
+      b.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        const a = input.selectionStart ?? input.value.length, z = input.selectionEnd ?? a;
+        input.value = input.value.slice(0, a) + ins + input.value.slice(z);
+        input.setSelectionRange(a + ins.length, a + ins.length);
+        this.onType();
+      });
+      $('input-keys').append(b);
+    }
     input.addEventListener('focus', () => { if (this.mode !== 'write') { this.writing = 'edit'; this.setMode('write'); this.sel = null; this.renderAll(null); } });
     input.addEventListener('keydown', e => {
       e.stopPropagation();
@@ -1860,6 +1894,12 @@ function livePreview(src: string): { eq: Eq; partial: boolean } | null {
     t = t.trimEnd().slice(0, -1);
   }
   return null;
+}
+
+/** a variable name for HTML: x_1 shows as x with a subscript 1 */
+function varHtml(v: string) {
+  const u = v.indexOf('_');
+  return u < 0 ? escapeHtml(v) : `${escapeHtml(v.slice(0, u))}<sub>${escapeHtml(v.slice(u + 1))}</sub>`;
 }
 
 function escapeHtml(s: string) {
