@@ -113,12 +113,12 @@
           <section><h3>2. Both sides at once</h3><p><kbd>=</kbd> <kbd>-</kbd> <kbd>.</kbd> <kbd>/</kbd> add, subtract, multiply or divide both sides. Type what, watch the live preview, press <kbd>Enter</kbd>. No Shift needed.</p></section>
           <section><h3>3. Nothing breaks</h3><p>Every move is checked by plugging in numbers. A move that would change the answers resists, and the reason shows in the bottom bar. Dividing by something that could be zero adds a condition to the rail.</p></section>
           <section><h3>4. Simplify when you want</h3><p>Nothing tidies itself. A dashed box marks what could simplify; press <kbd>s</kbd> to take it, or leave it if you want that form.</p></section>
-          <section><h3>5. Hold e for algebra</h3><p>Factor, expand, combine fractions, clear denominators, split into cases, solve for a variable (<kbd>i</kbd>), substitute from another equation (<kbd>1</kbd>–<kbd>9</kbd>). Arrows browse, releasing <kbd>e</kbd> applies.</p></section>
+          <section><h3>5. Hold Tab for algebra</h3><p>Factor, expand, combine fractions, clear denominators, split into cases, solve for a variable (<kbd>i</kbd>), substitute from another equation (<kbd>1</kbd>–<kbd>9</kbd>). Arrows browse; release <kbd>Tab</kbd> (or tap it again) to apply. <kbd>e</kbd> on its own solves straight away.</p></section>
           <section><h3>6. Hold f for functions</h3><p>Put a function on both sides, or press <kbd>i</kbd> to undo the outer one. <kbd>←</kbd> <kbd>→</kbd> pick a family (powers, roots, exp and log, trig), <kbd>↓</kbd> steps in, release <kbd>f</kbd> to apply.</p></section>
           <section><h3>7. Many equations</h3><p><kbd>n</kbd> adds one, <kbd>1</kbd>–<kbd>9</kbd> switch. Answers are checked against the equation you started with; extraneous ones are flagged.</p></section>
           <section><h3>8. The graph</h3><p>One variable: both sides as curves, and the answers are where they cross. Two: the solution curve, or the shaded region for an inequality. Three: the solution surface in 3D. Drag, scroll, double-click to reset.</p></section>
-          <section><h3>9. Pick part of a side</h3><p>Drag a box with the mouse around the pieces you want, or hold <kbd>Shift</kbd> and use <kbd>←</kbd> <kbd>→</kbd> to stretch the aim. <i>3 + 5</i> out of <i>2x + 3 + 5 + y</i> works like any single piece: <kbd>s</kbd>, <kbd>m</kbd>, and the rest.</p></section>
-          <section><h3>10. More than equations</h3><p>Type <i>x^2 − 4 &lt; 0</i> for an inequality (moves flip the sign when they must; <kbd>e</kbd> <kbd>i</kbd> solves it with a sign chart). Type just an expression to rewrite it. An identity like <i>(a+b)^2 = a^2+2ab+b^2</i> becomes a proof. <i>f(x) = x^2 + 1</i> defines a function.</p></section>
+          <section><h3>9. Pick part of a side</h3><p>Drag a box with the mouse around the pieces you want, or hold <kbd>Ctrl</kbd> and tap <kbd>←</kbd> <kbd>→</kbd> to grow it left or right. <i>3 + 5</i> out of <i>2x + 3 + 5 + y</i> works like any single piece: <kbd>s</kbd>, <kbd>m</kbd>, and the rest.</p></section>
+          <section><h3>10. More than equations</h3><p>Type <i>x^2 − 4 &lt; 0</i> for an inequality (moves flip the sign when they must; <kbd>e</kbd> solves it with a sign chart). Type just an expression to rewrite it. An identity like <i>(a+b)^2 = a^2+2ab+b^2</i> becomes a proof. <i>f(x) = x^2 + 1</i> defines a function.</p></section>
           <section><h3>11. Your work</h3><p><kbd>w</kbd> shows every workspace as a card: open, rename, copy, or start a new one. <kbd>Shift</kbd>+<kbd>R</kbd> twice puts every equation back at its start (<kbd>r</kbd> replays your steps).</p></section>
           <section><h3>12. Make it yours</h3><p><kbd>,</kbd> opens settings: theme, look (try Pixel), math size, speed, sound pack (try Blocks). <kbd>z</kbd> or the ⚡ at the bottom switches flash mode.</p></section>
         </div>
@@ -131,8 +131,8 @@
             <dt><kbd class="wide">Space</kbd> then a letter</dt><dd>jump to any piece</dd>
             <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next piece</dd>
             <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>grow / shrink the aim</dd>
-            <dt><kbd>Tab</kbd></dt><dd>other side</dd>
-            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>stretch the aim over neighbours</dd>
+            <dt><kbd>Shift</kbd>+<kbd>Tab</kbd></dt><dd>other side</dd>
+            <dt>hold <kbd>Ctrl</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>grow the highlight left / right</dd>
             <dt>drag a box</dt><dd>aim at whatever it covers</dd>
             <dt><kbd>a</kbd></dt><dd>whole equation</dd>
             <dt><kbd>Esc</kbd></dt><dd>clear</dd>
@@ -153,7 +153,8 @@
             <dt><kbd>=</kbd> <kbd>-</kbd> <kbd>.</kbd> <kbd>/</kbd></dt><dd>+ − × ÷ both sides, with a live preview</dd>
             <dt><kbd>s</kbd> <kbd>d</kbd></dt><dd>simplify, distribute</dd>
             <dt><kbd>x</kbd></dt><dd>swap sides</dd>
-            <dt><kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>slide a term</dd>
+            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>reorder: slide a term</dd>
+            <dt><kbd>e</kbd></dt><dd>solve for the aimed (or only) variable</dd>
             <dt><kbd>-</kbd> then <i>2#2</i></dt><dd>subtract 2 × equation 2 (elimination)</dd>
           </dl>
           <h3 class="gap">Hold f + (functions on both sides)</h3>
@@ -169,7 +170,7 @@
           </dl>
         </section>
         <section>
-          <h3>Hold e + (algebra)</h3>
+          <h3>Hold Tab + (algebra)</h3>
           <dl>
             <dt><kbd>i</kbd></dt><dd>solve for a variable</dd>
             <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>substitute from that equation</dd>
@@ -196,7 +197,7 @@
         </section>
       </div>
       </div>
-      <p class="help-note">Every move is checked numerically. If it wouldn't keep the equation true, it doesn't happen. Tap <kbd>e</kbd> or <kbd>f</kbd> to keep its menu open instead of holding.</p>
+      <p class="help-note">Every move is checked numerically. If it wouldn't keep the equation true, it doesn't happen. Tap <kbd>Tab</kbd> or <kbd>f</kbd> to keep its menu open instead of holding.</p>
     </div>
   </div>
   <div id="library" class="overlay" hidden>

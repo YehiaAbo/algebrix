@@ -143,3 +143,9 @@ App:
 - Settings (`,`, `src/ui/settings.ts`) are backed by `src/ui/prefs.ts` (key `algebrix.prefs`), and `src/ui/appearance.ts` applies them.
 - Flash mode (`z` or ⚡ in the bottom bar) uses a 0.38× pace for the stage, CSS transitions, and auto-step timers. There is also a Calm mode at 1.45×.
 - Packs live in `src/packs/`: sound sets (Studio, Blocks) and looks (Studio, Pixel). The math layout measures with `--math-font`, so a look can swap the font. See `docs/EXTENDING.md`.
+
+### Round 6b keys (user request)
+
+- The algebra menu moved from `e` to `Tab`. Hold Tab plus a key to act; tap Tab, browse with the arrows, then tap Tab again to apply. Shift+Tab switches to the other side.
+- `e` now solves: it goes straight to the answer for the aimed variable (or the only one), and otherwise asks which variable.
+- Shift+←→ reorders (slides) a term again. Hold Ctrl and tap ← or → to grow the highlight on that side; letting go keeps it.

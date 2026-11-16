@@ -36,7 +36,7 @@ const STEPS: TourStep[] = [
     done: t => !lhs(t.app).includes('^'),
   },
   { say: 'The square cancelled into <b>|x|</b>. The √9 is waiting for you: <kbd>s</kbd>.', done: t => rhs(t.app) === '3' },
-  { say: 'There are two answers in there. Hold <kbd>e</kbd> and press <kbd>a</kbd> to split into cases.', done: t => t.app.slots.length >= 2 },
+  { say: 'There are two answers in there. Hold <kbd>Tab</kbd> and press <kbd>a</kbd> to split into cases.', done: t => t.app.slots.length >= 2 },
   {
     say: 'Both cases sit in the rail on the left, each checked against the original. The graph agrees: drag it, scroll it, hover the dots. Press <kbd>Enter</kbd> to finish. <kbd>?</kbd> opens the manual any time.',
     done: t => t.finished,

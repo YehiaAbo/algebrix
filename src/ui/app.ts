@@ -264,7 +264,7 @@ export class App {
       new Stage(mini).show(lay, 0, 0, null);
       btn.addEventListener('click', () => this.switchTo(i));
     });
-    $('eqs-tip').innerHTML = this.slots.length > 1 ? `<kbd>1</kbd>–<kbd>${Math.min(9, this.slots.length)}</kbd> switch, hold <kbd>e</kbd> + number to substitute` : `<kbd>n</kbd> adds another equation`;
+    $('eqs-tip').innerHTML = this.slots.length > 1 ? `<kbd>1</kbd>–<kbd>${Math.min(9, this.slots.length)}</kbd> switch, hold <kbd>Tab</kbd> + number to substitute` : `<kbd>n</kbd> adds another equation`;
 
     const eq = this.eq;
     const vars = $('vars');
@@ -303,7 +303,7 @@ export class App {
       return;
     }
     if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
-    if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>e</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
+    if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>Tab</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
     if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`; return; }
     if (this.mode === 'fnask') { host.innerHTML = `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`; return; }
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
@@ -319,7 +319,7 @@ export class App {
         if (k.name !== 'any' && !isErr(applyMove(k.name, this.eq, this.sel))) parts.push(`<span class="hint"><kbd>${k.key}</kbd> ${k.verb}</span>`);
       }
     }
-    parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>e</kbd> algebra</span><span class="hint"><kbd>f</kbd> functions</span>`);
+    parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>Tab</kbd> algebra</span><span class="hint"><kbd>e</kbd> solve</span><span class="hint"><kbd>f</kbd> functions</span>`);
     parts.push(`<span class="spacer"></span><span class="hint dim"><kbd>u</kbd> undo</span><span class="hint dim"><kbd>?</kbd> manual</span>`);
     host.innerHTML = parts.join('');
   }
@@ -368,9 +368,9 @@ export class App {
     if (!quiet) this.entrance();
     this.save();
     const rel = relOf(eq);
-    if (quiet) this.say('Space aims. m moves it across. = − . / do anything to both sides. Hold e for algebra, f for functions. ? shows every key.');
+    if (quiet) this.say('Space aims. m moves it across. = − . / do anything to both sides. Hold Tab for algebra, f for functions, e solves. ? shows every key.');
     else if (rel === '≟') this.say('Both sides agree for every value: an identity. Prove it by rewriting one side at a time until they match.');
-    else if (rel === 'def' && eq.lhs.k === 'call') this.say(`Defined ${eq.lhs.name}. Use ${eq.lhs.name}(…) in other equations; hold e + u to unfold it, e + b for its inverse.`);
+    else if (rel === 'def' && eq.lhs.k === 'call') this.say(`Defined ${eq.lhs.name}. Use ${eq.lhs.name}(…) in other equations; hold Tab + u to unfold it, Tab + b for its inverse.`);
     else if (rel === 'expr') this.say('An expression: rewrite it with s, d, e and f. Add “= …” to make it an equation.');
     else if (this.slots.length > 1) this.say(`Equation ${this.cur + 1}. Press 1–${this.slots.length} to switch between them.`);
   }
@@ -607,19 +607,32 @@ export class App {
     this.select(g.id, quiet);
   }
 
-  /** Shift + ← →: grow or shrink the selection one neighbour at a time */
-  extend(dir: -1 | 1) {
+  /** Ctrl + ← →: add the next neighbour on that side to the highlight */
+  growEdge(dir: -1 | 1) {
     if (!this.sel || this.sel === 'eq') return this.sideways(dir);
     const g = this.grouped && this.sel === this.grouped.id ? this.grouped : null;
-    const anchor = g ? g.anchor : this.sel, head = g ? g.head : this.sel;
-    const path = findPath(this.base, head);
+    const first = g ? g.anchor : this.sel;
+    const path = findPath(this.base, first);
     const parent = path && path.length > 2 ? path[path.length - 2] : null;
-    if (!parent || (parent.k !== 'add' && parent.k !== 'mul')) return this.refuse('Shift + arrows pick neighbouring terms of a sum, or factors of a product.');
+    if (!parent || (parent.k !== 'add' && parent.k !== 'mul')) return this.refuse('Ctrl + arrows grow a highlight over neighbouring terms of a sum, or factors of a product.');
     const sibs = this.visibleKids(parent);
-    const j = sibs.findIndex(k => k.id === head) + dir;
-    if (j < 0 || j >= sibs.length) return this.refuse(dir > 0 ? 'Nothing further right in this sum.' : 'Nothing further left in this sum.');
-    if (sibs[j].id === anchor) return this.select(anchor);
-    this.selectRange(anchor, sibs[j].id);
+    const ends = (g ? [g.anchor, g.head] : [this.sel]).map(id => sibs.findIndex(k => k.id === id));
+    let lo = Math.min(...ends), hi = Math.max(...ends);
+    if (dir < 0) lo--; else hi++;
+    if (lo < 0 || hi >= sibs.length) return this.refuse(dir > 0 ? 'Nothing further right in this sum.' : 'Nothing further left in this sum.');
+    sound.tick(2);
+    this.selectRange(sibs[lo].id, sibs[hi].id);
+  }
+
+  /** e: solve. Aimed at a variable (or only one variable): straight to the answer; otherwise pick one */
+  solveKey() {
+    const vars = symbols(this.eq);
+    const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
+    const v = aimed?.k === 'sym' && vars.includes(aimed.name) ? aimed.name : vars.length === 1 ? vars[0] : null;
+    if (v) return this.solveFor(v);
+    if (!vars.length) return this.refuse('No variable to solve for.');
+    this.openHub(true);
+    this.askVar();
   }
 
   /** Mouse box: whatever the box touches is picked, as a run of neighbours when it can be */
@@ -951,19 +964,20 @@ export class App {
     if (h.awaitVar) {
       const v = symbols(this.eq).find(s => s === k);
       if (v) { this.closeHub(false); return this.solveFor(v); }
-      if (k.toLowerCase() === 'e') return this.closeHub(true);
+      if (k === 'Tab') return this.closeHub(true);
       return this.refuse(`Press one of ${symbols(this.eq).join(', ')}.`);
     }
-    const step = ['ArrowRight', 'ArrowDown', 'Tab'].includes(k) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(k) ? -1 : 0;
+    const step = ['ArrowRight', 'ArrowDown'].includes(k) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(k) ? -1 : 0;
     if (step) {
       if (!h.forms.length) return this.refuse('No other forms here. Aim at something else.');
-      h.i = h.moved ? (h.i + (e.shiftKey && k === 'Tab' ? -1 : step) + h.forms.length) % h.forms.length : step > 0 ? 0 : h.forms.length - 1;
+      h.i = h.moved ? (h.i + step + h.forms.length) % h.forms.length : step > 0 ? 0 : h.forms.length - 1;
       h.moved = true;
       sound.tick(1);
       return this.peekAt();
     }
     if (k === 'Enter') { if (h.moved) return this.applyForm(); return this.refuse('Browse with ← → first, or press a key shown.'); }
-    if (k.toLowerCase() === 'e' && h.sticky) return this.closeHub(true);
+    // Tab again: apply the highlighted form, or close if nothing is highlighted
+    if (k === 'Tab') return h.moved ? this.applyForm() : this.closeHub(true);
     const tech = h.techs.find(t => t.key === k);
     if (tech) {
       if (!tech.ok) return this.refuse(`${tech.label[0].toUpperCase()}${tech.label.slice(1)} doesn't apply here.`);
@@ -1046,7 +1060,7 @@ export class App {
     }
     const tip = document.createElement('div');
     tip.className = 'forms-tip';
-    tip.innerHTML = h.awaitVar ? 'press the variable' : h.sticky ? 'press a key, or <kbd>←</kbd><kbd>→</kbd> browse + <kbd>Enter</kbd>. <kbd>Esc</kbd> closes' : 'keep holding <kbd>e</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd> and release';
+    tip.innerHTML = h.awaitVar ? 'press the variable' : h.sticky ? 'press a key, or <kbd>←</kbd><kbd>→</kbd> browse + <kbd>Tab</kbd> applies. <kbd>Esc</kbd> closes' : 'keep holding <kbd>Tab</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd> and release';
     host.append(tip);
     host.hidden = false;
     this.place(host);
@@ -1226,7 +1240,7 @@ export class App {
     const rel = relOf(this.eq);
     if (rel === 'expr') { this.refuse('An expression has nothing to solve. Add “= …” to make it an equation.'); return; }
     if (rel === '≟') { this.refuse('This holds for every value, so there is nothing to solve: prove it instead, one side at a time.'); return; }
-    if (rel === 'def') { this.refuse('This defines a function. Use it in another equation, or hold e + b for its inverse.'); return; }
+    if (rel === 'def') { this.refuse('This defines a function. Use it in another equation, or hold Tab + b for its inverse.'); return; }
     if (isIneq(this.eq)) {
       const Q = polyOf(add([this.eq.lhs, negate(this.eq.rhs)]));
       const linear = symbols(this.eq).length === 1 && !!Q && Q.c.length <= 2;
@@ -1249,7 +1263,7 @@ export class App {
     // solving means a finished answer: take what simplifies at the end
     if (solvedFor(this.eq) === v) { const t = tidy(this.eq); if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2); return; }
     if (splitCases(this.eq, v)) { this.split(v); return; }
-    this.say(`Got as far as I could isolating ${v}. Try a form (hold e) or a function (hold f).`, true);
+    this.say(`Got as far as I could isolating ${v}. Try a form (hold Tab) or a function (hold f).`, true);
   }
 
   /** split this equation into cases; the others become new equations. With v, solve every case too. */
@@ -1385,7 +1399,7 @@ export class App {
     window.addEventListener('keydown', e => this.key(e));
     window.addEventListener('keyup', e => {
       if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') { this.palRelease(); return; }
-      if (e.key.toLowerCase() !== 'e' || this.mode !== 'hub' || !this.hub || this.hub.sticky) return;
+      if (e.key !== 'Tab' || this.mode !== 'hub' || !this.hub || this.hub.sticky) return;
       if (this.hub.moved) this.applyForm();
       else { this.hub.sticky = true; this.renderHub(); }
     });
@@ -1475,6 +1489,8 @@ export class App {
     }
     this.flush();
     if (ctrl) {
+      // hold Ctrl: ← grows the highlight to the left, → to the right; let go and it stays
+      if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); return this.growEdge(k === 'ArrowLeft' ? -1 : 1); }
       if (k.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
       else if ((k.toLowerCase() === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); this.redo(); }
       return;
@@ -1491,19 +1507,19 @@ export class App {
     }
     switch (k) {
       case ' ': handled(); return this.showLabels();
-      case 'h': case 'ArrowLeft': handled(); return e.altKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : e.shiftKey ? this.extend(-1) : this.sideways(-1);
-      case 'l': case 'ArrowRight': handled(); return e.altKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : e.shiftKey ? this.extend(1) : this.sideways(1);
+      case 'h': case 'ArrowLeft': handled(); return e.altKey || e.shiftKey ? this.apply(applyMove('slideL', this.eq, this.sel)) : this.sideways(-1);
+      case 'l': case 'ArrowRight': handled(); return e.altKey || e.shiftKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : this.sideways(1);
       case 'H': handled(); return this.apply(applyMove('slideL', this.eq, this.sel));
       case 'L': handled(); return this.apply(applyMove('slideR', this.eq, this.sel));
       case 'k': case 'ArrowUp': handled(); return this.grow();
       case 'j': case 'ArrowDown': handled(); return this.shrink();
-      case 'Tab': handled(); return this.toggleSide();
+      case 'Tab': handled(); if (e.shiftKey) return this.toggleSide(); if (!e.repeat) this.openHub(false); return;
       case 'a': handled(); return this.select('eq');
       case 'Escape': handled(); return this.select(null, true);
       case 'u': handled(); return this.undo();
       case 'r': case 'U': handled(); return this.redo();
       case 'o': handled(); return this.openOp('+');
-      case 'e': case 'E': handled(); if (!e.repeat) this.openHub(false); return;
+      case 'e': case 'E': handled(); return this.solveKey();
       case 'Enter': handled(); return this.openHub(true);
       case 'f': case 'F': handled(); if (!e.repeat) this.openPal(false); return;
       case 'i': handled(); return this.edit(false);
