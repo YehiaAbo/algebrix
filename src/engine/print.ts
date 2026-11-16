@@ -25,7 +25,7 @@ export function toText(n: Node, ascii = false): string {
         const s = p(f, wrap);
         const prev = n.factors[i - 1];
         const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || (prev && prev.k === 'num' && /^\d/.test(s)));
-        out += (needsDot ? (ascii ? '*' : '·') : '') + s;
+        out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && f.k === 'fn' && f.name !== 'abs' ? ' ' : '') + s;
       });
       return out;
     }
@@ -35,5 +35,6 @@ export function toText(n: Node, ascii = false): string {
     }
     case 'pow': return `${p(n.base, n.base.k !== 'num' && n.base.k !== 'sym' || isNeg(n.base))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
+    case 'fn': return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${n.name}(${toText(n.arg, ascii)})`;
   }
 }

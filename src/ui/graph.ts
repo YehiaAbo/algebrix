@@ -23,8 +23,11 @@ export class Graph {
     if (this.eq) this.draw(this.eq, false);
   }
 
-  draw(eq: Eq, animate: boolean) {
+  private others: Eq[] = [];
+
+  draw(eq: Eq, animate: boolean, others: Eq[] = this.others) {
     this.eq = eq;
+    this.others = others;
     cancelAnimationFrame(this.raf);
     const vars = symbols(eq);
     const dpr = window.devicePixelRatio || 1;
@@ -85,8 +88,12 @@ export class Graph {
     const vy = vars.includes('y') && hx !== 'y' ? 'y' : vars.find(n => n !== hx)!;
     c.clearRect(0, 0, W, H);
     this.grid(W, H, X, Y, ux, uy, hx, vy);
-    this.implicit(eq, hx, vy, W, H, ux, uy);
-    this.note.innerHTML = `Every point on the curve solves the equation. It stays the same curve at every step.`;
+    const extra = this.others.filter(o => symbols(o).every(v => v === hx || v === vy) && symbols(o).length > 0);
+    for (const o of extra) this.implicit(o, hx, vy, W, H, ux, uy, css('--graph-b'), 0.75);
+    this.implicit(eq, hx, vy, W, H, ux, uy, css('--graph-a'), 1);
+    this.note.innerHTML = extra.length
+      ? `Your equation is the bold curve. Where it crosses the others, all of them hold at once.`
+      : `Every point on the curve solves the equation. It stays the same curve at every step.`;
   }
 
   private grid(W: number, H: number, X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number, xl: string, yl: string) {
@@ -140,7 +147,7 @@ export class Graph {
     c.strokeStyle = css('--bg'); c.lineWidth = 2; c.stroke();
   }
 
-  private implicit(eq: Eq, hx: string, vy: string, W: number, H: number, ux: (p: number) => number, uy: (p: number) => number) {
+  private implicit(eq: Eq, hx: string, vy: string, W: number, H: number, ux: (p: number) => number, uy: (p: number) => number, color: string, alpha: number) {
     const c = this.ctx;
     const n = 140, m = Math.round(n * H / W);
     const F: number[][] = [];
@@ -148,7 +155,8 @@ export class Graph {
       F.push([]);
       for (let i = 0; i <= n; i++) F[j].push(evaluate(eq, { [hx]: ux(i / n * W), [vy]: uy(j / m * H) }));
     }
-    c.strokeStyle = css('--graph-a'); c.lineWidth = 2.25; c.lineCap = 'round';
+    c.strokeStyle = color; c.lineWidth = alpha < 1 ? 1.75 : 2.25; c.lineCap = 'round';
+    c.globalAlpha = alpha;
     c.beginPath();
     const px = (i: number) => i / n * W, py = (j: number) => j / m * H;
     for (let j = 0; j < m; j++) for (let i = 0; i < n; i++) {
@@ -170,6 +178,7 @@ export class Graph {
       if (pts.length === 4) { c.moveTo(...pts[2]); c.lineTo(...pts[3]); }
     }
     c.stroke();
+    c.globalAlpha = 1;
   }
 }
 

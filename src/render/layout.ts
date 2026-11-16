@@ -13,6 +13,8 @@ export interface Glyph {
   italic?: boolean;
   minus?: boolean;
   right?: boolean;
+  /** a straight bar (absolute value) instead of a curved paren */
+  straight?: boolean;
   x: number; y: number; w: number; h: number;
   /** font size (px) the glyph is drawn at */
   s: number;
@@ -81,18 +83,19 @@ function sign(minus: boolean, s: number, key: string, owners: string[]): Box {
   return { w, asc: (AXIS + 0.31) * s, desc: 0, gs: [g] };
 }
 
-function parens(b: Box, s: number, id: string, owners: string[], from?: string): Box {
+function parens(b: Box, s: number, id: string, owners: string[], from?: string, straight = false): Box {
   if (b.asc <= 0.82 * s && b.desc <= 0.3 * s) {
     // short content: the font's own parentheses look best
-    const l = text('(', s, `(${id}`, owners, false, from && `(${from}`);
-    const r = text(')', s, `)${id}`, owners, false, from && `)${from}`);
-    return row([l, 0.03 * s, b, 0.03 * s, r]);
+    const l = text(straight ? '|' : '(', s, `(${id}`, owners, false, from && `(${from}`);
+    const r = text(straight ? '|' : ')', s, `)${id}`, owners, false, from && `)${from}`);
+    return row([l, (straight ? 0.06 : 0.03) * s, b, (straight ? 0.06 : 0.03) * s, r]);
   }
   const top = Math.max(b.asc, ASC * s) + 0.08 * s, bot = Math.max(b.desc, DESC * s) + 0.08 * s;
   const w = 0.33 * s;
-  const mk = (right: boolean): Glyph => ({ key: `${right ? ')' : '('}${id}`, from: from && `${right ? ')' : '('}${from}`, kind: 'paren', right, x: 0, y: -top, w, h: top + bot, s, owners });
-  const l: Box = { w, asc: top, desc: bot, gs: [mk(false)] };
-  const r: Box = { w, asc: top, desc: bot, gs: [mk(true)] };
+  const mk = (right: boolean): Glyph => ({ key: `${right ? ')' : '('}${id}`, from: from && `${right ? ')' : '('}${from}`, kind: 'paren', right, straight, x: 0, y: -top, w: straight ? w * 0.6 : w, h: top + bot, s, owners });
+  const pw = straight ? w * 0.6 : w;
+  const l: Box = { w: pw, asc: top, desc: bot, gs: [mk(false)] };
+  const r: Box = { w: pw, asc: top, desc: bot, gs: [mk(true)] };
   return row([l, 0.02 * s, b, 0.02 * s, r]);
 }
 
@@ -143,7 +146,7 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
         if (drawn > 0) {
           const dot = f.k === 'num' || (f.k === 'frac' && prev?.k === 'frac') || (f.k === 'pow' && f.base.k === 'num');
           if (dot) parts.push(0.1 * s, text('·', s, `d${f.id}`, me, false), 0.1 * s);
-          else parts.push((wrap || prev?.k === 'add' ? 0.02 : 0.05) * s);
+          else parts.push((f.k === 'fn' && f.name !== 'abs' ? 0.16 : wrap || prev?.k === 'add' ? 0.02 : 0.05) * s);
         }
         parts.push(b);
         drawn++;
@@ -169,7 +172,7 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     }
     case 'pow': {
       let b = L(n.base, s, me, c);
-      if (!(n.base.k === 'sym' || (n.base.k === 'num' && n.base.v >= 0))) b = parens(b, s, n.base.id, me);
+      if (!(n.base.k === 'sym' || (n.base.k === 'num' && n.base.v >= 0) || n.base.k === 'sqrt' || (n.base.k === 'fn' && n.base.name === 'abs'))) b = parens(b, s, n.base.id, me);
       const es = Math.max(s * 0.62, c.base * 0.36);
       const e = L(n.exp, es, me, c);
       const rise = Math.max(0.44 * s, b.asc - 0.5 * es * ASC);
@@ -184,6 +187,13 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const w = lead + a.w + 0.1 * s;
       const rad: Glyph = { key: `r${n.id}`, from: from && `r${from}`, kind: 'rad', x: 0, y: -top, w, h: top + a.desc + 0.06 * s, s, owners: me };
       return { w, asc: top + 0.03 * s, desc: a.desc + 0.06 * s, gs: [rad, ...shift(a, lead, 0)] };
+    }
+    case 'fn': {
+      const a = L(n.arg, s, me, c);
+      if (n.name === 'abs') return parens(a, s, n.id, me, from, true);
+      const name = text(n.name, s, `f${n.id}`, me, false, from && `f${from}`);
+      const simple = n.arg.k === 'sym' || (n.arg.k === 'num' && n.arg.v >= 0);
+      return simple ? row([name, 0.12 * s, a]) : row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
     }
   }
 }

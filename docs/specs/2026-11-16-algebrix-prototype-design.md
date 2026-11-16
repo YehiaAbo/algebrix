@@ -82,3 +82,15 @@ Liked: sound, animation, smoothness, arrow navigation. Changes:
 - Pop-ups above the aimed piece for refusals and for the name of each move.
 - New pieces fly in from a matching symbol already on screen, so factoring/expanding read as rearrangement.
 - Themes: dark modeled on Claude Code (warm charcoal, orange selection) and a cool light theme; follows the system until chosen.
+
+## Round 3 addendum (2026-11-16)
+
+Feedback: single keys only (no Shift for ×), E as a real chord hub for techniques, a function mode, several equations with substitution, and freer arithmetic that still can't happen by accident.
+
+- **Free, guarded arithmetic.** Typing `=` (+), `-`, `.` (×) or `/` opens a small both-sides bar above the aim, prefilled with whatever cancels the aimed piece and pre-selected so typing replaces it. The stage previews the result live; Enter applies; a tidy step follows a beat later (and undo skips over it). Every result still goes through the numeric check.
+- **`m` moves anything across.** Terms subtract, factors divide, denominators multiply, exponents and outer functions are undone.
+- **`p` functions on both sides.** `p` again peels the outer function (√ for squares, ln for e^, e^ for ln, …). Also square, cube, roots, ln, log, e^, 1/(…). Each notes its assumption (sides ≥ 0, > 0, extra solutions).
+- **Hold `e`.** Techniques: `i` solve for a variable (plays the steps), `a` split |X| = B into two equations, digits substitute from that equation (solving a copy if needed). Forms have chord letters (`c t f x s z d w o l p r`); arrows browse and releasing applies. Tap `e` to keep it open.
+- **Functions.** sin, cos, tan, ln, log, |x|, √, ∛, e, π; parsing, layout, evaluation, simplification of inverse pairs, log and power forms.
+- **Systems.** Up to nine equations in the rail, `1`–`9` switch, `n` adds, Delete twice removes. The graph shows the others faintly.
+- Verification gained a custom relation (`check`) for moves that aren't "same equation times a factor": functions on both sides (pointwise), substitution (holds given the other equation), and case splits.

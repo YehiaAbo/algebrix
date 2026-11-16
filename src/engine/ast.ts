@@ -10,8 +10,14 @@ export interface Neg extends Base { k: 'neg'; arg: Node }
 export interface Frac extends Base { k: 'frac'; num: Node; den: Node }
 export interface Pow extends Base { k: 'pow'; base: Node; exp: Node }
 export interface Sqrt extends Base { k: 'sqrt'; arg: Node }
+export type FnName = 'sin' | 'cos' | 'tan' | 'ln' | 'log' | 'abs';
+export interface Fn extends Base { k: 'fn'; name: FnName; arg: Node }
 export interface Eq extends Base { k: 'eq'; lhs: Node; rhs: Node }
-export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Eq;
+export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Eq;
+
+/** Named constants: they look like symbols but are never variables. */
+export const CONSTS: Record<string, number> = { e: Math.E, π: Math.PI };
+export const isConst = (n: Node) => n.k === 'sym' && n.name in CONSTS;
 
 let counter = 0;
 export const newId = (): string => 'n' + (++counter).toString(36);
@@ -31,6 +37,7 @@ export const neg = (arg: Node, id = newId()): Neg => ({ k: 'neg', id, arg });
 export const frac = (n: Node, d: Node, id = newId()): Frac => ({ k: 'frac', id, num: n, den: d });
 export const pow = (base: Node, exp: Node, id = newId()): Pow => ({ k: 'pow', id, base, exp });
 export const sqrt = (arg: Node, id = newId()): Sqrt => ({ k: 'sqrt', id, arg });
+export const fn = (name: FnName, arg: Node, id = newId()): Fn => ({ k: 'fn', id, name, arg });
 export const eq = (lhs: Node, rhs: Node): Eq => ({ k: 'eq', id: 'eq', lhs, rhs });
 
 export function children(n: Node): Node[] {
@@ -38,7 +45,7 @@ export function children(n: Node): Node[] {
     case 'num': case 'sym': return [];
     case 'add': return n.terms;
     case 'mul': return n.factors;
-    case 'neg': case 'sqrt': return [n.arg];
+    case 'neg': case 'sqrt': case 'fn': return [n.arg];
     case 'frac': return [n.num, n.den];
     case 'pow': return [n.base, n.exp];
     case 'eq': return [n.lhs, n.rhs];
@@ -51,7 +58,7 @@ export function withChildren<T extends Node>(n: T, kids: Node[]): T {
     case 'num': case 'sym': return n;
     case 'add': return { ...n, terms: kids };
     case 'mul': return { ...n, factors: kids };
-    case 'neg': case 'sqrt': return { ...n, arg: kids[0] };
+    case 'neg': case 'sqrt': case 'fn': return { ...n, arg: kids[0] };
     case 'frac': return { ...n, num: kids[0], den: kids[1] };
     case 'pow': return { ...n, base: kids[0], exp: kids[1] };
     case 'eq': return { ...n, lhs: kids[0], rhs: kids[1] };
@@ -111,6 +118,7 @@ export function key(n: Node): string {
     case 'frac': return '(/ ' + key(n.num) + ' ' + key(n.den) + ')';
     case 'pow': return '(^ ' + key(n.base) + ' ' + key(n.exp) + ')';
     case 'sqrt': return '(sqrt ' + key(n.arg) + ')';
+    case 'fn': return '(' + n.name + ' ' + key(n.arg) + ')';
     case 'eq': return '(= ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
   }
 }
@@ -119,20 +127,32 @@ export type Env = Record<string, number>;
 export function evaluate(n: Node, env: Env): number {
   switch (n.k) {
     case 'num': return n.v;
-    case 'sym': return n.name in env ? env[n.name] : NaN;
+    case 'sym': return n.name in env ? env[n.name] : n.name in CONSTS ? CONSTS[n.name] : NaN;
     case 'add': return n.terms.reduce((s, t) => s + evaluate(t, env), 0);
     case 'mul': return n.factors.reduce((s, t) => s * evaluate(t, env), 1);
     case 'neg': return -evaluate(n.arg, env);
     case 'frac': return evaluate(n.num, env) / evaluate(n.den, env);
     case 'pow': return Math.pow(evaluate(n.base, env), evaluate(n.exp, env));
     case 'sqrt': return Math.sqrt(evaluate(n.arg, env));
+    case 'fn': {
+      const a = evaluate(n.arg, env);
+      switch (n.name) {
+        case 'sin': return Math.sin(a);
+        case 'cos': return Math.cos(a);
+        case 'tan': return Math.abs(Math.cos(a)) < 1e-9 ? NaN : Math.tan(a);
+        case 'ln': return a > 0 ? Math.log(a) : NaN;
+        case 'log': return a > 0 ? Math.log10(a) : NaN;
+        case 'abs': return Math.abs(a);
+      }
+      return NaN;
+    }
     case 'eq': return evaluate(n.lhs, env) - evaluate(n.rhs, env);
   }
 }
 
 export function symbols(n: Node): string[] {
   const s = new Set<string>();
-  walk(n, m => { if (m.k === 'sym') s.add(m.name); });
+  walk(n, m => { if (m.k === 'sym' && !(m.name in CONSTS)) s.add(m.name); });
   return [...s].sort();
 }
 

@@ -13,6 +13,11 @@
     <aside class="rail">
       <div class="brand"><span class="mark">a<sub>x</sub></span><span class="word">algebrix</span></div>
       <section>
+        <h2 class="h-row">Equations <button id="add-eq" class="add-eq" title="New equation (n)">+ new</button></h2>
+        <ol id="eqs" class="eqs"></ol>
+        <p id="eqs-tip" class="empty"></p>
+      </section>
+      <section>
         <h2>Variables</h2>
         <ul id="vars" class="vars"></ul>
       </section>
@@ -47,10 +52,11 @@
         <div id="sel" class="sel"></div>
         <div id="labels" class="labels"></div>
         <div id="forms" class="forms" hidden></div>
-      </div>
-      <div id="op" class="op" hidden>
-        <span>Both sides</span>
-        <input id="op-input" spellcheck="false" autocomplete="off" placeholder="/7  or  +3x" aria-label="Operation for both sides">
+        <div id="op" class="op" hidden>
+          <span id="op-sym" class="op-sym">both sides</span>
+          <input id="op-input" spellcheck="false" autocomplete="off" aria-label="Operation for both sides">
+          <span id="op-note" class="op-note"></span>
+        </div>
       </div>
       <footer id="hints" class="hints" aria-live="polite"></footer>
     </main>
@@ -71,47 +77,52 @@
           <dl>
             <dt><kbd class="wide">Space</kbd> then a letter</dt><dd>jump to any piece</dd>
             <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next piece</dd>
-            <dt><kbd>↑</kbd></dt><dd>grow to the bigger piece</dd>
-            <dt><kbd>↓</kbd></dt><dd>shrink back inside</dd>
+            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>grow / shrink the aim</dd>
             <dt><kbd>Tab</kbd></dt><dd>other side</dd>
             <dt><kbd>a</kbd></dt><dd>whole equation</dd>
             <dt><kbd>Esc</kbd></dt><dd>clear</dd>
           </dl>
           <p class="help-note"><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> work like the arrows.</p>
+          <h3 class="gap">Equations</h3>
+          <dl>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>switch equation</dd>
+            <dt><kbd>n</kbd></dt><dd>add an equation</dd>
+            <dt><kbd>i</kbd></dt><dd>type over this one</dd>
+            <dt><kbd>Delete</kbd> twice</dt><dd>remove this one</dd>
+          </dl>
         </section>
         <section>
           <h3>Move</h3>
           <dl>
-            <dt><kbd>m</kbd></dt><dd>move a term across =</dd>
-            <dt><kbd>/</kbd></dt><dd>divide both sides by a factor</dd>
-            <dt><kbd>*</kbd></dt><dd>multiply away a denominator</dd>
-            <dt><kbd>d</kbd></dt><dd>distribute, split a fraction</dd>
-            <dt><kbd>f</kbd></dt><dd>factor</dd>
-            <dt><kbd>s</kbd></dt><dd>simplify (all if nothing aimed)</dd>
-            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>slide a term</dd>
+            <dt><kbd>m</kbd></dt><dd>move it across =, the right way for what it is</dd>
+            <dt><kbd>=</kbd> <kbd>-</kbd> <kbd>.</kbd> <kbd>/</kbd></dt><dd>+ − × ÷ both sides, with a live preview</dd>
+            <dt><kbd>s</kbd> <kbd>f</kbd> <kbd>d</kbd></dt><dd>simplify, factor, distribute</dd>
             <dt><kbd>x</kbd></dt><dd>swap sides</dd>
-            <dt><kbd>o</kbd></dt><dd>do anything to both sides</dd>
+            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>slide a term</dd>
+            <dt><kbd>p</kbd></dt><dd>functions on both sides (<kbd>p</kbd> again peels)</dd>
           </dl>
         </section>
         <section>
-          <h3>Forms</h3>
+          <h3>Hold e +</h3>
           <dl>
-            <dt>hold <kbd>e</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>browse, release to apply</dd>
-            <dt>tap <kbd>e</kbd> or <kbd>Enter</kbd></dt><dd>open forms to browse</dd>
-            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>pick a form directly</dd>
+            <dt><kbd>i</kbd></dt><dd>solve for a variable</dd>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>substitute from that equation</dd>
+            <dt><kbd>a</kbd></dt><dd>split |…| = b into two cases</dd>
+            <dt><kbd>c</kbd> <kbd>t</kbd></dt><dd>one fraction / split into terms</dd>
+            <dt><kbd>f</kbd> <kbd>x</kbd> <kbd>s</kbd></dt><dd>factored / expanded / simplified</dd>
+            <dt><kbd>z</kbd> <kbd>d</kbd> <kbd>w</kbd></dt><dd>= 0 / clear fractions / swap</dd>
+            <dt><kbd>l</kbd> <kbd>p</kbd> <kbd>r</kbd></dt><dd>log rules / as powers / as roots</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>browse forms, release e to apply</dd>
           </dl>
           <h3 class="gap">Work</h3>
           <dl>
-            <dt><kbd>u</kbd> <kbd>U</kbd></dt><dd>undo / redo</dd>
-            <dt><kbd>i</kbd></dt><dd>type over this equation</dd>
-            <dt><kbd>n</kbd></dt><dd>new equation</dd>
-            <dt><kbd>t</kbd></dt><dd>light / dark</dd>
-            <dt><kbd>M</kbd></dt><dd>sound on / off</dd>
+            <dt><kbd>u</kbd> <kbd>r</kbd></dt><dd>undo / redo</dd>
+            <dt><kbd>t</kbd> <kbd>M</kbd></dt><dd>theme / sound</dd>
             <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>zoom graph</dd>
           </dl>
-          <p class="help-note">Every move and form is checked. If it wouldn't keep the equation true, it doesn't happen.</p>
         </section>
       </div>
+      <p class="help-note">Every move is checked numerically. If it wouldn't keep the equation true, it doesn't happen. Tap <kbd>e</kbd> to keep the menu open instead of holding.</p>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>

@@ -21,6 +21,10 @@ export interface MoveOk {
   hints: Hints;
   /** lhs−rhs of the new equation = factor × (lhs−rhs of the old one) */
   factor: (env: Env) => number;
+  /** custom relation instead of `factor`: pairs (got, want) that must match at every sample */
+  check?: (env: Env) => [number, number][];
+  /** a tidy-up that follows another step; undo skips over it */
+  auto?: boolean;
 }
 export type MoveResult = MoveOk | { error: string };
 export const isErr = (r: MoveResult): r is { error: string } => 'error' in r;
@@ -51,7 +55,7 @@ function withSides(e: Eq, s: 'lhs' | 'rhs', mine: Node, theirs: Node): Eq {
 }
 
 /* ---------- move a term across "=" ---------- */
-function moveAcross(e: Eq, sel: string | null): MoveResult {
+export function moveAcross(e: Eq, sel: string | null): MoveResult {
   const at = locate(e, sel);
   if (!at) return { error: 'Pick a term to move across the =.' };
   const { node, parent, s, root } = at;
@@ -66,9 +70,9 @@ function moveAcross(e: Eq, sel: string | null): MoveResult {
     moving = [node];
     mine = rest.length === 1 ? rest[0] : { ...root, terms: rest };
   } else if (parent.k === 'mul' && parent === root) {
-    return { error: `${t(node)} is a factor, not a term. Factors leave by dividing: press /.` };
+    return { error: `${t(node)} is a factor, not a term. Factors leave by dividing.` };
   } else if (parent.k === 'frac' && parent === root && parent.den === node) {
-    return { error: `${t(node)} is a denominator. It leaves by multiplying: press *.` };
+    return { error: `${t(node)} is a denominator. It leaves by multiplying.` };
   } else {
     return { error: `${t(node)} is inside ${t(parent)}. Only a whole term on a side can cross the =. Press k to grow the selection.` };
   }
@@ -82,7 +86,7 @@ function moveAcross(e: Eq, sel: string | null): MoveResult {
 }
 
 /* ---------- divide both sides ---------- */
-function divideBoth(e: Eq, sel: string | null): MoveResult {
+export function divideBoth(e: Eq, sel: string | null): MoveResult {
   const at = locate(e, sel);
   if (!at) return { error: 'Pick the factor to divide both sides by.' };
   const { node, parent, s, root } = at;
@@ -104,7 +108,7 @@ function divideBoth(e: Eq, sel: string | null): MoveResult {
 }
 
 /* ---------- multiply both sides (clear a denominator) ---------- */
-function multiplyBoth(e: Eq, sel: string | null): MoveResult {
+export function multiplyBoth(e: Eq, sel: string | null): MoveResult {
   const at = locate(e, sel);
   if (!at) return { error: 'Pick a denominator to multiply both sides by.' };
   const { node, parent, s, root } = at;
@@ -168,7 +172,7 @@ function slide(e: Eq, sel: string | null, dir: -1 | 1): MoveResult {
   return { eq: replace(e, at.parent.id, p), label: 'reorder', hints: newHints(), factor: one, select: at.node.id };
 }
 
-function swapSides(e: Eq, sel: string | null): MoveResult {
+export function swapSides(e: Eq, sel: string | null): MoveResult {
   return { eq: eq(e.rhs, e.lhs), label: 'swap sides', hints: newHints(), factor: () => -1, select: sel };
 }
 
@@ -214,19 +218,26 @@ export function verify(before: Eq, r: MoveOk): string | null {
   if (new Set(ids).size !== ids.length) return 'duplicate ids';
   const vars = symbols(eq(before.lhs, add([before.rhs, r.eq.lhs, r.eq.rhs])));
   let checked = 0;
-  for (let i = 0; i < 40 && checked < 6; i++) {
+  for (let i = 0; i < 120 && checked < 6; i++) {
+    // small values first, then positive ones (logs, roots), then wide ones
+    const span = i < 40 ? () => rand() * 9 - 4.5 : i < 80 ? () => rand() * 9 + 0.05 : () => rand() * 120 - 60;
     const env: Env = {};
-    for (const v of vars) env[v] = Math.round((rand() * 9 - 4.5) * 1000) / 1000 + 0.137;
-    const d0 = evaluate(before, env), d1 = evaluate(r.eq, env), f = r.factor(env);
-    const want = f * d0;
-    if (![d0, d1, f, want].every(Number.isFinite)) continue;
+    for (const v of vars) env[v] = Math.round(span() * 1000) / 1000 + 0.137;
+    const pairs: [number, number][] = r.check ? r.check(env) : (() => {
+      const d0 = evaluate(before, env), d1 = evaluate(r.eq, env), f = r.factor(env);
+      return Number.isFinite(f) && Number.isFinite(d0) ? [[d1, f * d0]] : [[NaN, NaN]];
+    })();
+    if (!pairs.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))) continue;
     checked++;
-    if (Math.abs(d1 - want) > 1e-6 * (1 + Math.abs(want) + Math.abs(d1))) return `mismatch at ${JSON.stringify(env)}: ${d1} vs ${want}`;
+    for (const [got, want] of pairs) {
+      if (Math.abs(got - want) > 1e-6 * (1 + Math.abs(want) + Math.abs(got))) return `mismatch at ${JSON.stringify(env)}: ${got} vs ${want}`;
+    }
   }
+  if (checked < 2 && vars.length) return 'could not check: undefined almost everywhere';
   return null;
 }
 
-function checked(e: Eq, r: MoveResult): MoveResult {
+export function checked(e: Eq, r: MoveResult): MoveResult {
   if (isErr(r)) return r;
   const problem = verify(e, r);
   if (problem) {

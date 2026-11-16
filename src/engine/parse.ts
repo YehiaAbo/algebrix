@@ -1,10 +1,12 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, eq } from './ast';
+import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName } from './ast';
 import { negate, gcd } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
+
+const FNS = ['sqrt', 'cbrt', 'sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log'];
 
 const GREEK: Record<string, string> = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π',
@@ -29,17 +31,20 @@ function tokenize(s: string): Tok[] {
       i = j === i + 1 ? i + 2 : j; // "\," "\;" etc. are spacing
       if (!name || name === 'left' || name === 'right') continue;
       if (name === 'cdot' || name === 'times') out.push({ t: 'op', v: '*' });
+      else if (name === 'lvert' || name === 'rvert' || name === 'vert') out.push({ t: 'op', v: '|' });
       else if (name === 'div') out.push({ t: 'op', v: '/' });
       else if (GREEK[name]) out.push({ t: 'id', v: GREEK[name] });
       else out.push({ t: 'cmd', v: name });
       continue;
     }
-    if (s.startsWith('sqrt', i)) { out.push({ t: 'cmd', v: 'sqrt' }); i += 4; continue; }
+    const word = FNS.find(f => s.startsWith(f, i));
+    if (word) { out.push({ t: 'cmd', v: word }); i += word.length; continue; }
+    if (s.startsWith('pi', i)) { out.push({ t: 'id', v: 'π' }); i += 2; continue; }
     if (/[a-zA-Zα-ω]/.test(c)) { out.push({ t: 'id', v: c }); i++; continue; }
     const map: Record<string, string> = { '−': '-', '×': '*', '·': '*', '÷': '/', '√': 'sqrt' };
     const v = map[c] ?? c;
     if (v === 'sqrt') out.push({ t: 'cmd', v });
-    else if ('+-*/^=(){}[]'.includes(v)) out.push({ t: 'op', v });
+    else if ('+-*/^=(){}[]|'.includes(v)) out.push({ t: 'op', v });
     else throw new ParseError(`I don't know the symbol “${c}”.`);
     i++;
   }
@@ -50,6 +55,7 @@ export class ParseError extends Error {}
 
 class Parser {
   i = 0;
+  abs = 0;
   constructor(private toks: Tok[]) {}
   peek() { return this.toks[this.i]; }
   isOp(v: string) { const t = this.peek(); return !!t && t.t === 'op' && t.v === v; }
@@ -89,7 +95,7 @@ class Parser {
     const t = this.peek();
     if (!t) return false;
     if (t.t === 'num' || t.t === 'id' || t.t === 'cmd') return true;
-    return t.t === 'op' && (t.v === '(' || t.v === '{' || t.v === '[');
+    return t.t === 'op' && (t.v === '(' || t.v === '{' || t.v === '[' || (t.v === '|' && this.abs === 0));
   }
 
   group(): Node {
@@ -119,12 +125,32 @@ class Parser {
         const a = this.braced(), b = this.braced();
         return frac(a, b);
       }
-      if (t.v === 'sqrt') return sqrt(this.isOp('{') || this.isOp('(') ? this.braced() : this.atom());
+      if (t.v === 'sqrt') {
+        if (this.isOp('[')) { this.i++; const k = this.expr(); this.eat(']'); return pow(this.fnArg(), frac(num(1), k)); }
+        return sqrt(this.fnArg());
+      }
+      if (t.v === 'cbrt') return pow(this.fnArg(), frac(num(1), num(3)));
+      if (t.v === 'exp') return pow(sym('e'), this.fnArg());
+      if (['sin', 'cos', 'tan', 'ln', 'log', 'abs'].includes(t.v)) return fn(t.v as FnName, this.fnArg());
       throw new ParseError(`\\${t.v} isn't supported yet.`);
     }
+    if (t.v === '|') {
+      const outer = this.abs;
+      this.abs = outer + 1;
+      const e = this.expr();
+      this.abs = outer;
+      this.eat('|');
+      return fn('abs', e);
+    }
     const close = ({ '(': ')', '{': '}', '[': ']' } as Record<string, string>)[t.v];
-    if (close) { const e = this.expr(); this.eat(close); return e; }
+    if (close) { const outer = this.abs; this.abs = 0; const e = this.expr(); this.abs = outer; this.eat(close); return e; }
     throw new ParseError(`Unexpected “${t.v}”.`);
+  }
+
+  /** argument of a function: braced/parenthesised, or the next power like "ln x²" */
+  fnArg(): Node {
+    if (this.isOp('{') || this.isOp('(')) return this.braced();
+    return this.power();
   }
 
   braced(): Node {

@@ -191,7 +191,7 @@ export class Stage {
 
 function sig(g: Glyph): string {
   if (g.kind === 'text') return `t${g.italic ? 'i' : ''}:${g.text}`;
-  if (g.kind === 'paren') return g.right ? 'p)' : 'p(';
+  if (g.kind === 'paren') return g.straight ? 'p|' : g.right ? 'p)' : 'p(';
   return g.kind;
 }
 
@@ -249,7 +249,9 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     const sw = Math.max(1.1, 0.044 * g.s);
     const path = svg.firstChild as SVGPathElement;
     path.setAttribute('stroke-width', String(g.kind === 'rad' ? sw * 0.95 : sw));
-    if (g.kind === 'paren') {
+    if (g.kind === 'paren' && g.straight) {
+      path.setAttribute('d', `M ${g.w / 2} ${sw} L ${g.w / 2} ${g.h - sw}`);
+    } else if (g.kind === 'paren') {
       const w = g.w, h = g.h, x0 = g.right ? w * 0.25 : w * 0.75, x1 = g.right ? w * 0.72 : w * 0.28;
       path.setAttribute('d', `M ${x0} ${sw} Q ${x1 + (g.right ? 1 : -1) * w * 0.12} ${h / 2} ${x0} ${h - sw}`);
     } else {

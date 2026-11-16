@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, mul, frac, pow, key } from './ast';
+import { Node, children, withChildren, num, mul, frac, pow, sqrt, fn, key } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -55,6 +55,26 @@ function rule(n: Node, h: Hints): Node | null {
         const v = base.v ** exp.v;
         if (safe(v)) { h.absorbs.set(exp.id, base.id); return num(v, base.id); }
       }
+      if (base.k === 'num' && exp.k === 'num' && Number.isInteger(exp.v) && exp.v < 0 && exp.v >= -12 && base.v !== 0) {
+        const v = base.v ** -exp.v;
+        if (safe(v)) return frac(num(1), num(v, base.id), n.id);
+      }
+      // integer roots of numbers: 8^(1/3) → 2
+      if (base.k === 'num' && base.v > 0 && exp.k === 'frac' && exp.num.k === 'num' && exp.num.v === 1 && exp.den.k === 'num' && exp.den.v > 1) {
+        const r = Math.round(base.v ** (1 / exp.den.v));
+        if (r ** exp.den.v === base.v) { h.absorbs.set(exp.id, base.id); return num(r, base.id); }
+      }
+      // inverse pairs: e^(ln a) = a, 10^(log a) = a, (√a)² = a
+      if (base.k === 'sym' && base.name === 'e' && exp.k === 'fn' && exp.name === 'ln') return exp.arg;
+      if (base.k === 'num' && base.v === 10 && exp.k === 'fn' && exp.name === 'log') return exp.arg;
+      if (base.k === 'sqrt' && exp.k === 'num' && exp.v === 2) { h.absorbs.set(exp.id, base.arg.id); return base.arg; }
+      if (base.k === 'fn' && base.name === 'abs' && exp.k === 'num' && exp.v % 2 === 0) return pow(base.arg, exp, n.id);
+      // (b^n)^(1/n) = b for odd n, |b| for even n
+      const r1 = ratOf(exp);
+      if (base.k === 'pow' && base.exp.k === 'num' && Number.isInteger(base.exp.v) && r1 && r1.p === 1 && r1.q === base.exp.v) {
+        h.absorbs.set(base.exp.id, base.base.id);
+        return base.exp.v % 2 === 0 ? fn('abs', base.base, n.id) : base.base;
+      }
       if (base.k === 'pow' && base.exp.k === 'num' && exp.k === 'num') {
         h.absorbs.set(exp.id, base.exp.id);
         return pow(base.base, num(base.exp.v * exp.v, base.exp.id), n.id);
@@ -64,10 +84,50 @@ function rule(n: Node, h: Hints): Node | null {
     case 'sqrt': {
       const a = n.arg;
       if (a.k === 'num' && a.v >= 0 && Number.isInteger(Math.sqrt(a.v))) return num(Math.sqrt(a.v), a.id);
+      // √12 → 2√3
+      if (a.k === 'num' && Number.isInteger(a.v) && a.v > 3) {
+        for (let k = Math.floor(Math.sqrt(a.v)); k > 1; k--) {
+          if (a.v % (k * k) === 0) return mul([num(k), sqrt(num(a.v / (k * k), a.id), n.id)]);
+        }
+      }
+      // √(b²) = |b|
+      if (a.k === 'pow' && a.exp.k === 'num' && a.exp.v === 2) { h.absorbs.set(a.exp.id, a.base.id); return fn('abs', a.base, n.id); }
       return null;
     }
+    case 'fn': return fnRule(n.name, n.arg, n.id, h);
     default: return null;
   }
+}
+
+const ratOf = (n: Node) => (n.k === 'num' ? rat(n.v) : n.k === 'frac' && n.num.k === 'num' && n.den.k === 'num' && n.den.v !== 0 ? rat(n.num.v, n.den.v) : null);
+
+function fnRule(name: string, a: Node, id: string, h: Hints): Node | null {
+  switch (name) {
+    case 'abs':
+      if (a.k === 'num') return num(Math.abs(a.v), a.id);
+      if (a.k === 'neg') return fn('abs', a.arg, id);
+      if (a.k === 'fn' && a.name === 'abs') return a;
+      if (a.k === 'sqrt') return a;
+      if (a.k === 'pow' && a.exp.k === 'num' && a.exp.v % 2 === 0) return a;
+      if (a.k === 'mul' && a.factors[0]?.k === 'num' && a.factors[0].v < 0) return fn('abs', { ...a, factors: [num(-a.factors[0].v, a.factors[0].id), ...a.factors.slice(1)] }, id);
+      return null;
+    case 'ln':
+      if (a.k === 'num' && a.v === 1) return num(0, a.id);
+      if (a.k === 'sym' && a.name === 'e') return num(1, a.id);
+      if (a.k === 'pow' && a.base.k === 'sym' && a.base.name === 'e') { h.absorbs.set(a.base.id, a.exp.id); return a.exp; }
+      // ln(c^b) = b·ln c for a positive number c
+      if (a.k === 'pow' && a.base.k === 'num' && a.base.v > 0) return mul([a.exp, fn('ln', a.base, a.id)], id);
+      return null;
+    case 'log':
+      if (a.k === 'num' && a.v > 0 && Number.isInteger(Math.log10(a.v))) return num(Math.round(Math.log10(a.v)), a.id);
+      if (a.k === 'pow' && a.base.k === 'num' && a.base.v === 10) { h.absorbs.set(a.base.id, a.exp.id); return a.exp; }
+      return null;
+    case 'sin': case 'tan':
+      return a.k === 'num' && a.v === 0 ? num(0, a.id) : null;
+    case 'cos':
+      return a.k === 'num' && a.v === 0 ? num(1, a.id) : null;
+  }
+  return null;
 }
 
 function mulRule(fs: Node[], id: string, h: Hints): Node | null {
