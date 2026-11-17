@@ -611,9 +611,11 @@ body[data-mode="write"] .input-state { display: inline-flex; }
 .input-state .ok { color: var(--good); font-weight: 600; }
 .input-state .wip { color: var(--copy); font-weight: 600; }
 .input-state kbd { font-size: 10.5px; }
-.input-under { display: flex; align-items: center; gap: 12px; min-height: 18px; margin: 4px 4px 0; }
-.input-under .input-error { margin: 0; flex: 1; }
-.input-keys { display: none; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.input-under { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 18px; margin: 4px 4px 0; }
+/* a message gets a line of its own above the palette rather than a narrow column beside it */
+.input-under .input-error { margin: 0; flex: 1 1 320px; }
+.input-under .input-error:empty { flex-basis: 0; }
+.input-keys { display: none; gap: 4px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
 body[data-mode="write"] .input-keys { display: flex; }
 .input-keys button { border: 0; background: var(--bg); color: var(--ink); border-radius: 6px; padding: 2px 8px; font: 14px var(--math-font); cursor: pointer; box-shadow: 0 0 0 1px var(--line) inset; }
 .input-keys button:hover { box-shadow: 0 0 0 1px var(--sel) inset; }

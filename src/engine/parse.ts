@@ -120,9 +120,9 @@ function tokenize(src: string): Tok[] {
       else out.push({ t: 'cmd', v: name });
       continue;
     }
-    if (c === '≠' || (c === '!' && s[i + 1] === '=')) throw new ParseError('“≠” isn\'t something I can solve yet. Solve the “=” version, then leave that answer out.');
+    if (c === '≠' || (c === '!' && s[i + 1] === '=')) throw new ParseError('“≠” isn\'t something I can solve yet. Solve the “=” version, then leave that answer out.', true);
     const nope = prevLetter ? null : NOT_YET.exec(rest);
-    if (nope) throw new ParseError(`${nope[1]} isn't built in yet.`);
+    if (nope) throw new ParseError(`${nope[1]} isn't built in yet.`, true);
     const word = FNS.find(f => s.startsWith(f, i));
     if (word) {
       i += word.length;
@@ -163,7 +163,8 @@ function tokenize(src: string): Tok[] {
   return out;
 }
 
-export class ParseError extends Error {}
+/** `sure`: no amount of further typing fixes it, so it can show while you type */
+export class ParseError extends Error { constructor(message: string, public sure = false) { super(message); } }
 
 class Parser {
   i = 0;
@@ -487,7 +488,7 @@ export function parseEquation(src: string, allowExpr = false): Eq {
   }
   if (rels.length > 1) {
     const ineq = rels.every(r => r.v !== '=');
-    throw new ParseError(ineq ? 'One inequality at a time: type 2 < x and x < 5 as two (n adds another).' : 'Only one “=” for now: n adds another equation.');
+    throw new ParseError(ineq ? 'One inequality at a time: type 2 < x and x < 5 as two (n adds another).' : 'Only one “=” for now: n adds another equation.', true);
   }
   const rel = rels[0].v as Rel;
   const [lhs, rhs] = twice(greedy => {

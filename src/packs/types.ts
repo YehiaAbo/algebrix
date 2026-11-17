@@ -11,6 +11,8 @@ export interface Synth {
   /** a sound rendered once from samples and cached by key: render gets the sample rate and
    *  returns the samples (−1..1); played at a volume and a rate (1 = as rendered), after a delay */
   sample(key: string, render: (sampleRate: number) => Float32Array, vol: number, rate?: number, delay?: number): void;
+  /** render a sample ahead of time, in idle moments, so its first play costs nothing */
+  prepare(key: string, render: (sampleRate: number) => Float32Array): void;
 }
 
 /** every moment the app makes a sound for */

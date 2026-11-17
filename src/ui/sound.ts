@@ -44,21 +44,40 @@ const synth: Synth = {
     src.start(t);
   },
   sample(name, render, vol, rate = 1, delay = 0) {
-    const c = ctx();
-    let buf = rendered.get(name);
-    if (!buf) {
-      const d = render(c.sampleRate);
-      buf = c.createBuffer(1, d.length, c.sampleRate);
-      buf.getChannelData(0).set(d);
-      rendered.set(name, buf);
-    }
+    const c = ctx(), buf = bake(c, name, render);
+    warmUp();
     const src = c.createBufferSource(), g = c.createGain();
     src.buffer = buf; src.playbackRate.value = rate; g.gain.value = vol;
     src.connect(g).connect(out!);
     src.start(c.currentTime + delay);
   },
+  prepare(name, render) { if (!rendered.has(name)) { queue.push([name, render]); warmUp(); } },
 };
 const rendered = new Map<string, AudioBuffer>();
+function bake(c: AudioContext, name: string, render: (sampleRate: number) => Float32Array) {
+  let buf = rendered.get(name);
+  if (!buf) {
+    const d = render(c.sampleRate);
+    buf = c.createBuffer(1, d.length, c.sampleRate);
+    buf.getChannelData(0).set(d);
+    rendered.set(name, buf);
+  }
+  return buf;
+}
+// samples waiting to be rendered: a few at a time while the page is idle, once there is an
+// audio context (made on the first sound, never before, so the browser has no reason to complain)
+const queue: [string, (sampleRate: number) => Float32Array][] = [];
+let warming = false;
+function warmUp() {
+  if (warming || !ac || !queue.length) return;
+  warming = true;
+  const idle = (window as { requestIdleCallback?: (f: (d: { timeRemaining(): number }) => void) => void }).requestIdleCallback ?? ((f: (d: { timeRemaining(): number }) => void) => setTimeout(() => f({ timeRemaining: () => 8 }), 50));
+  const step = (d: { timeRemaining(): number }) => {
+    while (queue.length && d.timeRemaining() > 4) { const [name, render] = queue.shift()!; bake(ac!, name, render); }
+    if (queue.length) idle(step); else warming = false;
+  };
+  idle(step);
+}
 
 let active: Sounds = soundPack(prefs.sounds).make(synth);
 onPrefs((p, k) => {

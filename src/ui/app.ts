@@ -1,7 +1,7 @@
 import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
-import { parseEquation } from '../engine/parse';
+import { parseEquation, ParseError } from '../engine/parse';
 import { toText } from '../engine/print';
 import { applyMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { formsFor } from '../engine/forms';
@@ -908,7 +908,11 @@ export class App {
     const got = livePreview(src);
     $('stage').classList.toggle('preview', !!got && got.partial);
     const kind = got ? ({ '=': 'equation', 'expr': 'expression', 'def': 'function', '≟': 'proof' } as Record<string, string>)[relOf(got.eq)] ?? 'inequality' : '';
-    $('input-state').innerHTML = !got ? '' : got.partial ? '<span class="wip">keep going…</span>' : `<span class="ok">✓ ${kind}</span><kbd>Enter</kbd>`;
+    // ≠, floor, a second inequality: more typing won't fix these, so say so now, not after a pause
+    let sure = '';
+    if (!got || got.partial) try { parseEquation(src, true); } catch (e) { if (e instanceof ParseError && e.sure) sure = e.message; }
+    err.textContent = sure;
+    $('input-state').innerHTML = !got || sure ? '' : got.partial ? '<span class="wip">keep going…</span>' : `<span class="ok">✓ ${kind}</span><kbd>Enter</kbd>`;
     if (!got) {
       // nothing readable yet: keep what was there, explain only if you stop typing
       if (src.trim()) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 900);

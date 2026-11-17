@@ -35,7 +35,8 @@ export const chalk: SoundPack = {
 Add `chalk` to `SOUND_PACKS` in `src/packs/index.ts`. It appears under Settings → Sounds.
 `tone`, `noise` and `sample` are already connected to the volume and mute settings.
 `sample(key, render, vol, rate)` plays samples you compute yourself: `render` gets the sample
-rate and returns a `Float32Array`, rendered once and cached by `key`. The Bricks pack
+rate and returns a `Float32Array`, rendered once and cached by `key`. `prepare(key, render)`
+renders one ahead, in idle moments after the first sound, so a first play never stalls a frame. The Bricks pack
 (`src/packs/sounds/bricks.ts`) builds every sound this way, by modal synthesis (a struck
 brick as a few damped plate modes), with several variants per sound so no two clicks match;
 `WAV_OUT=dir npx vitest run tests/bricks.test.ts` writes them out to listen to.

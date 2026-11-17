@@ -7,7 +7,7 @@ import { describe, expect, it as it_ } from 'vitest';
 import { test } from '@fast-check/vitest';
 import fc from 'fast-check';
 import '../src/engine/calculus';
-import { parseEquation } from '../src/engine/parse';
+import { parseEquation, ParseError } from '../src/engine/parse';
 import { evaluate, Node } from '../src/engine/ast';
 import { toText } from '../src/engine/print';
 import { livePreview } from '../src/ui/shared';
@@ -81,4 +81,10 @@ describe('spellings people type', () => {
   for (const [src, want] of cases) it_(src, () => expect(toText(parseEquation(src, true))).toBe(want));
   for (const [src, why] of [['x != 2', /≠/], ['x ≠ 2', /≠/], ['floor(x)', /floor/], ['5 mod 3', /mod/], ['2 < x < 5', /two/]] as const)
     it_(`${src} says why`, () => expect(() => parseEquation(src, true)).toThrow(why));
+  // these show while you type: nothing typed after them could fix them; an unfinished one waits
+  const sure = (src: string) => { try { parseEquation(src, true); return null; } catch (e) { return (e as ParseError).sure; } };
+  it_('a mistake no more typing can fix shows at once; an unfinished one waits', () => {
+    for (const src of ['x != 2', 'x ≠', 'floor(x', '2 < x < 5', 'x = 1 = 2']) expect(sure(src), src).toBe(true);
+    for (const src of ['x +', '(x + 1', 'sin(', 'x = ']) expect(sure(src), src).toBe(false);
+  });
 });

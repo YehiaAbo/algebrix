@@ -11,7 +11,13 @@ export const blocks: SoundPack = {
   id: 'blocks',
   name: 'Bricks',
   blurb: 'Toy bricks: pressed on, pulled off, a hand in the box.',
-  make: ({ sample }) => {
+  make: ({ sample, prepare }) => {
+    // every variant is rendered ahead in idle moments, so no first press stalls an animation
+    for (let k = 0; k < VARIANTS; k++) {
+      prepare(`snap:${k}`, snap(k + 1)); prepare(`unsnap:${k}`, unsnap(k + 1)); prepare(`misfit:${k}`, misfit(k + 1));
+      prepare(`press:${k}`, press(k + 1, 1.25)); prepare(`studs:${k}`, studs(k + 1)); prepare(`rummage:${k}`, rummage(k + 1));
+      for (let d = 0; d <= 8; d++) prepare(`tap:${d}:${k}`, tap(k + 1, d));
+    }
     const turn: Record<string, number> = {};
     // the next variant of a sound, skipping the one just played
     const next = (name: string) => { const k = ((turn[name] ?? -1) + 1 + Math.floor(Math.random() * (VARIANTS - 1))) % VARIANTS; turn[name] = k; return k; };
