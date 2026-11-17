@@ -8,7 +8,7 @@ import { setDomains, Domain } from '../engine/moves';
 import { toText } from '../engine/print';
 import { isErr, solvedFor } from '../engine/moves';
 import { negate } from '../engine/terms';
-import { isolate, substitute, splitCases, tidy, Cases } from '../engine/techniques';
+import { isolate, substitute, splitCases, tidy, Cases, impossible } from '../engine/techniques';
 import { evaluate } from '../engine/ast';
 import { sound } from './sound';
 import { ms } from './prefs';
@@ -48,7 +48,8 @@ export function afterSolve(this: App, v: string) {
     this.say(always ? `${v} cancelled out, and ${toText(this.eq)} is always true: every ${v} works.` : `${v} cancelled out, and ${toText(this.eq)} is never true: no ${v} works, so there is no solution.`, !always);
     return;
   }
-  this.say(`Got as far as I could isolating ${v}. Try a form (hold Tab) or a function (hold f).`, true);
+  const no = impossible(this.eq, v);
+  this.say(no ?? `Got as far as I could isolating ${v}. Try a form (hold Tab) or a function (hold f).`, true);
 }
 
 /** split this equation into cases; the others become new equations. With v, solve every case too. */

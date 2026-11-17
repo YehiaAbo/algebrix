@@ -296,6 +296,31 @@ function quadratic(e: Eq, v: string): MoveOk[] | null {
   return out;
 }
 
+/** powers written raised, as in a message: x², eˣ */
+const SUP: Record<string, string> = { 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹', x: 'ˣ', y: 'ʸ', n: 'ⁿ', t: 'ᵗ', a: 'ᵃ', k: 'ᵏ', '−': '⁻' };
+export const raised = (t: string) => t.replace(/sqrt\(/g, '√(').replace(/√\(([\w.α-ω])\)/g, '√$1').replace(/\^(−?(?:\d+|[xyntak]))(?![\w(.])/g, (_, p: string) => [...p].map(ch => SUP[ch]).join(''));
+
+/**
+ * x² = −4, √x = −1, eˣ = −1: a side that is never negative (or always positive) set equal to
+ * a number it can't be. Says so plainly, instead of squaring into a wrong answer or giving up.
+ */
+export function impossible(e: Eq, v: string): string | null {
+  if (relOf(e) !== '=') return null;
+  for (const [side, other] of [[e.lhs, e.rhs], [e.rhs, e.lhs]] as const) {
+    if (!has(side, v) || symbols(other).length) continue;
+    const c = evaluate(other, {});
+    if (!Number.isFinite(c)) continue;
+    const posBase = side.k === 'pow' && !has(side.base, v) && !symbols(side.base).filter(s => s !== 'e').length && evaluate(side.base, {}) > 0;
+    // x², x⁴, and x^(1/2), x^(3/4): an even power or an even root
+    const even = side.k === 'pow' && ((side.exp.k === 'num' && Number.isInteger(side.exp.v) && side.exp.v > 0 && side.exp.v % 2 === 0)
+      || (side.exp.k === 'frac' && side.exp.den.k === 'num' && side.exp.den.v % 2 === 0 && side.exp.num.k === 'num' && side.exp.num.v > 0));
+    const what = posBase ? 'always positive' : even || side.k === 'sqrt' || (side.k === 'fn' && side.name === 'abs') ? 'never negative' : null;
+    if (!what || (what === 'never negative' ? c >= 0 : c > 0)) continue;
+    return `${raised(toText(side))} is ${what}, so it can't be ${toText(other)}: no real ${v} works.`;
+  }
+  return null;
+}
+
 /** the real roots of a polynomial (coefficients lowest first), found where it changes sign */
 function realRoots(c: Rat[]): number[] {
   const f = (x: number) => c.reduceRight((acc, r) => acc * x + r.p / r.q, 0);
@@ -313,8 +338,7 @@ function realRoots(c: Rat[]): number[] {
 }
 
 function noNiceFactors(cur: Eq, v: string, c: Rat[]): string {
-  const zero = toText(eq(simplify(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()), newHints()), num(0)))
-    .replace(/\^(\d+)/g, (_, d: string) => [...d].map(ch => '⁰¹²³⁴⁵⁶⁷⁸⁹'[+ch]).join(''));
+  const zero = raised(toText(eq(simplify(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()), newHints()), num(0))));
   const rs = realRoots(c).map(r => `${v} ≈ ${Number(r.toFixed(3))}`);
   return `${zero} has no nice factors, so there is no exact step to take. ${rs.length ? `It crosses zero at ${rs.join(' and ')} (the graph shows it).` : 'It never crosses zero.'}`;
 }
@@ -348,7 +372,9 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
   const seen = new Set<string>();
   for (let i = 0; i < 24; i++) {
     if (splitCases(cur, v)) return steps; // the caller splits into cases
-    if (seen.has(key(cur))) return stuck(`I'm going in circles isolating ${v}. Try a form (hold e) first.`);
+    if (seen.has(key(cur))) return stuck(`I'm going in circles isolating ${v}. Try a form first (hold Tab).`);
+    const no = impossible(cur, v);
+    if (no) return stuck(no);
     seen.add(key(cur));
     const hl = has(cur.lhs, v), hr = has(cur.rhs, v);
     if (!hl && !hr) return stuck(`${v} cancelled out.`);
