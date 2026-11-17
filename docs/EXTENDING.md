@@ -40,6 +40,9 @@ renders one ahead, in idle moments after the first sound, so a first play never 
 (`src/packs/sounds/bricks.ts`) builds every sound this way, by modal synthesis (a struck
 brick as a few damped plate modes), with several variants per sound so no two clicks match;
 `WAV_OUT=dir npx vitest run tests/bricks.test.ts` writes them out to listen to.
+The Build pack (`src/packs/sounds/build.ts`, listed by `buildpack.ts`) reuses those strikes, brighter and with a
+little room, adds a pitched ring so a run of moves climbs a pentatonic scale, and keeps that
+streak in the pack's own closure.
 Recorded samples work the same way: decode them once and return their samples from `render`.
 
 ## A look

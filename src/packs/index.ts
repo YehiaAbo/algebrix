@@ -3,10 +3,11 @@
 import { SoundPack, LookPack } from './types';
 import { classic } from './sounds/classic';
 import { blocks } from './sounds/blocks';
+import { build } from './sounds/buildpack';
 import { studio } from './looks/studio';
 import { pixel } from './looks/pixel';
 
-export const SOUND_PACKS: SoundPack[] = [classic, blocks];
+export const SOUND_PACKS: SoundPack[] = [classic, blocks, build];
 export const LOOKS: LookPack[] = [studio, pixel];
 
 export const soundPack = (id: string) => SOUND_PACKS.find(p => p.id === id) ?? SOUND_PACKS[0];

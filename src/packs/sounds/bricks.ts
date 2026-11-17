@@ -85,7 +85,7 @@ function puff(out: Float32Array, sr: number, at: number, dur: number, gain: numb
 
 const buffer = (sr: number, seconds: number) => new Float32Array(Math.ceil(sr * seconds));
 /** scale to a peak, and fade the very end so nothing clicks off */
-function finish(out: Float32Array, peak: number) {
+export function finish(out: Float32Array, peak: number) {
   let m = 0;
   for (const x of out) m = Math.max(m, Math.abs(x));
   const k = m > 0 ? peak / m : 0, fade = Math.min(out.length, 64);

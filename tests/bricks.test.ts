@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { writeFileSync, mkdirSync } from 'fs';
 import { snap, press, unsnap, misfit, tap, studs, rummage } from '../src/packs/sounds/bricks';
+import * as Build from '../src/packs/sounds/build';
 
 const SR = 48000;
 const peak = (d: Float32Array) => d.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
@@ -87,5 +88,45 @@ describe('brick sounds', () => {
     writeFileSync(`${dir}/4-wont-fit.wav`, wav([1, 2].map(s => misfit(s)(SR))));
     writeFileSync(`${dir}/5-aiming-taps.wav`, wav([0, 1, 2, 3, 4].map(d => tap(d + 1, d)(SR)), 0.18));
     writeFileSync(`${dir}/6-solved-rummage.wav`, wav([1, 2].map(s => rummage(s)(SR)), 0.6));
+    // the Build pack: a run of moves climbing the scale, as when solving step by step
+    const run = [0, 2, 4, 7, 9, 12, 14, 16].map((st, k) => Build.click(k % 4 + 1, 880 * 2 ** (st / 12))(SR));
+    writeFileSync(`${dir}/build-1-moves-climbing.wav`, wav(run, 0.12));
+    writeFileSync(`${dir}/build-2-enter-assemble.wav`, wav([1, 2].map(s => Build.assemble(s)(SR))));
+    writeFileSync(`${dir}/build-3-undo-pop.wav`, wav([1, 2, 3].map(s => Build.pop(s)(SR))));
+    writeFileSync(`${dir}/build-4-wont-fit.wav`, wav([1, 2].map(s => Build.nope(s)(SR))));
+    writeFileSync(`${dir}/build-5-solved-complete.wav`, wav([1, 2].map(s => Build.complete(s)(SR)), 0.6));
+  });
+});
+
+/** the strongest frequency between lo and hi, 10 to 60 ms in: the note a snap sings */
+function pitch(d: Float32Array, lo: number, hi: number) {
+  const a = Math.round(SR * 0.01), b = Math.min(d.length, Math.round(SR * 0.06));
+  let best = lo, top = -1;
+  for (let f = lo; f <= hi; f += 5) {
+    let re = 0, im = 0;
+    for (let i = a; i < b; i++) { const w = 2 * Math.PI * f * i / SR; re += d[i] * Math.cos(w); im += d[i] * Math.sin(w); }
+    if (re * re + im * im > top) { top = re * re + im * im; best = f; }
+  }
+  return best;
+}
+
+describe('build sounds (the brick-game pack)', () => {
+  const ALL_B = { click: Build.click(1), assemble: Build.assemble(1), pop: Build.pop(1), nope: Build.nope(1), tick: Build.tick(1, 2), ratchet: Build.ratchet(1), complete: Build.complete(1) };
+  for (const [name, render] of Object.entries(ALL_B)) {
+    it(`${name}: finite, never clipping, and silent by its end`, () => {
+      const d = render(SR);
+      expect(d.every(Number.isFinite)).toBe(true);
+      expect(peak(d)).toBeLessThanOrEqual(0.951);
+      expect(rms(d, d.length - 200, d.length)).toBeLessThan(0.01);
+    });
+  }
+  it('a snap sings the note it is given, so a run of moves climbs', () => {
+    for (const f of [880, 987.8, 1108.7]) expect(Math.abs(pitch(Build.click(1, f)(SR), 600, 1500) - f)).toBeLessThan(f * 0.02);
+  });
+  it('it is still a click first: bright at the start', () => {
+    expect(brightness(Build.click(1, 880)(SR))).toBeGreaterThan(1500);
+  });
+  it('finishing is a ratchet of pieces before the studs and the thunk', () => {
+    expect(onsets(Build.complete(1)(SR)).length).toBeGreaterThanOrEqual(6);
   });
 });
