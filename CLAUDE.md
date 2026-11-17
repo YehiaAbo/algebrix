@@ -2,9 +2,9 @@
 
 Keyboard-first math workbench. Spec: `docs/specs/2026-11-16-algebrix-prototype-design.md`.
 
-- `src/engine/` pure algebra: AST with stable ids, parser, moves, equivalence checks. No DOM. Test-first (`npm test`).
+- `src/engine/` pure algebra: AST with stable ids, parser, moves, equivalence checks. No DOM. Test-first (`npm test`). Calculus: calculus.ts is the kernel the safety net uses (plain differentiation, numeric limits); calcmoves.ts has the step-by-step rules, kept separate so each checks the other.
 - `src/render/` math layout + animated transitions keyed by node id.
-- `src/ui/` app.ts (state, rendering) plus nav.ts (arrow-key aiming, pure and unit-tested), sheet.ts (the equations and their steps: undo, redo, the limit; pure and unit-tested), shelf.ts (the other equations across the top), and its parts as methods on App.prototype: hub.ts (Tab), fnpal.ts (f), ops.ts (both sides), solving.ts, keys.ts, persist.ts; shared.ts holds types and helpers. Also sound, graph, library (workspaces as cards), settings, prefs, tour.
+- `src/ui/` app.ts (state, rendering) plus nav.ts (arrow-key aiming, pure and unit-tested), sheet.ts (the equations and their steps: undo, redo, the limit; pure and unit-tested), shelf.ts (the other equations across the top), and its parts as methods on App.prototype: hub.ts (Tab), calc.ts (C, the calculus hub), fnpal.ts (f), ops.ts (both sides), solving.ts, keys.ts, persist.ts; shared.ts holds types and helpers. Also sound, graph, library (workspaces as cards), settings, prefs, tour.
 - Browser tests in `e2e/` (`npm run e2e`, or `npm run e2e -- tours` for one file): they start the dev server and drive the real app by keyboard and mouse in Chromium. Every tour is played end to end. Run them before shipping a UI change, and add one for each new UI behaviour.
 - `src/packs/` sound sets and looks; add one file and list it in `src/packs/index.ts`. Guide: `docs/EXTENDING.md`.
 - Never ship a move that is not covered by the numeric equivalence check.

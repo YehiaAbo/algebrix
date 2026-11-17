@@ -44,10 +44,10 @@ export function techniques(this: App): Tech[] {
   return out;
 }
 
-export function openHub(this: App, sticky: boolean) {
+export function openHub(this: App, sticky: boolean, calc = false) {
   this.flush();
-  const forms = formsFor(this.eq, this.sel);
-  this.hub = { forms, techs: this.techniques(), i: 0, sticky, moved: false, awaitVar: false };
+  const forms = calc ? this.calcForms() : formsFor(this.eq, this.sel);
+  this.hub = { forms, techs: calc ? this.calcTechniques() : this.techniques(), i: 0, sticky, moved: false, awaitVar: false, calc };
   this.chordUsed = false;
   this.setMode('hub');
   if (this.slots.length > 1) this.renderLanes();
@@ -84,8 +84,8 @@ export function hubKey(this: App, e: KeyboardEvent) {
     return this.peekAt();
   }
   if (k === 'Enter') { if (h.moved) return this.applyForm(); return this.refuse('Browse with ← → first, or press a key shown.'); }
-  // Tab again: apply the highlighted form, or close if nothing is highlighted
-  if (k === 'Tab') return h.moved ? this.applyForm() : this.closeHub(true);
+  // Tab (or C) again: apply the highlighted form, or close if nothing is highlighted
+  if (k === (h.calc ? 'c' : 'Tab') || (h.calc && k === 'C')) return h.moved ? this.applyForm() : this.closeHub(true);
   const tech = h.techs.find(t => t.key === k);
   if (tech) {
     if (!tech.ok) return this.refuse(`${tech.label[0].toUpperCase()}${tech.label.slice(1)} doesn't apply here.`);
@@ -96,6 +96,7 @@ export function hubKey(this: App, e: KeyboardEvent) {
   if (/^[1-9]$/.test(k)) return this.refuse(Number(k) - 1 === this.cur ? 'That’s this equation. Hold Tab and press another equation’s number.' : `There is no equation ${k}.`);
   const form = h.forms.find(f => f.chord === k);
   if (form) { h.i = h.forms.indexOf(form); return this.applyForm(); }
+  if (h.calc) return this.refuse(`Press one of ${h.techs.map(t => t.key).join(', ')}.`);
   if (k === 'f') { this.closeHub(false); return this.apply(applyMove('factor', this.eq, this.sel), 0.85); }
   const known = 'zdxswctolprhqvn';
   if (known.includes(k)) return this.refuse('That form doesn\'t apply to what is aimed.');
@@ -142,7 +143,7 @@ export function renderHub(this: App) {
   } else {
     const row = document.createElement('div');
     row.className = 'hub-row';
-    row.innerHTML = `<span class="hub-title">Techniques</span>` + h.techs.map(t => `<button class="chip${t.ok ? '' : ' off'}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}</button>`).join('');
+    row.innerHTML = `<span class="hub-title">${h.calc ? 'Calculus' : 'Techniques'}</span>` + h.techs.map(t => `<button class="chip${t.ok ? '' : ' off'}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}</button>`).join('');
     host.append(row);
     if (h.forms.length) {
       const forms = document.createElement('div');
@@ -169,7 +170,8 @@ export function renderHub(this: App) {
   }
   const tip = document.createElement('div');
   tip.className = 'forms-tip';
-  tip.innerHTML = h.awaitVar ? 'press the variable' : h.sticky ? 'press a key, or <kbd>←</kbd><kbd>→</kbd> browse + <kbd>Tab</kbd> applies. <kbd>Esc</kbd> closes' : 'keep holding <kbd>Tab</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd> and release';
+  const hk = h.calc ? 'C' : 'Tab';
+  tip.innerHTML = h.awaitVar ? 'press the variable' : h.sticky ? `press a key, or <kbd>←</kbd><kbd>→</kbd> browse + <kbd>${hk}</kbd> applies. <kbd>Esc</kbd> closes` : `keep holding <kbd>${hk}</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd> and release`;
   host.append(tip);
   host.hidden = false;
   this.place(host);

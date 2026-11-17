@@ -193,3 +193,16 @@ App:
 - The shelf replaces the dock cards: the other equations sit open across the top of the board as columns, larger than the cards were, each with its number, status, and what it offers the current equation ("gives y", "shares x, y", "puts in x" when x is aimed) with the Tab key for it. They light up while Tab is held.
 - Code: arrow-key aiming moved to src/ui/nav.ts as pure functions with unit tests; the shelf renders in src/ui/shelf.ts from plain data. Browser tests live in e2e/ (`npm run e2e`): aiming, the shelf and systems, and all 18 tours played end to end.
 - Inverse trig shows as sin⁻¹, cos⁻¹, tan⁻¹ (typed as sin^-1 or sin⁻¹; arcsin still parses). sin⁻¹(sin u) → u is a form that carries its range (−π/2 ≤ u ≤ π/2) as a condition and is checked only inside it.
+
+### Round 10: Calculus 1 on C
+
+**How calculus is checked.** A derivative and a limit are things the engine can evaluate, so calculus steps go through the same numeric safety net as algebra. The kernel (src/engine/calculus.ts) differentiates by plain rules for evaluation only, and estimates limits numerically (Ridders' extrapolation from both sides; NaN when the estimate isn't clean, so the step can't be checked and is refused). The step-by-step rules the student sees (src/engine/calcmoves.ts) are separate code, so a slip in one shows up against the other. The kernel itself is fuzzed against finite differences in the tests.
+
+- Notation: `d/dx x^2`, `d^2/dx^2`, `\frac{d}{dx}`, `dy/dx` (= y′), `y'`, `f'(x)`, `lim x->0 sin(x)/x`, `lim_{x\to 0^+}`, `∞` / `inf` / `\infty`. d/dx draws as a small fraction; lim draws with x → a underneath.
+- C is the calculus hub, held or tapped like Tab:
+  - d: the next derivative rule on the aimed (or innermost) derivative, its name on the key (power rule, sum rule, product rule, quotient rule, chain rule, constant multiple…). Simple inside pieces (xⁿ, sin x, a polynomial) are written out in the same step, so one press is one real rule. With no derivative in sight: on an expression it adds d/dx of it as a new equation; on f(x) = … it adds f′(x) = d/dx(…); on an equation it differentiates both sides, the other variables depend on x, y′ appears, and the step is marked ⇒.
+  - p plugs in (refused with the reason when it is 0/0, a number over 0, or ∞), l is L'Hôpital (refused unless it is 0/0 or ∞/∞).
+  - m: where the slope is 0, as a new equation.
+  - h (a form): the derivative as its limit definition.
+- e works out every derivative and limit one checked step after another (plug in, else L'Hôpital), then tidies an expression or a definition, or solves for y′ after differentiating both sides.
+- Tours (Calculus 1): derivatives rule by rule, limits, implicit differentiation, max and min, the definition.

@@ -10,6 +10,7 @@ const browse = name => async ({ key, p, wait }) => {
 };
 const tab = k => h => h.hold('Tab', k);
 const fn = k => h => h.hold('f', k);
+const calc = k => h => h.hold('c', k);
 const keys = (...ks) => h => h.key(...ks);
 const aimThen = (target, ...ks) => async h => { await h.key('Escape'); await h.aim(target); await h.key(...ks); };
 const aimTab = (target, k) => async h => { await h.key('Escape'); await h.aim(target); await h.hold('Tab', k); };
@@ -45,6 +46,11 @@ const PLAYS = {
   powers: [fn('i'), keys('e'), async h => { for (let i = 0; i < 4; i++) { await h.key('s'); await h.wait(300); } }, aimTab('x^(−1)', 'r')],
   logs: [fn('i'), keys('e'), fn('l'), tab('l'), keys('e')],
   expressions: [keys('s'), aimThen('−3(x − 1)', 'd'), keys('Escape', 'e'), tab('f')],
+  derivatives: [calc('d'), calc('d'), calc('d'), calc('d'), keys('e')],
+  limits: [calc('p'), async h => { for (let i = 0; i < 3 && (await h.text()) !== '10'; i++) { await h.key('s'); await h.wait(250); } }, calc('p'), calc('l'), calc('p'), keys('e')],
+  implicit: [calc('d'), keys('e')],
+  maxmin: [calc('m'), keys('e'), both(keys('1'), calc('d'))],
+  definition: [calc('h'), keys('e')],
 };
 
 export const tests = {};

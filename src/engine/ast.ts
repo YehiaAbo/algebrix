@@ -16,14 +16,18 @@ export type FnName = 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan' | 'ln' | '
 export interface Fn extends Base { k: 'fn'; name: FnName; arg: Node }
 /** a named function you defined, like f(x + 1) */
 export interface Call extends Base { k: 'call'; name: string; arg: Node }
+/** d/dv of arg. dep: variables that depend on v (implicit differentiation): d/dx y = y′ */
+export interface Deriv extends Base { k: 'deriv'; v: string; arg: Node; dep?: string[] }
+/** the limit of arg as v goes to `to` (from one side with side); v is bound inside */
+export interface Lim extends Base { k: 'lim'; v: string; to: Node; side?: '+' | '-'; arg: Node }
 /** How the two sides relate. 'expr' is a lone expression (the right side is an unused 0);
  *  '≟' is an identity to prove: each side may only be rewritten into an equal form. */
 export type Rel = '=' | '<' | '>' | '≤' | '≥' | 'expr' | '≟' | 'def';
 export interface Eq extends Base { k: 'eq'; lhs: Node; rhs: Node; rel?: Rel }
-export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Call | Eq;
+export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Call | Deriv | Lim | Eq;
 
 /** Named constants: they look like symbols but are never variables. */
-export const CONSTS: Record<string, number> = { e: Math.E, π: Math.PI };
+export const CONSTS: Record<string, number> = { e: Math.E, π: Math.PI, '∞': Infinity };
 export const isConst = (n: Node) => n.k === 'sym' && n.name in CONSTS;
 
 let counter = 0;
@@ -46,6 +50,10 @@ export const pow = (base: Node, exp: Node, id = newId()): Pow => ({ k: 'pow', id
 export const sqrt = (arg: Node, id = newId()): Sqrt => ({ k: 'sqrt', id, arg });
 export const fn = (name: FnName, arg: Node, id = newId()): Fn => ({ k: 'fn', id, name, arg });
 export const call = (name: string, arg: Node, id = newId()): Call => ({ k: 'call', id, name, arg });
+export const deriv = (v: string, arg: Node, dep?: string[], id = newId()): Deriv => (dep?.length ? { k: 'deriv', id, v, arg, dep } : { k: 'deriv', id, v, arg });
+export const lim = (v: string, to: Node, arg: Node, side?: '+' | '-', id = newId()): Lim => (side ? { k: 'lim', id, v, to, arg, side } : { k: 'lim', id, v, to, arg });
+/** the name of a derivative: y → y′, f′ → f″ */
+export const primed = (name: string) => name + '′';
 /** names that read as function calls when followed by "(" */
 export const FUNC_NAMES = ['f', 'g', 'h'];
 /** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */
@@ -75,7 +83,8 @@ export function children(n: Node): Node[] {
     case 'num': case 'sym': return [];
     case 'add': return n.terms;
     case 'mul': return n.factors;
-    case 'neg': case 'sqrt': case 'fn': case 'call': return [n.arg];
+    case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': return [n.arg];
+    case 'lim': return [n.to, n.arg];
     case 'frac': return [n.num, n.den];
     case 'pow': return [n.base, n.exp];
     case 'eq': return [n.lhs, n.rhs];
@@ -88,7 +97,8 @@ export function withChildren<T extends Node>(n: T, kids: Node[]): T {
     case 'num': case 'sym': return n;
     case 'add': return { ...n, terms: kids };
     case 'mul': return { ...n, factors: kids };
-    case 'neg': case 'sqrt': case 'fn': case 'call': return { ...n, arg: kids[0] };
+    case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': return { ...n, arg: kids[0] };
+    case 'lim': return { ...n, to: kids[0], arg: kids[1] };
     case 'frac': return { ...n, num: kids[0], den: kids[1] };
     case 'pow': return { ...n, base: kids[0], exp: kids[1] };
     case 'eq': return { ...n, lhs: kids[0], rhs: kids[1] };
@@ -150,6 +160,8 @@ export function key(n: Node): string {
     case 'sqrt': return '(sqrt ' + key(n.arg) + ')';
     case 'fn': return '(' + n.name + ' ' + key(n.arg) + ')';
     case 'call': return '(call ' + n.name + ' ' + key(n.arg) + ')';
+    case 'deriv': return '(d/d' + n.v + (n.dep ? '[' + n.dep.join(',') + ']' : '') + ' ' + key(n.arg) + ')';
+    case 'lim': return '(lim ' + n.v + ' ' + key(n.to) + (n.side ?? '') + ' ' + key(n.arg) + ')';
     case 'eq': return '(' + (n.rel ?? '=') + ' ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
   }
 }
@@ -181,20 +193,36 @@ export function evaluate(n: Node, env: Env): number {
       return NaN;
     }
     case 'call': {
-      const d = DEFS.get(n.name);
+      const d = DEFS.get(n.name) ?? CALC.primeDef(n.name);
       if (!d || callDepth > 40) return NaN;
       callDepth++;
       try { return evaluate(d.body, { ...env, [d.param]: evaluate(n.arg, env) }); } finally { callDepth--; }
     }
+    case 'deriv': { const d = CALC.derive(n); return d ? evaluate(d, env) : NaN; }
+    case 'lim': return CALC.limit(n, env);
     case 'eq': return evaluate(n.lhs, env) - evaluate(n.rhs, env);
   }
 }
 
+/** the free variables: a limit's variable is bound inside it, and d/dx y brings in y′ */
 export function symbols(n: Node): string[] {
   const s = new Set<string>();
-  walk(n, m => { if (m.k === 'sym' && !(m.name in CONSTS)) s.add(m.name); });
+  const visit = (m: Node, bound: Set<string>) => {
+    if (m.k === 'sym') { if (!(m.name in CONSTS) && !bound.has(m.name)) s.add(m.name); return; }
+    if (m.k === 'lim') { visit(m.to, bound); visit(m.arg, new Set([...bound, m.v])); return; }
+    if (m.k === 'deriv' && m.dep) { const inner = new Set<string>(); walk(m.arg, q => { if (q.k === 'sym') inner.add(q.name); }); m.dep.forEach(w => { if (inner.has(w) && !bound.has(w)) s.add(primed(w)); }); }
+    children(m).forEach(c => visit(c, bound));
+  };
+  visit(n, new Set());
   return [...s].sort();
 }
+
+/** what calculus.ts supplies, so evaluating a derivative or a limit needs no import cycle */
+export const CALC: {
+  derive: (n: Deriv) => Node | null;
+  limit: (n: Lim, env: Env) => number;
+  primeDef: (name: string) => { param: string; body: Node } | undefined;
+} = { derive: () => null, limit: () => NaN, primeDef: () => undefined };
 
 export const hasSymbols = (n: Node) => symbols(n).length > 0;
 

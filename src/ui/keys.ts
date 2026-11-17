@@ -11,7 +11,7 @@ export function bind(this: App) {
   const input = $<HTMLInputElement>('input');
   input.addEventListener('input', () => this.onType());
   // quick inserts under the box, for what's awkward to type
-  const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', '']];
+  const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', ''], ['d/dx', 'd/dx(', ''], ['lim', 'lim x->0 ', '']];
   for (const [label, ins, hint] of KEYS) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -70,7 +70,7 @@ export function bind(this: App) {
       if (this.chordUsed && !this.pal.moved && !this.pal.sticky && !this.pal.ask) { this.closePal(true); return; }
       this.palRelease(); return;
     }
-    if (e.key !== 'Tab' || this.mode !== 'hub' || !this.hub || this.hub.sticky) return;
+    if (this.mode !== 'hub' || !this.hub || this.hub.sticky || (this.hub.calc ? e.key.toLowerCase() !== 'c' : e.key !== 'Tab')) return;
     if (this.hub.moved) this.applyForm();
     else if (this.chordUsed && !this.hub.awaitVar) this.closeHub(true);
     else { this.hub.sticky = true; this.renderHub(); }
@@ -159,7 +159,7 @@ export function key(this: App, e: KeyboardEvent) {
   if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
   const k = e.key;
   const ctrl = e.ctrlKey || e.metaKey;
-  if (this.mode === 'hub') { e.preventDefault(); if (k !== 'Tab') this.chordUsed = true; return this.hubKey(e); }
+  if (this.mode === 'hub') { e.preventDefault(); if (this.hub?.calc ? k.toLowerCase() !== 'c' : k !== 'Tab') this.chordUsed = true; return this.hubKey(e); }
   if (this.mode === 'fnpal') { e.preventDefault(); if (k.toLowerCase() !== 'f') this.chordUsed = true; return this.palKey(e); }
   if (this.mode === 'labels') {
     e.preventDefault();
@@ -205,6 +205,7 @@ export function key(this: App, e: KeyboardEvent) {
     case 'e': case 'E': handled(); return this.solveKey();
     case 'Enter': handled(); return this.openHub(true);
     case 'f': case 'F': handled(); if (!e.repeat) this.openPal(false); return;
+    case 'c': case 'C': handled(); if (!e.repeat) this.openHub(false, true); return;
     case 'i': handled(); return this.edit(false);
     case 'n': handled(); return this.edit(true);
     case 'Delete': case 'Backspace': handled(); return this.removeCurrent();

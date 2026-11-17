@@ -29,7 +29,8 @@ export const LABEL_CHARS = 'asdfghjklqwertyuiopzxcvbnm';
 export const DOMAIN_TEXT: Record<Domain, string> = { real: 'real number', positive: 'positive', nonneg: 'zero or more', integer: 'whole number' };
 
 export interface Tech { key: string; label: string; ok: boolean; run: () => void }
-export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean }
+/** calc: the calculus hub (C) rather than the algebra hub (Tab) */
+export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; calc?: boolean }
 
 export function livePreview(src: string): { eq: Eq; partial: boolean } | null {
   if (!src.trim()) return null;

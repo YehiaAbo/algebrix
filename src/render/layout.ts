@@ -106,6 +106,20 @@ function parens(b: Box, s: number, id: string, owners: string[], from?: string, 
 
 interface Ctx { base: number }
 
+const fracSize = (s: number, c: Ctx) => Math.max(s * (s >= c.base * 0.9 ? 0.8 : 0.78), c.base * 0.42);
+
+/** one box over another with a bar between, centred on the math axis */
+function stack(a: Box, d: Box, s: number, id: string, me: string[], from?: string): Box {
+  const pad = 0.1 * s;
+  const w = Math.max(a.w, d.w) + 2 * pad;
+  const gap = 0.14 * s, axis = AXIS * s, rule = RULE * s;
+  const numBase = -axis - rule / 2 - gap - a.desc;
+  const denBase = -axis + rule / 2 + gap + d.asc;
+  const bar: Glyph = { key: `b${id}`, from: from && `b${from}`, kind: 'bar', x: 0.04 * s, y: -axis - rule / 2, w: w - 0.08 * s, h: rule, s, owners: me };
+  const gs = [...shift(a, (w - a.w) / 2, numBase), bar, ...shift(d, (w - d.w) / 2, denBase)];
+  return { w, asc: -numBase + a.asc, desc: denBase + d.desc, gs };
+}
+
 function L(n: Node, s: number, own: string[], c: Ctx): Box {
   const me = [...own, n.id];
   const from = n.from;
@@ -176,17 +190,31 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       return row([sign(true, s, `sg${signKey(n)}`, me), 0.04 * s, n.arg.k === 'add' ? parens(b, s, n.arg.id, me) : b]);
     }
     case 'frac': {
-      const fs = s >= c.base * 0.9 ? 0.8 : 0.78;
-      const ss = Math.max(s * fs, c.base * 0.42);
-      const a = L(n.num, ss, me, c), d = L(n.den, ss, me, c);
-      const pad = 0.1 * s;
-      const w = Math.max(a.w, d.w) + 2 * pad;
-      const gap = 0.14 * s, axis = AXIS * s, rule = RULE * s;
-      const numBase = -axis - rule / 2 - gap - a.desc;
-      const denBase = -axis + rule / 2 + gap + d.asc;
-      const bar: Glyph = { key: `b${n.id}`, from: from && `b${from}`, kind: 'bar', x: 0.04 * s, y: -axis - rule / 2, w: w - 0.08 * s, h: rule, s, owners: me };
-      const gs = [...shift(a, (w - a.w) / 2, numBase), bar, ...shift(d, (w - d.w) / 2, denBase)];
-      return { w, asc: -numBase + a.asc, desc: denBase + d.desc, gs };
+      const ss = fracSize(s, c);
+      return stack(L(n.num, ss, me, c), L(n.den, ss, me, c), s, n.id, me, from);
+    }
+    case 'deriv': {
+      // d/dx as a small fraction, then what is differentiated
+      const ss = fracSize(s, c);
+      const top = text('d', ss, `dd${n.id}`, me, false, from && `dd${from}`);
+      const bot = row([text('d', ss, `de${n.id}`, me, false, from && `de${from}`), 0.02 * ss, text(n.v, ss, `dv${n.id}`, me, true, from && `dv${from}`)]);
+      const op = stack(top, bot, s, n.id, me, from);
+      const a = L(n.arg, s, me, c);
+      const bare = n.arg.k === 'sym' || n.arg.k === 'num' || n.arg.k === 'call' || (n.arg.k === 'fn' && n.arg.name !== 'abs');
+      return row([op, 0.06 * s, bare ? a : parens(a, s, n.id, me, from)]);
+    }
+    case 'lim': {
+      // "lim" with "x → a" small underneath, then what the limit is of
+      const word = text('lim', s, `lm${n.id}`, me, false, from && `lm${from}`);
+      const ss = Math.max(s * 0.6, c.base * 0.36);
+      const side = n.side ? [text(n.side === '+' ? '⁺' : '⁻', ss, `ls${n.id}`, me, false)] : [];
+      const sub = row([text(n.v, ss, `lv${n.id}`, me, true, from && `lv${from}`), 0.04 * ss, text('→', ss, `la${n.id}`, me, false, from && `la${from}`), 0.04 * ss, L(n.to, ss, me, c), ...side]);
+      const w = Math.max(word.w, sub.w);
+      const drop = word.desc + 0.08 * s + sub.asc;
+      const op: Box = { w, asc: word.asc, desc: drop + sub.desc, gs: [...shift(word, (w - word.w) / 2, 0), ...shift(sub, (w - sub.w) / 2, drop)] };
+      const a = L(n.arg, s, me, c);
+      const wrap = n.arg.k === 'add' || n.arg.k === 'neg' || n.arg.k === 'lim';
+      return row([op, 0.2 * s, wrap ? parens(a, s, n.id, me, from) : a]);
     }
     case 'pow': {
       let b = L(n.base, s, me, c);

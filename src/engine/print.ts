@@ -31,7 +31,7 @@ export function toText(n: Node, ascii = false): string {
         const s = p(f, wrap);
         const prev = n.factors[i - 1];
         const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || (prev && prev.k === 'num' && /^\d/.test(s)));
-        const fnLike = (f.k === 'fn' && f.name !== 'abs') || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs');
+        const fnLike = (f.k === 'fn' && f.name !== 'abs') || f.k === 'deriv' || f.k === 'lim' || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs');
         // after a subscripted name (a_n) a space keeps the next letter out of the subscript
         const afterSub = i > 0 && /_[a-zA-Z0-9]+$/.test(out) && /^[a-zA-Zα-ω]/.test(s);
         out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && (fnLike || f.k === 'sqrt' || afterSub) ? ' ' : '') + s;
@@ -46,6 +46,11 @@ export function toText(n: Node, ascii = false): string {
     case 'pow': return `${p(n.base, n.base.k !== 'num' && n.base.k !== 'sym' && n.base.k !== 'fn' || isNeg(n.base))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
     case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
+    case 'deriv': return `d/d${n.v}(${toText(n.arg, ascii)})`;
+    case 'lim': {
+      const side = n.side ? (ascii ? n.side : n.side === '+' ? '⁺' : '⁻') : '';
+      return `lim_{${n.v}${ascii ? '->' : '→'}${toText(n.to, ascii)}${side}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg' || n.arg.k === 'lim')}`;
+    }
     case 'fn': return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${(ascii ? FN_TEXT[n.name]?.replace('⁻¹', '^-1') : FN_TEXT[n.name]) ?? n.name}(${toText(n.arg, ascii)})`;
   }
 }

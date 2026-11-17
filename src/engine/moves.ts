@@ -6,6 +6,7 @@ import {
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
+import './calculus';
 import { distributeNode, factorize } from './rewrite';
 import { toText } from './print';
 import { parseExpr } from './parse';
@@ -21,6 +22,8 @@ export interface MoveOk {
   hints: Hints;
   /** lhs−rhs of the new equation = factor × (lhs−rhs of the old one) */
   factor: (env: Env) => number;
+  /** a one-way step (⇒): what follows from the equation, not the same as it */
+  implies?: boolean;
   /** custom relation instead of `factor`: pairs (got, want) that must match at every sample */
   check?: (env: Env) => [number, number][];
   /** a tidy-up that follows another step; undo skips over it */
@@ -34,7 +37,7 @@ export interface MoveOk {
 /** ⇔: the new equation has exactly the same solutions. ⇒: every old solution survives but new ones may
  *  appear (squaring both sides, multiplying by something that might be 0), so answers must be checked. */
 export function direction(r: MoveOk): '⇔' | '⇒' {
-  return (r.conditions ?? []).some(c => c.includes('add solutions')) ? '⇒' : '⇔';
+  return r.implies || (r.conditions ?? []).some(c => c.includes('add solutions')) ? '⇒' : '⇔';
 }
 export type MoveResult = MoveOk | { error: string };
 export const isErr = (r: MoveResult): r is { error: string } => 'error' in r;
@@ -284,7 +287,7 @@ export function verify(before: Eq, r: MoveOk): string | null {
       if (Math.abs(got - want) > 1e-6 * (1 + Math.abs(want) + Math.abs(got))) return `mismatch at ${JSON.stringify(env)}: ${got} vs ${want}`;
     }
   }
-  if (checked < 2 && vars.length) return 'could not check: undefined almost everywhere';
+  if (checked < (vars.length ? 2 : 1)) return 'could not check: undefined almost everywhere';
   return null;
 }
 
