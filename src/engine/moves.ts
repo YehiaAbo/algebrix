@@ -1,0 +1,375 @@
+// Legal moves. Each one is a small, explicit rewrite; `applyMove` then checks it
+// numerically and refuses anything that isn't provably the same equation.
+import {
+  Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
+  evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds,
+} from './ast';
+import { negate, isNeg, coefOf } from './terms';
+import { simplify, newHints, Hints } from './simplify';
+import { distributeNode, factorize } from './rewrite';
+import { toText } from './print';
+import { parseExpr } from './parse';
+
+export interface MoveOk {
+  eq: Eq;
+  label: string;
+  /** node that travels: gets the arc animation */
+  focus?: string;
+  /** what should be selected afterwards (null = clear) */
+  select?: string | null;
+  conditions?: string[];
+  hints: Hints;
+  /** lhs−rhs of the new equation = factor × (lhs−rhs of the old one) */
+  factor: (env: Env) => number;
+  /** custom relation instead of `factor`: pairs (got, want) that must match at every sample */
+  check?: (env: Env) => [number, number][];
+  /** a tidy-up that follows another step; undo skips over it */
+  auto?: boolean;
+  /** which rule this step used (a move name, a form, a technique) */
+  rule?: string;
+  /** a final answer that isn't an equation, like x ∈ (−∞, 2) ∪ (3, ∞) */
+  answer?: string;
+}
+
+/** ⇔: the new equation has exactly the same solutions. ⇒: every old solution survives but new ones may
+ *  appear (squaring both sides, multiplying by something that might be 0), so answers must be checked. */
+export function direction(r: MoveOk): '⇔' | '⇒' {
+  return (r.conditions ?? []).some(c => c.includes('add solutions')) ? '⇒' : '⇔';
+}
+export type MoveResult = MoveOk | { error: string };
+export const isErr = (r: MoveResult): r is { error: string } => 'error' in r;
+
+export type MoveName = 'move' | 'divide' | 'multiply' | 'distribute' | 'simplify' | 'factor' | 'slideL' | 'slideR' | 'swap';
+
+const one = () => 1;
+const t = (n: Node) => toText(n);
+const side = (e: Eq, s: 'lhs' | 'rhs') => e[s];
+const other = (s: 'lhs' | 'rhs') => (s === 'lhs' ? 'rhs' : 'lhs');
+
+function locate(e: Eq, sel: string | null) {
+  if (!sel || sel === 'eq') return null;
+  const path = findPath(e, sel);
+  if (!path) return null;
+  const s: 'lhs' | 'rhs' = path[1] === e.lhs ? 'lhs' : 'rhs';
+  return { path, node: path[path.length - 1], parent: path[path.length - 2], s, root: side(e, s) };
+}
+
+function appendTerms(target: Node, terms: Node[]): Node {
+  if (target.k === 'num' && target.v === 0) return terms.length === 1 ? terms[0] : add(terms);
+  if (target.k === 'add') return { ...target, terms: [...target.terms, ...terms] };
+  return add([target, ...terms]);
+}
+
+function withSides(e: Eq, s: 'lhs' | 'rhs', mine: Node, theirs: Node): Eq {
+  return s === 'lhs' ? eq(mine, theirs) : eq(theirs, mine);
+}
+
+/* ---------- move a term across "=" ---------- */
+export function moveAcross(e: Eq, sel: string | null): MoveResult {
+  const at = locate(e, sel);
+  if (!at) return { error: 'Pick a term to move across the =.' };
+  const { node, parent, s, root } = at;
+  let moving: Node[];
+  let mine: Node;
+  if (node === root) {
+    if (node.k === 'num' && node.v === 0) return { error: 'This side is already 0. Nothing to move.' };
+    moving = node.k === 'add' ? node.terms : [node];
+    mine = num(0);
+  } else if (parent === root && root.k === 'add') {
+    const rest = root.terms.filter(x => x !== node);
+    moving = [node];
+    mine = rest.length === 1 ? rest[0] : { ...root, terms: rest };
+  } else if (parent.k === 'mul' && parent === root) {
+    return { error: `${t(node)} is a factor, not a term. Factors leave by dividing.` };
+  } else if (parent.k === 'frac' && parent === root && parent.den === node) {
+    return { error: `${t(node)} is a denominator. It leaves by multiplying.` };
+  } else {
+    return { error: `${t(node)} is inside ${t(parent)}. Only a whole term on a side can cross the =. Press k to grow the selection.` };
+  }
+  const moved = moving.map(negate);
+  const theirs = appendTerms(side(e, other(s)), moved);
+  const label = moving.length === 1 ? `move ${isNeg(moving[0]) ? '−' : '+'}${t(isNeg(moving[0]) ? negate(moving[0]) : moving[0])}` : 'move side';
+  return {
+    eq: withSides(e, s, mine, theirs), label, focus: moved.length === 1 ? moved[0].id : undefined,
+    select: moved.length === 1 ? moved[0].id : null, hints: newHints(), factor: one,
+  };
+}
+
+/* ---------- divide both sides ---------- */
+export function divideBoth(e: Eq, sel: string | null): MoveResult {
+  const at = locate(e, sel);
+  if (!at) return { error: 'Pick the factor to divide both sides by.' };
+  const { node, parent, s, root } = at;
+  let divisor: Node;
+  if (node === root && root.k === 'mul' && coefOf(root) && coefOf(root)!.v !== 1) divisor = coefOf(root)!;
+  else if (parent === root && root.k === 'mul') divisor = node;
+  else if (root.k === 'add') return { error: node === root ? 'This side is a sum, so there is no single factor to divide by. Move terms across first, or press o to divide both sides by anything.' : `${t(node)} is one term of a sum. Move the other terms across first, then divide.` };
+  else return { error: `${t(node)} isn't a factor of the whole side, so I can't divide it out.` };
+  if (divisor.k === 'num' && divisor.v === 0) return { error: 'Dividing by 0 is undefined.' };
+  const rest = (root as Mul).factors.filter(f => f !== divisor);
+  const mine = rest.length === 0 ? num(1) : rest.length === 1 ? rest[0] : { ...(root as Mul), factors: rest };
+  const o = side(e, other(s));
+  const theirs = o.k === 'frac' ? { ...o, den: o.den.k === 'mul' ? { ...o.den, factors: [...o.den.factors, divisor] } : mul([o.den, divisor]) } : frac(o, divisor);
+  return {
+    eq: withSides(e, s, mine, theirs), label: `÷ ${t(divisor)}`, focus: divisor.id, select: divisor.id,
+    conditions: hasSymbols(divisor) ? [`${t(divisor)} ≠ 0`] : [], hints: newHints(),
+    factor: env => 1 / evaluate(divisor, env),
+  };
+}
+
+/* ---------- multiply both sides (clear a denominator) ---------- */
+export function multiplyBoth(e: Eq, sel: string | null): MoveResult {
+  const at = locate(e, sel);
+  if (!at) return { error: 'Pick a denominator to multiply both sides by.' };
+  const { node, parent, s, root } = at;
+  let m: Node, mine: Node;
+  if (root.k === 'frac' && (node === root || node === root.den)) { m = root.den; mine = root.num; }
+  else if (root.k === 'frac' && root.den.k === 'mul' && parent === root.den) {
+    m = node;
+    const rest = root.den.factors.filter(f => f !== node);
+    mine = frac(root.num, rest.length === 1 ? rest[0] : { ...root.den, factors: rest }, root.id);
+  } else return { error: '× clears a denominator. Select the bottom of a side that is a fraction.' };
+  const o = side(e, other(s));
+  const theirs = o.k === 'mul' ? { ...o, factors: [m, ...o.factors] } : mul([m, o]);
+  return {
+    eq: withSides(e, s, mine, theirs), label: `× ${t(m)}`, focus: m.id, select: m.id,
+    conditions: hasSymbols(m) ? [`${t(m)} ≠ 0`] : [], hints: newHints(),
+    factor: env => evaluate(m, env),
+  };
+}
+
+/* ---------- distribute / split a fraction ---------- */
+function distribute(e: Eq, sel: string | null): MoveResult {
+  const n = sel && sel !== 'eq' ? find(e, sel) : null;
+  const h = newHints();
+  const out = n ? distributeNode(n, h) : null;
+  if (!n || !out) return { error: 'Nothing to distribute. Select a product with a bracket, like 2(x + 3), or a sum over a denominator.' };
+  return { eq: replace(e, n.id, out), label: n.k === 'frac' ? 'split fraction' : 'distribute', hints: h, factor: one, select: out.id };
+}
+
+/* ---------- simplify the selection ---------- */
+function simplifyMove(e: Eq, sel: string | null): MoveResult {
+  const h = newHints();
+  const target = sel && sel !== 'eq' ? find(e, sel) : null;
+  let next: Eq;
+  if (!target) next = eq(simplify(e.lhs, h), simplify(e.rhs, h));
+  else next = replace(e, target.id, simplify(target, h));
+  if (key(next) === key(e)) return { error: 'Already as simple as it gets.' };
+  const keep = target && find(next, target.id) ? target.id : null;
+  return { eq: next, label: 'simplify', hints: h, factor: one, select: target ? keep : null };
+}
+
+/* ---------- factor: as far as it goes (common factor, quadratics, difference of squares) ---------- */
+function factorMove(e: Eq, sel: string | null): MoveResult {
+  // nothing aimed (or the whole equation): factor each side that factors
+  if (!sel || sel === 'eq') {
+    const h = newHints();
+    const fl = factorize(e.lhs, h), fr = relOf(e) === 'expr' ? null : factorize(e.rhs, h);
+    if (!fl && !fr) return { error: 'Nothing here factors over whole numbers. Aim at a sum, like x² + 5x + 6.' };
+    return { eq: eq(fl ?? e.lhs, fr ?? e.rhs, e.rel), label: 'factor', hints: h, factor: one, select: null };
+  }
+  // aimed inside a sum: climb to the nearest sum or product that factors
+  const path = findPath(e, sel) ?? [];
+  for (let i = path.length - 1; i >= 0; i--) {
+    const n = path[i];
+    if (n.k !== 'add' && n.k !== 'mul') continue;
+    const h = newHints();
+    const out = factorize(n, h);
+    if (out) return { eq: replace(e, n.id, out), label: `factor`, hints: h, factor: one, select: out.id };
+  }
+  const n = find(e, sel);
+  return { error: n && (n.k === 'add' || n.k === 'mul') ? `${t(n)} doesn't factor over whole numbers.` : 'Aim at a sum to factor it, like x² + 5x + 6.' };
+}
+
+/* ---------- reorder inside a sum or product ---------- */
+function slide(e: Eq, sel: string | null, dir: -1 | 1): MoveResult {
+  const at = locate(e, sel);
+  if (!at || (at.parent.k !== 'add' && at.parent.k !== 'mul')) return { error: 'Only a term in a sum or a factor in a product can slide.' };
+  const list = at.parent.k === 'add' ? at.parent.terms : at.parent.factors;
+  const i = list.indexOf(at.node), j = i + dir;
+  if (j < 0 || j >= list.length) return { error: 'Already at the edge.' };
+  const next = [...list];
+  [next[i], next[j]] = [next[j], next[i]];
+  const p = at.parent.k === 'add' ? { ...at.parent, terms: next } : { ...at.parent, factors: next };
+  return { eq: replace(e, at.parent.id, p), label: 'reorder', hints: newHints(), factor: one, select: at.node.id };
+}
+
+export function swapSides(e: Eq, sel: string | null): MoveResult {
+  return { eq: eq(e.rhs, e.lhs), label: 'swap sides', hints: newHints(), factor: () => -1, select: sel };
+}
+
+const MOVES: Record<MoveName, (e: Eq, sel: string | null) => MoveResult> = {
+  move: moveAcross, divide: divideBoth, multiply: multiplyBoth, distribute, simplify: simplifyMove,
+  factor: factorMove, slideL: (e, s) => slide(e, s, -1), slideR: (e, s) => slide(e, s, 1), swap: swapSides,
+};
+
+/* ---------- apply an operation to both sides ---------- */
+export function applyBoth(e: Eq, text: string, others: Eq[] = []): MoveResult {
+  const m = /^\s*([+\-−*×·/÷])\s*(.+)$/.exec(text);
+  if (!m) return { error: 'Start with + − * or /, like “/7” or “+3x”.' };
+  const op = ({ '−': '-', '×': '*', '·': '*', '÷': '/' } as Record<string, string>)[m[1]] ?? m[1];
+  const ref = /^(.*?)\s*[*×·]?\s*#\s*(\d)\s*$/.exec(m[2]);
+  if (ref) return addEquation(e, op, ref[1], Number(ref[2]), others);
+  let x: Node;
+  try { x = parseExpr(m[2]); } catch (err) { return { error: (err as Error).message }; }
+  const isZero = !hasSymbols(x) && Math.abs(evaluate(x, {})) < 1e-12;
+  if ((op === '*' || op === '/') && isZero) return { error: op === '/' ? 'Dividing by 0 is undefined.' : 'Multiplying by 0 erases the equation.' };
+  const c = cloneFresh(x); c.from = undefined;
+  const cond = hasSymbols(x) && (op === '*' || op === '/') ? [`${t(x)} ≠ 0`] : [];
+  let L: Node, R: Node, factor: (env: Env) => number = one;
+  if (op === '+' || op === '-') {
+    L = appendTerms(e.lhs, [op === '-' ? negate(x) : x]);
+    R = appendTerms(e.rhs, [op === '-' ? negate(c) : c]);
+  } else if (op === '*') {
+    const pre = (f: Node, s: Node): Node => (s.k === 'mul' ? { ...s, factors: [f, ...s.factors] } : mul([f, s]));
+    L = pre(x, e.lhs); R = pre(c, e.rhs);
+    factor = env => evaluate(x, env);
+  } else {
+    const div = (s: Node, f: Node): Node => (s.k === 'frac' ? { ...s, den: s.den.k === 'mul' ? { ...s.den, factors: [...s.den.factors, f] } : mul([s.den, f]) } : frac(s, f));
+    L = div(e.lhs, x); R = div(e.rhs, c);
+    factor = env => 1 / evaluate(x, env);
+  }
+  const sym = { '+': '+', '-': '−', '*': '×', '/': '÷' }[op]!;
+  return { eq: eq(L, R), label: `${sym} ${t(x)} both sides`, hints: newHints(), factor, conditions: cond, select: null };
+}
+
+/* ---------- elimination: add or subtract a multiple of another equation ---------- */
+function addEquation(e: Eq, op: string, coefText: string, j: number, others: Eq[]): MoveResult {
+  if (op !== '+' && op !== '-') return { error: 'Equations can be added or subtracted, like “-2#2”.' };
+  const o = others[j - 1];
+  if (!o) return { error: `There is no equation ${j}.` };
+  if (relOf(o) !== '=') return { error: `Equation ${j} isn’t an equation (it’s ${relOf(o) === 'expr' ? 'an expression' : 'an inequality or a definition'}), so it can’t be added to both sides.` };
+  let k: Node;
+  try { k = coefText.trim() ? parseExpr(coefText) : num(1); } catch (err) { return { error: (err as Error).message }; }
+  if (hasSymbols(k)) return { error: 'Use a plain number to multiply the other equation by.' };
+  const kv = evaluate(k, {});
+  if (!Number.isFinite(kv) || kv === 0) return { error: 'Multiplying an equation by 0 adds nothing.' };
+  // the other equation's terms come in one by one, already scaled (2·(x − y) arrives as −2x + 2y),
+  // so what cancels sits next to what it cancels
+  const h0 = newHints();
+  const spread = (n: Node) => (n.k === 'add' ? n.terms : [n]);
+  const scaledTerms = (side: Node) => spread(cloneFresh(side)).map(t => {
+    const c = kv === 1 ? t : simplify(mul([cloneFresh(k), t]), h0);
+    return op === '-' ? negate(c) : c;
+  });
+  const L = appendTerms(e.lhs, scaledTerms(o.lhs)), R = appendTerms(e.rhs, scaledTerms(o.rhs));
+  const sgn = op === '-' ? -1 : 1;
+  return {
+    eq: eq(L, R), label: `${op === '-' ? '−' : '+'} ${kv === 1 ? '' : t(k) + '× '}equation ${j}`, hints: newHints(), factor: one, select: null, rule: 'eliminate',
+    check: env => [[evaluate(L, env) - evaluate(R, env), evaluate(e.lhs, env) - evaluate(e.rhs, env) + sgn * kv * (evaluate(o.lhs, env) - evaluate(o.rhs, env))]],
+  };
+}
+
+/* ---------- the safety net ---------- */
+let seed = 12345;
+const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+
+export function verify(before: Eq, r: MoveOk): string | null {
+  const ids = allIds(r.eq);
+  if (new Set(ids).size !== ids.length) return 'duplicate ids';
+  const vars = symbols(eq(before.lhs, add([before.rhs, r.eq.lhs, r.eq.rhs])));
+  let checked = 0;
+  for (let i = 0; i < 120 && checked < 6; i++) {
+    // small values first, then positive ones (logs, roots), then wide ones
+    const span = i < 40 ? () => rand() * 9 - 4.5 : i < 80 ? () => rand() * 9 + 0.05 : () => rand() * 120 - 60;
+    const env: Env = {};
+    for (const v of vars) env[v] = Math.round(span() * 1000) / 1000 + 0.137;
+    const pairs: [number, number][] = r.check ? r.check(env) : (() => {
+      const d0 = evaluate(before, env), d1 = evaluate(r.eq, env), f = r.factor(env);
+      return Number.isFinite(f) && Number.isFinite(d0) ? [[d1, f * d0]] : [[NaN, NaN]];
+    })();
+    if (!pairs.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))) continue;
+    checked++;
+    for (const [got, want] of pairs) {
+      if (Math.abs(got - want) > 1e-6 * (1 + Math.abs(want) + Math.abs(got))) return `mismatch at ${JSON.stringify(env)}: ${got} vs ${want}`;
+    }
+  }
+  if (checked < 2 && vars.length) return 'could not check: undefined almost everywhere';
+  return null;
+}
+
+/* ---------- variable domains: which values each variable may take ---------- */
+export type Domain = 'real' | 'positive' | 'nonneg' | 'integer';
+let DOMAINS: Record<string, Domain> = {};
+/** the app sets this so sign questions ("is x positive?") use what you declared */
+export function setDomains(d: Record<string, Domain>) { DOMAINS = d; }
+export function sampleIn(name: string, i: number): number {
+  const d = DOMAINS[name] ?? 'real';
+  const x = (Math.sin(i * 12.9898 + name.charCodeAt(0) * 78.233) * 43758.5453) % 1;
+  const u = i < 30 ? x * 9 : x * 60;
+  if (d === 'positive') return Math.abs(u) + 0.013;
+  if (d === 'nonneg') return Math.abs(u);
+  if (d === 'integer') return Math.round(u);
+  return u + 0.137;
+}
+
+/** The relation after a step. Equations stay equations. An inequality keeps its direction when
+ *  the step multiplies by something positive, flips for negative, and refuses an unknown sign. An
+ *  expression may only be rewritten, and a proof goal may only rewrite each side into an equal form. */
+export function relAfter(before: Eq, r: MoveOk): Rel | { error: string } {
+  const rel = relOf(before);
+  if (rel === '=') return '=';
+  const vars = symbols(eq(before.lhs, add([before.rhs, r.eq.lhs, r.eq.rhs])));
+  const envs: Env[] = [];
+  for (let i = 0; i < 60; i++) { const env: Env = {}; vars.forEach(v => (env[v] = sampleIn(v, i))); envs.push(env); }
+  const same = (a: Node, b: Node) => envs.every(env => {
+    const x = evaluate(a, env), y = evaluate(b, env);
+    return !Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x - y) <= 1e-7 * (1 + Math.abs(x));
+  });
+  if (rel === 'expr') return key(r.eq.rhs) === key(before.rhs) ? 'expr' : { error: 'This is an expression, so there is no other side. Rewrite it with e, s, d, or the forms.' };
+  if (rel === 'def') {
+    return key(r.eq.lhs) === key(before.lhs) && !r.check && same(r.eq.rhs, before.rhs) ? 'def'
+      : { error: 'This defines a function. You can rewrite its right side, but not move things across.' };
+  }
+  if (rel === '≟') {
+    return !r.check && same(r.eq.lhs, before.lhs) && same(r.eq.rhs, before.rhs) ? '≟'
+      : { error: 'In a proof, rewrite one side at a time. Doing the same thing to both sides assumes what you are proving.' };
+  }
+  // adding equal amounts (both sides of an equation) to both sides keeps the order
+  if (r.rule === 'eliminate') return rel;
+  if (r.check) {
+    // functions on both sides etc.: the new inequality must be true exactly where the old one was
+    for (const cand of [rel, flipRel(rel)]) {
+      const next = eq(r.eq.lhs, r.eq.rhs, cand);
+      let seen = 0;
+      const ok = envs.every(env => { const a = holds(before, env), b = holds(next, env); if (a === null || b === null) return true; seen++; return a === b; });
+      if (ok && seen >= 5) return cand;
+    }
+    return { error: 'That function doesn’t keep the order of the two sides, so the inequality would change.' };
+  }
+  let pos = 0, neg = 0;
+  for (const env of envs) { const f = r.factor(env); if (Number.isFinite(f)) { if (f > 0) pos++; else if (f < 0) neg++; } }
+  if (pos && !neg) return rel;
+  if (neg && !pos) return flipRel(rel);
+  return { error: 'I can’t tell if that is positive or negative, so I don’t know which way the inequality points. Set the variable’s domain in the rail, or split into cases.' };
+}
+
+export function checked(e: Eq, r: MoveResult): MoveResult {
+  if (isErr(r)) return r;
+  const rel = relAfter(e, r);
+  if (typeof rel !== 'string') return rel;
+  if (relOf(r.eq) !== rel) r = { ...r, eq: eq(r.eq.lhs, r.eq.rhs, rel) };
+  const problem = verify(e, r);
+  if (problem) {
+    console.error('[algebrix] refused move', r.label, problem);
+    return { error: 'The engine refused this: it would not keep the equation true.' };
+  }
+  return r;
+}
+
+export function applyMove(name: MoveName, e: Eq, sel: string | null): MoveResult {
+  const r = checked(e, MOVES[name](e, sel));
+  return isErr(r) ? r : { ...r, rule: r.rule ?? name };
+}
+
+export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): MoveResult {
+  return checked(e, applyBoth(e, text, others));
+}
+
+/** Is this equation solved for some variable? Returns that variable. */
+export function solvedFor(e: Eq): string | null {
+  for (const [a, b] of [[e.lhs, e.rhs], [e.rhs, e.lhs]] as const) {
+    if (a.k === 'sym' && !symbols(b).includes(a.name)) return a.name;
+  }
+  return null;
+}

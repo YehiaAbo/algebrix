@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Algebrix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+</head>
+<body data-mode="solve">
+  <div class="app">
+    <aside class="rail">
+      <div class="brand"><span class="mark">a<sub>x</sub></span><span class="word">algebrix</span></div>
+      <button id="lib-btn" class="work-btn" title="Your work (w)">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="5.5" width="10" height="11" rx="2"/><path d="M6.5 3.5h8a2 2 0 0 1 2 2v9"/></svg>
+        <span id="work-name">Work</span><kbd>w</kbd>
+      </button>
+      <section>
+        <h2 class="h-row">Equations <span class="h-acts"><button id="reset-eq" class="add-eq" title="Put every equation back at its start (Shift+R)">reset</button><button id="add-eq" class="add-eq" title="New equation (n)">+ new</button></span></h2>
+        <ol id="eqs" class="eqs"></ol>
+        <p id="eqs-tip" class="empty"></p>
+      </section>
+      <section>
+        <h2>Variables</h2>
+        <ul id="vars" class="vars"></ul>
+      </section>
+      <section>
+        <h2>Conditions</h2>
+        <ul id="conds" class="conds"></ul>
+        <p id="conds-empty" class="empty">None yet. Dividing by a variable adds one here.</p>
+      </section>
+      <div class="rail-foot">
+        <div class="progress"><span id="step-count">Start</span><span id="redo-count"></span></div>
+        <button id="manual-btn" class="sound" title="Manual (?)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h4.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 0-1.5-1.5H4zM16 4.5h-4.5A1.5 1.5 0 0 0 10 6v10a1.5 1.5 0 0 1 1.5-1.5H16z"/></svg>
+          <span>Manual</span>
+        </button>
+        <button id="tour-btn" class="sound" title="Tour (g)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M8.5 7.3v5.4l4.3-2.7z"/></svg>
+          <span>Tours</span>
+        </button>
+        <button id="settings-btn" class="sound" title="Settings (,)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
+          <span>Settings</span>
+        </button>
+        <button id="theme" class="sound" title="Theme (t)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.2"/><path class="half" d="M10 3.8a6.2 6.2 0 0 1 0 12.4z"/></svg>
+          <span>Theme</span>
+        </button>
+        <button id="sound" class="sound" aria-pressed="true" title="Sound (M)">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3v10l-4-3H3z"/><path class="wave" d="M13 7.5a3.5 3.5 0 0 1 0 5M15 5.5a6.3 6.3 0 0 1 0 9"/></svg>
+          <span>Sound</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="desk">
+      <div id="board" class="board">
+        <div id="dock" class="dock" hidden><div id="dock-row" class="dock-row"></div></div>
+      <div id="stage" class="stage">
+        <div id="trail" class="trail"></div>
+        <div id="hover" class="hover"></div>
+        <div id="sel" class="sel"></div>
+        <div id="spots" class="spots"></div>
+        <div id="marquee" class="marquee" hidden></div>
+        <div id="answer" class="answer" hidden></div>
+        <div id="labels" class="labels"></div>
+        <div id="forms" class="forms" hidden></div>
+        <div id="tour" class="tour" hidden role="status" aria-live="polite">
+          <div class="tour-head"><span class="tour-tag">Tour</span><span class="tour-count"></span><button class="tour-quit" type="button"><kbd>q</kbd> leave</button></div>
+          <p class="tour-text"></p>
+          <div class="tour-bar"><i></i></div>
+        </div>
+        <div id="op" class="op" hidden>
+          <span id="op-sym" class="op-sym">both sides</span>
+          <input id="op-input" spellcheck="false" autocomplete="off" aria-label="Operation for both sides">
+          <span id="op-note" class="op-note"></span>
+        </div>
+      </div>
+      </div>
+      <header class="topbar">
+        <div class="field">
+          <input id="input" spellcheck="false" autocomplete="off" placeholder="Type an equation, like x^2 + 5x + 6 = 0" aria-label="Equation">
+          <button id="original" class="original" title="Type over it (i)"></button>
+          <span id="input-state" class="input-state"></span>
+        </div>
+        <div class="input-under">
+          <p id="input-error" class="input-error" aria-live="polite"></p>
+          <div id="input-keys" class="input-keys"></div>
+        </div>
+      </header>
+      <footer class="bar">
+        <div id="hints" class="hints" aria-live="polite"></div>
+        <button id="flash" class="flash" title="Flash mode: much faster animations (z)" aria-pressed="false">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.2 2.5 4.8 11h4.6l-1 6.5L15.2 9h-4.7z"/></svg>
+        </button>
+      </footer>
+    </main>
+
+    <aside class="side">
+      <div class="graph-wrap"><canvas id="graph"></canvas></div>
+      <p id="graph-note" class="graph-note"></p>
+      <p class="graph-keys"><span>drag</span><span>scroll</span><span>double-click resets</span><span><kbd>[</kbd><kbd>]</kbd> zoom</span></p>
+    </aside>
+  </div>
+
+  <div id="help" class="help" hidden>
+    <div class="help-card" role="dialog" aria-label="Manual">
+      <div class="help-head">
+        <h2>Manual</h2>
+        <div class="help-tabs" role="tablist"><button data-tab="how" class="on">How it works</button><button data-tab="keys">Keys</button></div>
+        <span class="help-spacer"></span>
+        <button id="help-tour" class="help-tour"><kbd>g</kbd> Tours</button>
+        <button id="help-close" aria-label="Close">Esc</button>
+      </div>
+      <div class="help-pane" data-pane="how">
+        <div class="how">
+          <section><h3>1. Aim, then act</h3><p>You never edit characters. Aim at a piece with the arrows (or <kbd class="wide">Space</kbd> and the letter over it), then press a key: <kbd>m</kbd> moves it across the equals sign the right way, <kbd>s</kbd> simplifies, <kbd>d</kbd> distributes.</p></section>
+          <section><h3>2. Both sides at once</h3><p><kbd>=</kbd> <kbd>-</kbd> <kbd>.</kbd> <kbd>/</kbd> add, subtract, multiply or divide both sides. Type what, watch the live preview, press <kbd>Enter</kbd>. No Shift needed.</p></section>
+          <section><h3>3. Nothing breaks</h3><p>Every move is checked by plugging in numbers. A move that would change the answers resists, and the reason shows in the bottom bar. Dividing by something that could be zero adds a condition to the rail.</p></section>
+          <section><h3>4. Simplify when you want</h3><p>Nothing tidies itself. A dashed box marks what could simplify; press <kbd>s</kbd> to take it, or leave it if you want that form.</p></section>
+          <section><h3>5. Hold Tab for algebra</h3><p>Factor, expand, combine fractions, clear denominators, split into cases, solve for a variable (<kbd>i</kbd>), substitute from another equation (<kbd>1</kbd>–<kbd>9</kbd>). Arrows browse; release <kbd>Tab</kbd> (or tap it again) to apply. <kbd>e</kbd> on its own solves straight away.</p></section>
+          <section><h3>6. Hold f for functions</h3><p>Put a function on both sides, or press <kbd>i</kbd> to undo the outer one. <kbd>←</kbd> <kbd>→</kbd> pick a family (powers, roots, exp and log, trig), <kbd>↓</kbd> steps in, release <kbd>f</kbd> to apply.</p></section>
+          <section><h3>7. Many equations</h3><p>The equation you work on gets the room; the others sit open on the shelf across the top, each saying what it shares with this one (click one to swap). <kbd>n</kbd> adds one; <kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd> or <kbd>1</kbd>–<kbd>9</kbd> move between them. Aim at a variable and the equations that share it light up: hold <kbd>Tab</kbd> + their number to bring it in. Extraneous answers are flagged.</p></section>
+          <section><h3>8. The graph</h3><p>One variable: both sides as curves, and the answers are where they cross. Two: the solution curve, or the shaded region for an inequality. Three: the solution surface in 3D. Drag, scroll, double-click to reset.</p></section>
+          <section><h3>9. Pick part of a side</h3><p>Drag a box with the mouse around the pieces you want, or hold <kbd>Ctrl</kbd> and tap <kbd>←</kbd> <kbd>→</kbd> to grow it left or right. <i>3 + 5</i> out of <i>2x + 3 + 5 + y</i> works like any single piece: <kbd>s</kbd>, <kbd>m</kbd>, and the rest.</p></section>
+          <section><h3>10. More than equations</h3><p>Type <i>x^2 − 4 &lt; 0</i> for an inequality (moves flip the sign when they must; <kbd>e</kbd> solves it with a sign chart). Type just an expression to rewrite it. An identity like <i>(a+b)^2 = a^2+2ab+b^2</i> becomes a proof. <i>f(x) = x^2 + 1</i> defines a function.</p></section>
+          <section><h3>11. Your work</h3><p><kbd>w</kbd> shows every workspace as a card: open, rename, copy, or start a new one. <kbd>Shift</kbd>+<kbd>R</kbd> twice puts every equation back at its start (<kbd>r</kbd> replays your steps).</p></section>
+          <section><h3>12. Make it yours</h3><p><kbd>,</kbd> opens settings: theme, look (try Pixel), math size, speed, sound pack (try Blocks). <kbd>z</kbd> or the ⚡ at the bottom switches flash mode.</p></section>
+        </div>
+      </div>
+      <div class="help-pane" data-pane="keys" hidden>
+      <div class="help-cols">
+        <section>
+          <h3>Aim</h3>
+          <dl>
+            <dt><kbd class="wide">Space</kbd> then a letter</dt><dd>jump to any piece</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next piece</dd>
+            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>grow / shrink the aim. In a fraction, ↓ goes from top to bottom and ↑ back; → walks into the top or bottom</dd>
+            <dt><kbd>Shift</kbd>+<kbd>Tab</kbd></dt><dd>other side</dd>
+            <dt>hold <kbd>Ctrl</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>grow the highlight left / right</dd>
+            <dt>drag a box</dt><dd>aim at whatever it covers</dd>
+            <dt><kbd>a</kbd></dt><dd>whole equation</dd>
+            <dt><kbd>Esc</kbd></dt><dd>clear</dd>
+          </dl>
+          <p class="help-note"><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> work like the arrows.</p>
+          <h3 class="gap">Equations</h3>
+          <dl>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>switch equation</dd>
+            <dt><kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next equation</dd>
+            <dt><kbd>n</kbd></dt><dd>add an equation</dd>
+            <dt><kbd>i</kbd></dt><dd>type over this one</dd>
+            <dt><kbd>Delete</kbd> twice</dt><dd>remove this one</dd>
+          </dl>
+        </section>
+        <section>
+          <h3>Move</h3>
+          <dl>
+            <dt><kbd>m</kbd></dt><dd>move it across =, the right way for what it is</dd>
+            <dt><kbd>=</kbd> <kbd>-</kbd> <kbd>.</kbd> <kbd>/</kbd></dt><dd>+ − × ÷ both sides, with a live preview</dd>
+            <dt><kbd>s</kbd> <kbd>d</kbd></dt><dd>simplify, distribute</dd>
+            <dt><kbd>x</kbd></dt><dd>swap sides</dd>
+            <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>reorder: slide a term</dd>
+            <dt><kbd>e</kbd></dt><dd>solve for the aimed (or only) variable</dd>
+            <dt><kbd>-</kbd> then <i>2#2</i></dt><dd>subtract 2 × equation 2 (elimination)</dd>
+          </dl>
+          <h3 class="gap">Hold f + (functions on both sides)</h3>
+          <dl>
+            <dt><kbd>i</kbd></dt><dd>inverse: undo the outer function</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>browse tabs with a live preview, release f to apply</dd>
+            <dt><kbd>2</kbd> <kbd>3</kbd> <kbd>n</kbd> <kbd>1</kbd></dt><dd>square, cube, power n, flip</dd>
+            <dt><kbd>r</kbd> <kbd>c</kbd> <kbd>k</kbd></dt><dd>√, ∛, nth root</dd>
+            <dt><kbd>e</kbd> <kbd>x</kbd> <kbd>b</kbd></dt><dd>e^, 10^, b^</dd>
+            <dt><kbd>l</kbd> <kbd>g</kbd> <kbd>h</kbd></dt><dd>ln, log, log base b</dd>
+            <dt><kbd>s</kbd> <kbd>o</kbd> <kbd>t</kbd></dt><dd>sin, cos, tan</dd>
+            <dt><kbd>a</kbd> <kbd>w</kbd> <kbd>y</kbd></dt><dd>sin⁻¹, cos⁻¹, tan⁻¹</dd>
+          </dl>
+        </section>
+        <section>
+          <h3>Hold Tab + (algebra)</h3>
+          <dl>
+            <dt><kbd>i</kbd></dt><dd>solve for a variable</dd>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>substitute from that equation</dd>
+            <dt><kbd>a</kbd></dt><dd>split into cases: |…| = b, or a product = 0</dd>
+            <dt><kbd>g</kbd> <kbd>h</kbd></dt><dd>quadratic formula / completed square</dd>
+            <dt><kbd>c</kbd> <kbd>t</kbd></dt><dd>one fraction / split into terms</dd>
+            <dt><kbd>f</kbd> <kbd>x</kbd> <kbd>s</kbd></dt><dd>factored / expanded / simplified</dd>
+            <dt><kbd>z</kbd> <kbd>d</kbd> <kbd>w</kbd></dt><dd>= 0 / clear fractions / swap</dd>
+            <dt><kbd>l</kbd> <kbd>p</kbd> <kbd>r</kbd></dt><dd>log rules / as powers / as roots</dd>
+            <dt><kbd>q</kbd> <kbd>v</kbd> <kbd>n</kbd></dt><dd>long division / partial fractions / rationalize</dd>
+            <dt><kbd>k</kbd></dt><dd>eliminate a variable with another equation</dd>
+            <dt><kbd>u</kbd> <kbd>b</kbd></dt><dd>unfold f(…) / build f⁻¹</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>browse forms and identities (trig too), Tab or release to apply</dd>
+          </dl>
+          <h3 class="gap">Work</h3>
+          <dl>
+            <dt><kbd>u</kbd> <kbd>r</kbd></dt><dd>undo / redo</dd>
+            <dt><kbd>w</kbd> <kbd>,</kbd></dt><dd>your work / settings</dd>
+            <dt><kbd>z</kbd></dt><dd>⚡ flash mode</dd>
+            <dt><kbd>Shift</kbd>+<kbd>G</kbd></dt><dd>graph right / below / hidden</dd>
+            <dt>drag a gap</dt><dd>resize panels (double-click resets)</dd>
+            <dt><kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>reset all to the start</dd>
+            <dt><kbd>t</kbd> <kbd>M</kbd></dt><dd>theme / sound</dd>
+            <dt><kbd>g</kbd> <kbd>?</kbd></dt><dd>tour / this manual</dd>
+            <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>zoom graph</dd>
+          </dl>
+        </section>
+      </div>
+      </div>
+      <p class="help-note">Every move is checked numerically. If it wouldn't keep the equation true, it doesn't happen. Tap <kbd>Tab</kbd> or <kbd>f</kbd> to keep its menu open instead of holding.</p>
+    </div>
+  </div>
+  <div id="library" class="overlay" hidden>
+    <div class="lib" role="dialog" aria-label="Your work">
+      <div class="help-head">
+        <h2>Your work</h2><span id="lib-count" class="lib-count"></span>
+        <span class="help-spacer"></span>
+        <span class="lib-keys"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move <kbd>Enter</kbd> open <kbd>n</kbd> new <kbd>r</kbd> rename <kbd>d</kbd> copy</span>
+        <button id="lib-close" aria-label="Close">Esc</button>
+      </div>
+      <div id="lib-grid" class="lib-grid"></div>
+      <p id="lib-hint" class="help-note"></p>
+    </div>
+  </div>
+
+  <div id="settings" class="overlay" hidden>
+    <div class="panel-card" role="dialog" aria-label="Settings">
+      <div class="help-head">
+        <h2>Settings</h2>
+        <span class="help-spacer"></span>
+        <span class="lib-keys"><kbd>↑</kbd><kbd>↓</kbd> pick <kbd>←</kbd><kbd>→</kbd> change</span>
+        <button id="settings-close" aria-label="Close">Esc</button>
+      </div>
+      <div id="settings-rows" class="set-rows"></div>
+    </div>
+  </div>
+  <div id="tours" class="overlay" hidden>
+    <div class="panel-card" role="dialog" aria-label="Tours">
+      <div class="help-head">
+        <h2>Tours</h2>
+        <span class="help-spacer"></span>
+        <span class="lib-keys"><kbd>↑</kbd><kbd>↓</kbd> pick <kbd>Enter</kbd> start <kbd>q</kbd> leaves a tour</span>
+        <button class="tours-close" aria-label="Close" onclick="document.getElementById('tours').hidden = true">Esc</button>
+      </div>
+      <div id="tours-list" class="tours-list"></div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
