@@ -21,7 +21,7 @@ export function toText(n: Node, ascii = false): string {
       // a group (sum inside a sum) reads as part of the same sum
       return n.terms.flatMap(t => (t.k === 'add' ? t.terms : [t])).map((t, i) => {
         const inner = absOf(t);
-        const body = inner.k === 'add' && isNeg(t) ? `(${toText(inner, ascii)})` : toText(inner, ascii);
+        const body = (inner.k === 'add' || isNeg(inner)) && isNeg(t) ? `(${toText(inner, ascii)})` : toText(inner, ascii);
         if (i === 0) return (isNeg(t) ? minus : '') + body;
         return (isNeg(t) ? ` ${minus} ` : ' + ') + body;
       }).join('');

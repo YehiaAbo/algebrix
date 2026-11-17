@@ -275,10 +275,11 @@ export function indefiniteVars(n: Node): string[] {
 }
 
 /** are the indefinite integrals in n one inside the next (∫ ∫ f dx dy), rather than side by side? */
+/** an indefinite integral inside another (∫ ∫ f dx dy, or ∫ (∫ f dx + ∫ g dx) dy once split) */
 function stacked(n: Node): boolean {
-  const ints: Node[] = [];
-  walk(n, m => { if (m.k === 'int' && !(m.lo && m.hi)) ints.push(m); });
-  return ints.every((m, i) => i === 0 || (() => { let inside = false; walk(ints[i - 1], k => { if (k === m) inside = true; }); return inside; })());
+  let found = false;
+  walk(n, m => { if (m.k === 'int' && !(m.lo && m.hi)) walk(m.arg, k => { if (k.k === 'int' && !(k.lo && k.hi)) found = true; }); });
+  return found;
 }
 
 export function verify(before: Eq, r: MoveOk): string | null {
@@ -287,8 +288,8 @@ export function verify(before: Eq, r: MoveOk): string | null {
   // an indefinite integral is only known up to a constant: compare slopes instead of values
   const ivs = r.check ? [] : [...new Set([...indefiniteVars(before), ...indefiniteVars(r.eq)])];
   if (ivs.length) {
-    // stacked ones (∫ ∫ f dx dy): the mixed slope ∂/∂x ∂/∂y …, which each one's constant drops out of
-    const by = ivs.length > 1 && stacked(before) && stacked(r.eq) ? [ivs] : ivs.map(v => [v]);
+    // stacked ones (∫ ∫ f dx dy): the mixed slope ∂/∂x ∂/∂y …, which every one's constant drops out of
+    const by = ivs.length > 1 && (stacked(before) || stacked(r.eq)) ? [ivs] : ivs.map(v => [v]);
     const d = (n: Node, vs: string[]) => vs.reduce<Node | null>((a, v) => a && derivative(a, v), n);
     const pairs = by.map(vs => [d(add([r.eq.lhs, neg(r.eq.rhs)]), vs), d(add([before.lhs, neg(before.rhs)]), vs)] as const);
     if (pairs.some(([a, b]) => !a || !b)) return 'could not check: no derivative';

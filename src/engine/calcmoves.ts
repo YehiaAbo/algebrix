@@ -9,6 +9,7 @@ import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
 import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode } from './integrate';
 import { toText } from './print';
+import { distributeNode } from './rewrite';
 
 const one = () => 1;
 const fresh = cloneFresh;
@@ -302,7 +303,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       if (isErr(r)) {
         const s = uSub(cur, t.id);
         if (!isErr(s.move) && s.u && s.g) { r = s.move; if (s.side) active[s.u] = s.g; }
-        else { const b = byParts(cur, t.id); if (!isErr(b)) r = b; }
+        else { const b = byParts(cur, t.id); if (!isErr(b)) r = b; else { const x = expandInside(cur, t); if (x) r = x; } }
       }
     }
     if (isErr(r)) return { steps, stuck: r.error };
@@ -314,12 +315,29 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
   return { steps };
 }
 
+/** x²(sin x − x cos x): multiply the inside out, so the sum rule can take it term by term */
+function expandInside(e: Eq, t: Node): MoveOk | null {
+  if (t.k !== 'int' || hasCalc(t.arg)) return null;
+  const h = newHints();
+  const a = distributeNode(t.arg, h);
+  if (!a || a.k !== 'add') return null;
+  const r = checked(e, { eq: replace(e, t.arg.id, simplify(a, h)) as Eq, label: 'multiply out the inside', hints: h, factor: one, select: null });
+  return isErr(r) ? null : r;
+}
+
 /** simplify the inside of each integral that has no calculus left in it (a double integral's
- *  outer one, once the inner is done) */
+ *  outer one, once the inner is done), and plain numbers left by plugged-in bounds */
 function tidyIntegrands(e: Eq): MoveOk | null {
   const h = newHints();
   let changed = false;
+  const busy = hasCalc(e);
   const go = (n: Node): Node => {
+    // bounds just plugged in, with work still to do: 1^3 sin(1) − 0^3 sin(0) is sin(1) from here on
+    if (busy && n.k !== 'num' && n.k !== 'sym' && !symbols(n).length && !hasCalc(n)) {
+      const a = simplify(n, h);
+      if (toText(a) !== toText(n)) { changed = true; return a; }
+      return n;
+    }
     if (n.k === 'int' && !hasCalc(n.arg)) {
       const a = simplify(n.arg, h);
       if (toText(a) !== toText(n.arg)) { changed = true; return withChildren(n, children(n).map(c => (c === n.arg ? a : c))); }

@@ -41,6 +41,8 @@ const WORDS = ['int', 'integral', 'lim', 'sum', 'prod', 'sqrt', 'cbrt', 'arcsin'
  *  come (x + □, d/dx(□), ∫ □ dx), brackets close themselves, and a word being typed is left out
  *  until it's whole. exact: the text parses as it is. whole: nothing was left out and there's no □,
  *  so Enter can take the preview (an unclosed bracket is fine). */
+const EMPTY_INT = /(?:∫|int)(?:_\s*(?:\{[^}]*\}|\([^)]*\)|[^\s{(^]+)\s*\^\s*(?:\{[^}]*\}|\([^)]*\)|[^\s{(]+))?\s*d[a-zA-Zα-ω□](?![a-zA-Z])/;
+
 export function livePreview(src: string): { eq: Eq; partial: boolean; exact: boolean; whole: boolean } | null {
   if (!src.trim()) return null;
   const close = (t: string) => {
@@ -62,7 +64,7 @@ export function livePreview(src: string): { eq: Eq; partial: boolean; exact: boo
   }
   // the first integral closes with dx; once a d-letter is typed, the next one waits as d□
   const dv = /(?:^|[^a-zA-Z])d[a-zA-Z](?![a-zA-Z(])/.test(t) ? ' d□' : ' dx';
-  const ENDS = ['', '□', ' □', ' □ □', ' x->□ □', dv, ' □' + dv, '_{n=□}^{□} □', ' □)'];
+  const ENDS = ['', '□', ' □', ' □ □', ' x->□ □', dv, ' □' + dv, ' □ □' + dv, '^□ □' + dv, '□^□ □' + dv, '_{n=□}^{□} □', ' □)'];
   for (let i = 0; i < 16; i++) {
     const base = t.trimEnd();
     if (!base) return null;
@@ -71,6 +73,8 @@ export function livePreview(src: string): { eq: Eq; partial: boolean; exact: boo
     for (const more of outer) {
       for (const end of ENDS) {
         for (const cand of [close(base + end) + more, close(base) + end + more]) {
+          // a closing d□ must not turn a missing integrand into 1 (∫_0^1 dx): that hole stays □
+          if (EMPTY_INT.test(cand)) continue;
           const eq = parse(cand);
           if (eq) return { eq, partial: true, exact: false, whole: i === 0 && t === src && !cand.includes('□') };
         }

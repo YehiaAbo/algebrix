@@ -153,8 +153,8 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       flat.forEach(({ t, own }, i) => {
         const tOwn = t.k === 'neg' ? [...own, t.id] : own;
         const inner = absOf(t);
-        // a whole sum taken away keeps its brackets: − (a + b)
-        const body = inner.k === 'add' && isNeg(t) ? parens(L(inner, s, tOwn, c), s, inner.id, tOwn, inner.from) : L(inner, s, tOwn, c);
+        // a whole sum taken away keeps its brackets: − (a + b), and so does a negative: − (−2x), never − −2x
+        const body = (inner.k === 'add' || isNeg(inner)) && isNeg(t) ? parens(L(inner, s, tOwn, c), s, inner.id, tOwn, inner.from) : L(inner, s, tOwn, c);
         const neg = isNeg(t);
         if (i === 0) {
           if (neg) parts.push(sign(true, s, `sg${signKey(t)}`, [...own, t.id]), 0.04 * s);

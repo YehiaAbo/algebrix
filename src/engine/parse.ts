@@ -13,7 +13,9 @@ const GREEK: Record<string, string> = {
   sigma: 'σ', phi: 'φ', omega: 'ω', tau: 'τ', rho: 'ρ', epsilon: 'ε',
 };
 
-function tokenize(s: string): Tok[] {
+function tokenize(src: string): Tok[] {
+  // LaTeX dressing that changes nothing: \mathrm{d}x is dx, \limits and \displaystyle are looks
+  const s = src.replace(/\\(?:mathrm|operatorname|text|mathit|rm)\{d\}/g, 'd').replace(/\\(?:limits|nolimits|displaystyle|textstyle)(?![a-zA-Z])/g, '');
   const out: Tok[] = [];
   let i = 0;
   // integrals still waiting for their dx
@@ -39,18 +41,26 @@ function tokenize(s: string): Tok[] {
     if (c === '□') { out.push({ t: 'id', v: '□' }); i++; continue; }
     const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
     if (leib) { out.push({ t: 'id', v: primed(leib[1] ?? leib[3]) }); i += leib[0].length; continue; }
-    const big = prevLetter ? null : /^(?:∫|\\int(?![a-zA-Z])|integral(?![a-zA-Z])|int(?![a-zA-Z])|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z])|∏|Π|\\prod(?![a-zA-Z])|prod(?![a-zA-Z]))/.exec(rest);
+    // integral signs stack, even typed together: intint, \int\int, ∫∫, iint, ∬, \iiint
+    const stacking = /^(?:[∫∬∭\\])/.test(rest) || /(?:int|integral|∫|\^pi|\^[a-zA-Zα-ω])$/.test(s.slice(0, i));
+    const big = prevLetter && !stacking ? null : /^(?:[∫∬∭]|\\i{0,2}int(?:(?![a-zA-Z])|(?=i{0,2}int))|integral(?:(?![a-zA-Z])|(?=i{0,2}int))|i{0,2}int(?:(?![a-zA-Z])|(?=i{0,2}int))|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z])|∏|Π|\\prod(?![a-zA-Z])|prod(?![a-zA-Z]))/.exec(rest);
     if (big) {
-      const isInt = /∫|int/.test(big[0]);
-      out.push({ t: 'cmd', v: isInt ? 'int' : /∏|Π|prod/.test(big[0]) ? 'prod' : 'sum' });
-      if (isInt) open++;
+      const isInt = /[∫∬∭]|int/.test(big[0]);
+      const many = big[0] === '∬' ? 2 : big[0] === '∭' ? 3 : isInt ? 1 + (/^\\?(i*)int/.exec(big[0])?.[1].length ?? 0) : 1;
+      for (let k = 0; k < many; k++) out.push({ t: 'cmd', v: isInt ? 'int' : /∏|Π|prod/.test(big[0]) ? 'prod' : 'sum' });
+      if (isInt) open += many;
       i += big[0].length;
       if (s[i] === '_') { out.push({ t: 'op', v: '_' }); i++; }
       continue;
     }
     // the dx that closes an integral
-    const dx = open > 0 && !prevLetter ? /^d([a-zA-Zα-ω□])(?![a-zA-Z(])/.exec(rest) : null;
-    if (dx) { out.push({ t: 'op', v: 'd:' + dx[1] }); open--; i += dx[0].length; continue; }
+    // (dxdy and xdx too, and a dx past the last ∫ is one more integral: ∫ f dy dx is ∫∫ f dy dx)
+    const lastD = out.length > 0 && out[out.length - 1].t === 'op' && /^d\+?:/.test(out[out.length - 1].v);
+    const dx = open > 0 || lastD ? /^d([a-zA-Zα-ω□])(?:(?![a-zA-Zα-ω(])|(?=(?:d[a-zA-Zα-ω□])+(?![a-zA-Zα-ω(])))/.exec(rest) : null;
+    if (dx && (!prevLetter || lastD || /^.{2}(?:\s|$|[)=+\-<>≤≥,\\]|(?:d[a-zA-Zα-ω])+(?![a-zA-Zα-ω(]))/.test(rest))) {
+      out.push({ t: 'op', v: (open > 0 ? 'd:' : 'd+:') + dx[1] });
+      open = Math.max(0, open - 1); i += dx[0].length; continue;
+    }
     if (c === '_' && s[i - 1] === ']') { out.push({ t: 'op', v: '_' }); i++; continue; }
     if (/^\\?lim(?![a-zA-Z])/.test(rest)) { out.push({ t: 'cmd', v: 'lim' }); i += rest[0] === '\\' ? 4 : 3; if (s[i] === '_') i++; continue; }
     const arrow = /^(?:->|→|\\to(?![a-zA-Z])|\\rightarrow)/.exec(rest);
@@ -278,12 +288,24 @@ class Parser {
   integral(): Node {
     let lo: Node | undefined, hi: Node | undefined;
     if (this.isOp('_')) { this.i++; lo = this.bound().at; this.eat('^'); hi = this.bound().at; }
-    if (this.peek()?.t === 'op' && this.peek()!.v.startsWith('d:')) throw new ParseError('What is being integrated? Put it before the dx.');
-    const f = this.expr();
-    const d = this.peek();
-    if (!d || d.t !== 'op' || !d.v.startsWith('d:')) throw new ParseError('Finish the integral with dx (or dt, du…).');
-    this.i++;
-    return int(d.v.slice(2), f, lo, hi);
+    const isD = (t?: Tok) => !!t && t.t === 'op' && t.v.startsWith('d:');
+    let r: Node;
+    if (isD(this.peek())) {
+      // ∫ dx is ∫ 1 dx, and ∫ dx/x is ∫ 1/x dx
+      const v = this.peek()!.v.slice(2); this.i++;
+      r = int(v, this.isOp('/') ? (this.i++, frac(num(1), this.signed())) : num(1), lo, hi);
+    } else {
+      const f = this.expr();
+      const d = this.peek();
+      if (!isD(d)) throw new ParseError(this.toks.some(t => t.t === 'op' && /^d\+?:[AVS]$/.test(t.v)) ? 'Write dA as dx dy (and dV as dx dy dz), so each ∫ has its own d.' : 'Finish the integral with dx (or dt, du…).');
+      this.i++;
+      r = int(d!.v.slice(2), f, lo, hi);
+    }
+    // ∫_0^x … dx: the bound can't be the variable that runs between the bounds
+    if (r.k === 'int' && r.lo && r.hi && symbols(add([r.lo, r.hi])).includes(r.v)) throw new ParseError(`A bound of the ∫ … d${r.v} can't use ${r.v} itself: the inner integral needs another letter, like ∫_0^${r.v} f(t) dt.`);
+    // more d's than ∫ signs: each one is an integral around this one
+    while (this.peek()?.t === 'op' && this.peek()!.v.startsWith('d+:')) { r = int(this.peek()!.v.slice(3), r); this.i++; }
+    return r;
   }
 
   /** Σ_{n=1}^∞ f, or ∏ */

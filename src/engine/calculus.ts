@@ -3,7 +3,7 @@
 // differentiation, kept apart from the step-by-step rules in calcmoves.ts (and fuzzed against
 // finite differences in the tests), so a slip in one is caught by the other. Limits are
 // estimated numerically, and give NaN (can't check) when the estimate isn't clean.
-import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, vec, int, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh } from './ast';
+import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, vec, int, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh, walk, key, symbols } from './ast';
 
 /** does n change with v (directly, or through a variable that depends on v)? */
 export function dependsOn(n: Node, v: string, dep: string[] = []): boolean {
@@ -214,10 +214,19 @@ export function quad(f: (x: number) => number, a: number, b: number): number {
 }
 
 function integral(n: Int, env: Env): number {
+  // a triple integral is thousands of inner ones, and each checked step asks again for the same
+  // ones, so remember what each was worth (by its shape and the values it depends on)
+  let memo = SHAPE.get(n);
+  if (!memo) { let calls = false; walk(n, m => { if (m.k === 'call') calls = true; }); memo = { key: calls ? '' : key(n), vars: symbols(n) }; SHAPE.set(n, memo); }
+  const at = memo.key && memo.key + memo.vars.map(v => env[v]).join(',');
+  if (at && WORTH.has(at)) return WORTH.get(at)!;
   const a = evaluate(n.lo!, env), b = evaluate(n.hi!, env);
-  if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
-  return quad(x => evaluate(n.arg, { ...env, [n.v]: x }), a, b);
+  const r = Number.isNaN(a) || Number.isNaN(b) ? NaN : quad(x => evaluate(n.arg, { ...env, [n.v]: x }), a, b);
+  if (at) { if (WORTH.size > 50000) WORTH.clear(); WORTH.set(at, r); }
+  return r;
 }
+const SHAPE = new WeakMap<Node, { key: string; vars: string[] }>();
+const WORTH = new Map<string, number>();
 
 /* ---------- series ---------- */
 

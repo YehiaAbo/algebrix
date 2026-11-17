@@ -1,4 +1,4 @@
-// Round 15: the notation cards, stacked integrals, wrong roots that must never look solved,
+// Round 15: the notation cards, stacked integrals (typed any way), wrong roots that must never look solved,
 // the other case on the shelf, and the graph's calculus pictures.
 export const tests = {
   async 'typing int brings up notation cards: ↓ picks, Tab takes, and the caret lands inside'({ p, key, type, until, assert, wait }) {
@@ -21,6 +21,15 @@ export const tests = {
     await type(' dy'); await key('Enter');
     await until(s => s.eq === '∫ ∫ xy dx dy', 'typed');
     await key('e'); await until(s => s.eq === 'x^2y^2/4 + C', 'worked out', 12000);
+  },
+
+  async 'double and triple integrals type however you write them, and work out'({ key, type, until }) {
+    await key('i'); await type('int_0^1int_0^2 x y dxdy'); await key('Enter');
+    await until(s => s.eq === '∫_{0}^{1} ∫_{0}^{2} xy dx dy', 'typed run together');
+    await key('e'); await until(s => s.eq === '1', 'worked out', 15000);
+    await key('i'); await type('iiint x y z dxdydz'); await key('Enter');
+    await until(s => s.eq === '∫ ∫ ∫ xyz dx dy dz', 'iiint typed');
+    await key('e'); await until(s => s.eq === 'x^2y^2z^2/8 + C', 'worked out', 15000);
   },
 
   async 'a product and a finite sum are written out and worked out'({ key, type, until }) {
