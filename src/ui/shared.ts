@@ -59,6 +59,12 @@ export function livePreview(src: string): { eq: Eq; partial: boolean; exact: boo
   if (tail && (/[/]/.test(tail[1]) || (!WORDS.includes(tail[1]) && WORDS.some(w => w.startsWith(tail[1]))))) t = t.slice(0, t.length - tail[1].length);
   // in an integral, a lone d is a dx on its way, and a lone i another ∫
   else if (/(?:^|[^a-zA-Z])[di]$/.test(t) && /int|∫/.test(t)) t = t.slice(0, -1);
+  // d²y/dx² on its way (d^2y, d^2y/d, d^2y/dx): shown whole, the second derivative it will be
+  const d2 = /(?:^|[^a-zA-Z])d(?:\^2|²) ?([a-zA-Z])(?: ?\/ ?(?:d(?:([a-zA-Z])\^?)?)?)?$/.exec(t);
+  if (t === src && d2) {
+    const g = parse(t.slice(0, t.length - d2[0].length + (d2[0].startsWith('d') ? 0 : 1)) + `d^2${d2[1]}/d${d2[2] ?? 'x'}^2`);
+    if (g) return { eq: g, partial: true, exact: false, whole: false };
+  }
   if (t === src) {
     const exact = parse(src);
     if (exact) return { eq: exact, partial: false, exact: true, whole: true };
@@ -91,6 +97,9 @@ export function varHtml(v: string) {
   const u = v.indexOf('_');
   return u < 0 ? escapeHtml(v) : `${escapeHtml(v.slice(0, u))}<sub>${escapeHtml(v.slice(u + 1))}</sub>`;
 }
+
+/** a text form as HTML that reads like math: √( for sqrt(, powers raised */
+export const mathHtml = (t: string) => supHtml(escapeHtml(t.replace(/sqrt\(/g, '√(')));
 
 /** powers raised in escaped text: x^2e^x → x<sup>2</sup>e<sup>x</sup>, e^(x^2/2) nested too */
 export function supHtml(t: string): string {

@@ -51,7 +51,7 @@ export function toText(n: Node, ascii = false): string {
       if (isLeibniz2(n)) return `${toText(n.num, ascii)}/${toText(n.den, ascii)}`;
       return `${p(n.num, !simple(n.num))}/${p(n.den, !(n.den.k === 'num' && n.den.v >= 0 || n.den.k === 'sym' || n.den.k === 'fn' || n.den.k === 'sqrt'))}`;
     }
-    case 'pow': return `${p(n.base, (n.base.k !== 'num' && n.base.k !== 'sym' && n.base.k !== 'fn' || isNeg(n.base)) && !/^(?:[a-zA-Zα-ωπ]|\d+)$/.test(toText(n.base, ascii)))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
+    case 'pow': return `${p(n.base, (n.base.k !== 'num' && n.base.k !== 'sym' && (n.base.k !== 'fn' || /\|$/.test(toText(n.base, ascii)) && n.base.name !== 'abs') || isNeg(n.base)) && !/^(?:[a-zA-Zα-ωπ]|\d+)$/.test(toText(n.base, ascii)))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
     case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
     case 'deriv': return n.partial ? `∂/∂${n.v}(${toText(n.arg, ascii)})` : `d/d${n.v}(${toText(n.arg, ascii)})`;
@@ -68,6 +68,8 @@ export function toText(n: Node, ascii = false): string {
       return `lim_{${n.v}${ascii ? '->' : '→'}${toText(n.to, ascii)}${side}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg' || n.arg.k === 'lim')}`;
     }
     case 'fn': if (n.name === 'fact') return `${p(n.arg, !(n.arg.k === 'num' && n.arg.v >= 0 || n.arg.k === 'sym'))}!`;
-      return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${(ascii ? FN_TEXT[n.name]?.replace('⁻¹', '^-1') : FN_TEXT[n.name]) ?? n.name}(${toText(n.arg, ascii)})`;
+      if (n.name === 'abs') return `|${toText(n.arg, ascii)}|`;
+      // ln|x − 1|: the bars hold it already
+      return `${(ascii ? FN_TEXT[n.name]?.replace('⁻¹', '^-1') : FN_TEXT[n.name]) ?? n.name}${n.arg.k === 'fn' && n.arg.name === 'abs' && (n.name === 'ln' || n.name === 'log') ? toText(n.arg, ascii) : `(${toText(n.arg, ascii)})`}`;
   }
 }

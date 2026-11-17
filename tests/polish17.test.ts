@@ -51,9 +51,9 @@ describe('solving with letters underneath and in powers', () => {
 describe('integrals a first course meets', () => {
   it.each([
     ['int 1/(x^2 + 1) dx', 'tan⁻¹(x) + C'], ['int 1/(4 + x^2) dx', 'tan⁻¹(x/2)/2 + C'], ['int 1/sqrt(9 - x^2) dx', 'sin⁻¹(x/3) + C'],
-    ['int x/(x^2+1) dx', 'ln(x^2 + 1)/2 + C'], ['int 1/x^2 dx', '−1/x + C'], ['int 1/(3x) dx', 'ln(|x|)/3 + C'], ['int 1/sqrt(x) dx', '2 sqrt(x) + C'],
+    ['int x/(x^2+1) dx', 'ln(x^2 + 1)/2 + C'], ['int 1/x^2 dx', '−1/x + C'], ['int 1/(3x) dx', 'ln|x|/3 + C'], ['int 1/sqrt(x) dx', '2 sqrt(x) + C'],
     ['int sin(x)^2 dx', 'x/2 − sin(2x)/4 + C'], ['int cos(3x)^2 dx', 'x/2 + sin(6x)/12 + C'],
-    ['int 1/(x^2 + 3x + 2) dx', 'ln(|x + 1|) − ln(|x + 2|) + C'], ['int x/(x+1) dx', 'x − ln(|x + 1|) + C'],
+    ['int 1/(x^2 + 3x + 2) dx', 'ln|x + 1| − ln|x + 2| + C'], ['int x/(x+1) dx', 'x − ln|x + 1| + C'],
   ])('%s = %s', (src, want) => expect(finish(src)).toBe(want));
   it('∫₀^π sin² is π/2', () => expect(finish('int_0^pi sin(x)^2 dx')).toBe('π/2'));
 });
@@ -115,7 +115,7 @@ describe('small readings', () => {
     expect(odeKind(P("y' = -k y"))).toBe('separable');
     const s = ok(separate(P("y' = -k y")));
     expect(toText(s.eq)).toBe('∫ 1/y dy = ∫ (−k) dx');
-    expect(finishCalc(s.eq).steps.map(x => toText(x.eq)).pop()).toBe('ln(|y|) = −kx + C');
+    expect(finishCalc(s.eq).steps.map(x => toText(x.eq)).pop()).toBe('ln|y| = −kx + C');
   });
   it('nothing that cannot be 0 is noted as ≠ 0', () => {
     for (const s of ['e^(2x)', 'x^2 + 1', '3e^x', '2^x', '(x^2+1)^2']) expect(neverZero(parseExpr(s)), s).toBe(true);

@@ -349,7 +349,9 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       }
       const name = text(FN_TEXT[n.name] ?? n.name, s, `f${n.id}`, me, false, from && `f${from}`);
       const simple = bare && (n.arg.k === 'sym' || (n.arg.k === 'num' && n.arg.v >= 0));
-      return simple ? row([name, 0.12 * s, a]) : row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
+      // ln|x − 1|: the bars already hold it, so no brackets around them
+      const barred = n.arg.k === 'fn' && n.arg.name === 'abs';
+      return simple ? row([name, 0.12 * s, a]) : barred ? row([name, 0.06 * s, a]) : row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
     }
   }
 }

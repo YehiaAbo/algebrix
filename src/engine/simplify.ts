@@ -124,7 +124,7 @@ function rule(n: Node, h: Hints): Node | null {
 const ratOf = (n: Node) => (n.k === 'num' ? rat(n.v) : n.k === 'frac' && n.num.k === 'num' && n.den.k === 'num' && n.den.v !== 0 ? rat(n.num.v, n.den.v) : null);
 
 /** never below 0, whatever the letters are: squares, exponentials, roots, and sums and products of them */
-function nonneg(n: Node): boolean {
+export function nonneg(n: Node): boolean {
   switch (n.k) {
     case 'num': return n.v >= 0;
     case 'sym': return n.name === 'e' || n.name === 'π';

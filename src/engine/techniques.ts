@@ -4,7 +4,7 @@
 import { Node, Eq, find, children, withChildren, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf } from './ast';
 import { parseExpr } from './parse';
 import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
-import { simplify, newHints } from './simplify';
+import { simplify, newHints, nonneg as isNonneg } from './simplify';
 import { expandAll, hasExpandable, findExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
 import { toText } from './print';
 import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked } from './moves';
@@ -594,7 +594,7 @@ export function splitCases(e: Eq, v?: string): Cases | null {
       const other = eq(fresh(X), negate(fresh(B)));
       const first: MoveOk = {
         eq: A, label: `split |${t(X)}| into two cases`, hints: newHints(), factor: one, select: null,
-        conditions: hasSymbols(B) ? [`${t(B)} ≥ 0`] : [],
+        conditions: hasSymbols(B) && !isNonneg(B) ? [`${t(B)} ≥ 0`] : [],
         check: env => [[evaluate(A, env) * evaluate(other, env), evaluate(S, env) ** 2 - evaluate(B, env) ** 2]],
       };
       const c = checked(e, first);

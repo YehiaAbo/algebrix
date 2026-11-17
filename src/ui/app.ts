@@ -19,7 +19,7 @@ import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
-import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, supHtml } from './shared';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml } from './shared';
 import * as nav from './nav';
 import { notationFor } from './notation';
 import * as sheet from './sheet';
@@ -204,9 +204,9 @@ export class App {
     if (!uniq.length) return null;
     // the one that works, here: say what the others were
     const out = kin.filter(({ s }) => s.bad).map(({ e }) => toText(e.lhs.k === 'sym' ? e.rhs : e.lhs));
-    if (uniq.length === 1 && !me.bad && out.length) return `the only answer: <b>${v} = ${supHtml(escapeHtml(uniq[0]))}</b> (${out.map(o => `${v} = ${supHtml(escapeHtml(o))}`).join(', ')} fails the original)`;
-    if (uniq.length === 1) return me.bad ? `<b>${v} = ${supHtml(escapeHtml(uniq[0]))}</b>` : null;
-    return uniq.map(a => `<b>${v} = ${supHtml(escapeHtml(a))}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
+    if (uniq.length === 1 && !me.bad && out.length) return `the only answer: <b>${v} = ${mathHtml(uniq[0])}</b> (${out.map(o => `${v} = ${mathHtml(o)}`).join(', ')} fails the original)`;
+    if (uniq.length === 1) return me.bad ? `<b>${v} = ${mathHtml(uniq[0])}</b>` : null;
+    return uniq.map(a => `<b>${v} = ${mathHtml(a)}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
   }
 
   /** the status tag an equation carries: its answer, ✓, ∎, or a warning */
@@ -373,7 +373,7 @@ export class App {
     conds.replaceChildren();
     for (const c of this.step?.conditions ?? []) {
       const li = document.createElement('li');
-      li.textContent = c;
+      li.innerHTML = mathHtml(c);
       li.classList.toggle('prose', /[a-z]{3,} [a-z]{2,}/.test(c));
       conds.append(li);
     }

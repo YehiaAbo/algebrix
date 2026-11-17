@@ -49,7 +49,7 @@ describe('a rule at a time', () => {
     ['int (3x^2 + 2x) dx', 'x^3 + x^2 + C'],
     ['int cos(2x) dx', 'sin(2x)/2 + C'],
     ['int e^(3x) dx', 'e^(3x)/3 + C'],
-    ['int 1/x dx', 'ln(|x|) + C'],
+    ['int 1/x dx', 'ln|x| + C'],
     ['int 5 dx', '5x + C'],
     ['int_0^2 x^2 dx', '[x^3/3]_{x=0}^{2}'],
   ])('%s', (src, want) => expect(txt(intStep(ex(src), null))).toBe(want));

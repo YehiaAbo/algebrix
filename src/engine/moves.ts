@@ -33,6 +33,8 @@ export interface MoveOk {
   rule?: string;
   /** a final answer that isn't an equation, like x ∈ (−∞, 2) ∪ (3, ∞) */
   answer?: string;
+  /** text renamed in the conditions carried forward: 2C is called C from here on */
+  rename?: [string, string][];
 }
 
 /** ⇔: the new equation has exactly the same solutions. ⇒: every old solution survives but new ones may

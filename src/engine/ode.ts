@@ -5,7 +5,7 @@
 // putting it into the equation.
 import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, int, deriv, eq, evaluate, symbols, relOf, Env, primed, cloneFresh, children, withChildren, key, walk, replace } from './ast';
 import { derivative, dependsOn, substitute } from './calculus';
-import { checked, MoveOk, MoveResult, isErr } from './moves';
+import { checked, MoveOk, MoveResult, isErr, neverZero } from './moves';
 import { simplify, newHints } from './simplify';
 import { finishCalc, times, plus } from './calcmoves';
 import { ratNode } from './integrate';
@@ -119,7 +119,7 @@ export function separate(e: Eq, v?: string): MoveResult {
   const yp = primed(u.y);
   return checked(e, {
     eq: next, label: `separate: ${u.y}s left, ${u.x}s right`, hints: newHints(), factor: one, select: null, rule: 'separation of variables', implies: true,
-    conditions: [`${toText(p.h)} ≠ 0 (where it is 0, ${u.y} = constant may be a solution too)`],
+    conditions: neverZero(p.h) ? [] : [`${toText(p.h)} ≠ 0 (where it is 0, ${u.y} = constant may be a solution too)`],
     // differentiating back with y depending on x: y′/h(y) − g(x) is the old equation divided by h(y)
     check: env => [[evaluate(L, env) * env[yp] - evaluate(g, env), (evaluate(e.lhs, env) - evaluate(e.rhs, env)) / evaluate(p.h, env) * (e.lhs.k === 'sym' && e.lhs.name === yp ? 1 : -1)]],
   });
@@ -403,6 +403,7 @@ export function renameConstant(e: Eq): MoveResult {
   const next = replace(e, node.id, sym('C')) as Eq;
   return checked(e, {
     eq: next, label: `${toText(node)} is just another constant: call it C`, hints: newHints(), factor: one, select: null, rule: 'constant of integration', implies: true,
+    rename: kk === -1 ? [[' − C', ' + C'], ['−C', 'C']] : [[toText(node), 'C']],
     check: env => [[evaluate(next, { ...env, C: kk * env.C }), evaluate(e, env)]],
   });
 }

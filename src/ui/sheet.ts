@@ -27,7 +27,8 @@ export function place(s: Sheet, eq: Eq, asNew: boolean): string | null {
  *  one-variable inequality that is solved gets its answer written out */
 export function addStep(s: Sheet, r: MoveOk): Step {
   const slot = s.slots[s.cur];
-  const conditions = [...new Set([...slot.steps[slot.at].conditions, ...(r.conditions ?? [])])];
+  const renamed = slot.steps[slot.at].conditions.map(c => (r.rename ?? []).reduce((t, [a, b]) => t.split(a).join(b), c));
+  const conditions = [...new Set([...renamed, ...(r.conditions ?? [])])];
   let answer = r.answer;
   const sv = solvedFor(r.eq);
   if (!answer && isIneq(r.eq) && sv && symbols(r.eq).length === 1) { const a = solveInequality(r.eq, sv); if (!('error' in a)) answer = a.text; }

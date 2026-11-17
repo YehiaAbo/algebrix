@@ -25,6 +25,11 @@ describe('typing calculus', () => {
     expect(show('lim x->')).toBe('lim_{x→□} □ …');
     expect(show('lim x->0')).toBe('lim_{x→0} □ …');
   });
+  it('d²y/dx² shows as the second derivative from d^2y on, never d²·y', () => {
+    for (const t of ['d^2y', 'd^2y/', 'd^2y/d', 'd^2y/dx', 'd^2y/dx^']) expect(show(t)).toBe('d²y/dx^2 …');
+    expect(show('d^2x/dt')).toBe('d²x/dt^2 …');
+    expect(show('d^2y/dx^2 + y = 0')).toBe('d²y/dx^2 + y = 0');
+  });
   it('a definite integral', () => expect(show('int_0^1 x^2')).toBe('∫_{0}^{1} x^2 dx …'));
   it('sum', () => expect(show('sum')).toMatch(/^Σ/));
   it('product', () => expect(show('prod')).toMatch(/^∏/));
