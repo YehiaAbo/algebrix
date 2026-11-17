@@ -206,10 +206,10 @@ function sig(g: Glyph): string {
   return g.kind;
 }
 
-function elTag(g: Glyph) { return g.kind === 'paren' || g.kind === 'rad' ? 'svg' : 'DIV'; }
+function elTag(g: Glyph) { return g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int' ? 'svg' : 'DIV'; }
 
 function create(g: Glyph): HTMLElement | SVGSVGElement {
-  if (g.kind === 'paren' || g.kind === 'rad') {
+  if (g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int') {
     const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('class', 'g ' + g.kind);
     svg.appendChild(document.createElementNS(SVGNS, 'path'));
@@ -256,13 +256,18 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     (el as HTMLElement).dataset.rel = g.rel ?? '=';
   } else if (g.kind === 'sign') {
     el.classList.toggle('minus', !!g.minus);
-  } else if (g.kind === 'paren' || g.kind === 'rad') {
+  } else if (g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int') {
     const svg = el as SVGSVGElement;
     svg.setAttribute('viewBox', `0 0 ${g.w} ${g.h}`);
     const sw = Math.max(1.1, 0.044 * g.s);
     const path = svg.firstChild as SVGPathElement;
     path.setAttribute('stroke-width', String(g.kind === 'rad' ? sw * 0.95 : sw));
-    if (g.kind === 'paren' && g.straight) {
+    if (g.kind === 'int') {
+      // a slanted long s, as tall as what it integrates
+      const w = g.w, h = g.h;
+      path.setAttribute('stroke-width', String(sw * 1.15));
+      path.setAttribute('d', `M ${w * 0.95} ${h * 0.07} C ${w * 0.86} ${-h * 0.02} ${w * 0.66} ${h * 0.0} ${w * 0.6} ${h * 0.18} L ${w * 0.4} ${h * 0.82} C ${w * 0.34} ${h * 1.0} ${w * 0.14} ${h * 1.02} ${w * 0.05} ${h * 0.93}`);
+    } else if (g.kind === 'paren' && g.straight) {
       path.setAttribute('d', `M ${g.w / 2} ${sw} L ${g.w / 2} ${g.h - sw}`);
     } else if (g.kind === 'paren') {
       const w = g.w, h = g.h, x0 = g.right ? w * 0.25 : w * 0.75, x1 = g.right ? w * 0.72 : w * 0.28;

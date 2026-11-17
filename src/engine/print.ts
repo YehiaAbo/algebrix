@@ -19,7 +19,8 @@ export function toText(n: Node, ascii = false): string {
     case 'add':
       // a group (sum inside a sum) reads as part of the same sum
       return n.terms.flatMap(t => (t.k === 'add' ? t.terms : [t])).map((t, i) => {
-        const body = toText(absOf(t), ascii);
+        const inner = absOf(t);
+        const body = inner.k === 'add' && isNeg(t) ? `(${toText(inner, ascii)})` : toText(inner, ascii);
         if (i === 0) return (isNeg(t) ? minus : '') + body;
         return (isNeg(t) ? ` ${minus} ` : ' + ') + body;
       }).join('');
@@ -31,7 +32,7 @@ export function toText(n: Node, ascii = false): string {
         const s = p(f, wrap);
         const prev = n.factors[i - 1];
         const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || (prev && prev.k === 'num' && /^\d/.test(s)));
-        const fnLike = (f.k === 'fn' && f.name !== 'abs') || f.k === 'deriv' || f.k === 'lim' || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs');
+        const fnLike = (f.k === 'fn' && f.name !== 'abs' && f.name !== 'fact') || f.k === 'deriv' || f.k === 'lim' || f.k === 'int' || f.k === 'sum' || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs');
         // after a subscripted name (a_n) a space keeps the next letter out of the subscript
         const afterSub = i > 0 && /_[a-zA-Z0-9]+$/.test(out) && /^[a-zA-Zα-ω]/.test(s);
         out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && (fnLike || f.k === 'sqrt' || afterSub) ? ' ' : '') + s;
@@ -47,10 +48,17 @@ export function toText(n: Node, ascii = false): string {
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
     case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
     case 'deriv': return `d/d${n.v}(${toText(n.arg, ascii)})`;
+    case 'int': {
+      const b = n.lo && n.hi ? `_{${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}}` : '';
+      return `${ascii ? 'int' : '∫'}${b} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')} d${n.v}`;
+    }
+    case 'at': return `[${toText(n.arg, ascii)}]_{${n.v}=${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}}`;
+    case 'sum': return `${ascii ? 'sum' : 'Σ'}_{${n.v}=${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')}`;
     case 'lim': {
       const side = n.side ? (ascii ? n.side : n.side === '+' ? '⁺' : '⁻') : '';
       return `lim_{${n.v}${ascii ? '->' : '→'}${toText(n.to, ascii)}${side}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg' || n.arg.k === 'lim')}`;
     }
-    case 'fn': return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${(ascii ? FN_TEXT[n.name]?.replace('⁻¹', '^-1') : FN_TEXT[n.name]) ?? n.name}(${toText(n.arg, ascii)})`;
+    case 'fn': if (n.name === 'fact') return `${p(n.arg, !(n.arg.k === 'num' && n.arg.v >= 0 || n.arg.k === 'sym'))}!`;
+      return n.name === 'abs' ? `|${toText(n.arg, ascii)}|` : `${(ascii ? FN_TEXT[n.name]?.replace('⁻¹', '^-1') : FN_TEXT[n.name]) ?? n.name}(${toText(n.arg, ascii)})`;
   }
 }

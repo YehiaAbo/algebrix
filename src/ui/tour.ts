@@ -264,6 +264,51 @@ export const TOURS: TourDef[] = [
       { say: 'Press <kbd>e</kbd>. It is 0/0 at h = 0, so L’Hôpital steps in.', done: t => text(t.app) === '2x' },
     ],
   },
+  {
+    id: 'integrals', group: 'Calculus 2', name: 'Antiderivatives', blurb: 'Hold C, press i: the rules backwards.',
+    steps: [
+      { load: 'int x^4 dx', say: `${C('i')} to integrate. The power goes up by one, and + C joins: every antiderivative differs by a constant.`, done: t => text(t.app) === 'x^5/5 + C' },
+      { load: 'int (6x^2 - 4x + 3) dx', say: `Term by term. ${C('i')}.`, done: t => !calcLeft(t.app) },
+      { load: 'int cos(3x) dx', say: `A linear inside: the chain rule backwards divides by its 3. ${C('i')}.`, done: t => !calcLeft(t.app) },
+      { load: 'x^3 - 2x', say: `From a plain expression, ${C('i')} adds its antiderivative as a new equation.`, done: t => t.app.slots.length === 2 },
+      { say: 'Press <kbd>e</kbd> to work it out.', done: t => !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'definite', group: 'Calculus 2', name: 'Definite integrals', blurb: 'The area: F(b) − F(a).',
+    steps: [
+      { load: 'int_1^3 2x dx', say: `${C('i')}: the antiderivative, with the bounds on a bar beside it.`, done: t => text(t.app).startsWith('[') },
+      { say: `${C('p')} plugs in the bounds: F(3) − F(1).`, done: t => !calcLeft(t.app) },
+      { say: 'Press <kbd>s</kbd> until it’s a number.', done: t => text(t.app) === '8' },
+      { load: 'int_1^∞ 1/x^2 dx', say: 'An improper one: the top is ∞, so that bound becomes a limit. Press <kbd>e</kbd>.', done: t => text(t.app) === '1' },
+    ],
+  },
+  {
+    id: 'usub', group: 'Calculus 2', name: 'u-substitution', blurb: 'Spot the inside and its derivative.',
+    steps: [
+      { load: 'int 2x e^(x^2) dx', say: `The inside x² has its derivative 2x right there. ${C('u')}: u = x² goes on the shelf, and the integral is in u.`, done: t => text(t.app).includes('du') },
+      { say: `Now it is a plain one. ${C('i')}.`, done: t => !calcLeft(t.app) },
+      { say: 'Press <kbd>e</kbd> to put x² back for u.', done: t => text(t.app) === 'e^(x^2) + C' },
+      { load: 'int_0^1 2x e^(x^2) dx', say: 'With bounds, they change with u and nothing needs putting back. Press <kbd>e</kbd>.', done: t => !calcLeft(t.app) && !text(t.app).includes('u') },
+    ],
+  },
+  {
+    id: 'parts', group: 'Calculus 2', name: 'By parts', blurb: '∫ u dv = uv − ∫ v du.',
+    steps: [
+      { load: 'int x cos(x) dx', say: `A product where one part gets simpler when differentiated. ${C('b')}: u = x, picked by LIATE.`, done: t => text(t.app).includes('∫ sin') },
+      { say: `What’s left is plain. ${C('i')}.`, done: t => !calcLeft(t.app) },
+      { load: 'int ln(x) dx', say: 'ln x on its own: u = ln x, dv = dx. Press <kbd>e</kbd> and watch it choose.', done: t => !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'series', group: 'Calculus 2', name: 'Series', blurb: 'Geometric sums, the ratio test, Taylor.',
+    steps: [
+      { load: 'sum_{n=0}^∞ 5(1/3)^n', say: `Each term is 1/3 of the last: geometric. ${C('g')}: first term over (1 − r).`, done: t => !calcLeft(t.app) },
+      { say: 'Press <kbd>s</kbd> until it’s a number.', done: t => text(t.app) === '15/2' },
+      { load: 'sum_{n=1}^∞ n/2^n', say: `Not geometric, but does it add up? ${C('r')} for the ratio test.`, done: t => !!t.app.message?.text.includes('converges') },
+      { load: 'e^x', say: `${C('t')}: the Taylor polynomial, a polynomial that hugs eˣ near 0. Switch between the two with <kbd>1</kbd> and <kbd>2</kbd> and watch the graph.`, done: t => t.app.slots.length === 2 },
+    ],
+  },
 ];
 
 

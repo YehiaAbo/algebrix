@@ -3,12 +3,14 @@
 // differentiation, kept apart from the step-by-step rules in calcmoves.ts (and fuzzed against
 // finite differences in the tests), so a slip in one is caught by the other. Limits are
 // estimated numerically, and give NaN (can't check) when the estimate isn't clean.
-import { Node, Deriv, Lim, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, evaluate, CALC, DEFS, primed, children } from './ast';
+import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh } from './ast';
 
 /** does n change with v (directly, or through a variable that depends on v)? */
 export function dependsOn(n: Node, v: string, dep: string[] = []): boolean {
   if (n.k === 'sym') return n.name === v || dep.includes(n.name);
   if (n.k === 'lim' && n.v === v) return dependsOn(n.to, v, dep);
+  if (n.k === 'int' && !(n.lo && n.hi) && n.v === v) return true;
+  if (((n.k === 'int' && n.lo) || n.k === 'at' || n.k === 'sum') && n.v === v) return children(n).some(c => c !== n.arg && dependsOn(c, v, dep));
   return children(n).some(c => dependsOn(c, v, dep));
 }
 
@@ -57,6 +59,7 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
         atan: frac(ONE(), add([ONE(), pow(u, num(2))])), ln: frac(ONE(), u), log: frac(ONE(), mul([u, ln(num(10))])),
         abs: frac(u, fn('abs', u)),
       };
+      if (!outer[n.name]) return null;
       return mul([outer[n.name], a]);
     }
     case 'call': {
@@ -68,8 +71,37 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       const inner = derivative(n.arg, n.v, n.dep);
       return inner && d(inner);
     }
+    case 'int': {
+      // indefinite: the integrand back (that is what an antiderivative is)
+      if (!n.lo || !n.hi) return n.v === v && !dep.length ? n.arg : null;
+      // definite, the bounds moving (the fundamental theorem): f(hi)·hi′ − f(lo)·lo′
+      if (dependsOn(n.arg, v, dep) && n.v !== v) return null;
+      const lo = d(n.lo), hi = d(n.hi);
+      if (!lo || !hi) return null;
+      return add([mul([substitute(n.arg, n.v, n.hi), hi]), neg(mul([substitute(n.arg, n.v, n.lo), lo]))]);
+    }
+    case 'at': {
+      const whole = add([substitute(n.arg, n.v, n.hi), neg(substitute(n.arg, n.v, n.lo))]);
+      return d(whole);
+    }
+    case 'sum': {
+      // term by term
+      if (dependsOn(n.lo, v, dep) || dependsOn(n.hi, v, dep)) return null;
+      const a = d(n.arg);
+      return a && sum(n.v, n.lo, n.hi, a);
+    }
     case 'num': case 'lim': case 'eq': return null;
   }
+}
+
+/** n with every free v replaced by a copy of what */
+export function substitute(n: Node, v: string, what: Node): Node {
+  if (n.k === 'sym') return n.name === v ? cloneFresh(what) : n;
+  if ((n.k === 'lim' || (n.k === 'int' && n.lo) || n.k === 'at' || n.k === 'sum') && n.v === v) {
+    return withChildren(n, children(n).map(c => (c === n.arg ? c : substitute(c, v, what))));
+  }
+  const ks = children(n);
+  return ks.length ? withChildren(n, ks.map(c => substitute(c, v, what))) : n;
 }
 
 /** f′ for a defined f (and f″ for f′): its body, differentiated */
@@ -131,6 +163,116 @@ function limit(n: Lim, env: Env): number {
   return Math.abs(l - r) <= 1e-7 * (1 + Math.abs(l)) ? (l + r) / 2 : NaN;
 }
 
+/* ---------- integrals: double-exponential quadrature ---------- */
+
+/** ∫ f from a to b (either may be infinite): tanh-sinh, exp-sinh or sinh-sinh, halving the step
+ *  until two levels agree. NaN when they don't, so a step on it can't be checked. */
+export function quad(f: (x: number) => number, a: number, b: number): number {
+  if (a === b) return 0;
+  if (a > b) return -quad(f, b, a);
+  let map: (t: number) => [number, number];
+  if (Number.isFinite(a) && Number.isFinite(b)) {
+    const c = (a + b) / 2, d = (b - a) / 2;
+    map = t => { const s = (Math.PI / 2) * Math.sinh(t), ch = Math.cosh(s); return [c + d * Math.tanh(s), (d * (Math.PI / 2) * Math.cosh(t)) / (ch * ch)]; };
+  } else if (Number.isFinite(a)) {
+    map = t => { const e = Math.exp((Math.PI / 2) * Math.sinh(t)); return [a + e, (Math.PI / 2) * Math.cosh(t) * e]; };
+  } else if (Number.isFinite(b)) {
+    map = t => { const e = Math.exp((Math.PI / 2) * Math.sinh(t)); return [b - e, (Math.PI / 2) * Math.cosh(t) * e]; };
+  } else {
+    map = t => { const s = (Math.PI / 2) * Math.sinh(t); return [Math.sinh(s), (Math.PI / 2) * Math.cosh(t) * Math.cosh(s)]; };
+  }
+  const T = Number.isFinite(a) && Number.isFinite(b) ? 3.2 : 4.5;
+  const term = (t: number) => {
+    const [x, w] = map(t);
+    if (!Number.isFinite(w) || w === 0 || x === a || x === b) return 0;
+    const y = f(x);
+    if (Number.isFinite(y)) return y * w;
+    return Math.abs(w) < 1e-200 ? 0 : NaN;
+  };
+  let h = 0.5, total = term(0);
+  for (let k = 1; k * h <= T; k++) total += term(k * h) + term(-k * h);
+  let prev = total * h;
+  for (let level = 0; level < 7; level++) {
+    h /= 2;
+    for (let k = 1; k * h <= T; k += 2) total += term(k * h) + term(-k * h);
+    const est = total * h;
+    if (Number.isNaN(est)) return NaN;
+    if (Math.abs(est - prev) <= 1e-10 * (1 + Math.abs(est)) && level >= 1) return est;
+    prev = est;
+  }
+  return NaN;
+}
+
+function integral(n: Int, env: Env): number {
+  const a = evaluate(n.lo!, env), b = evaluate(n.hi!, env);
+  if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
+  return quad(x => evaluate(n.arg, { ...env, [n.v]: x }), a, b);
+}
+
+/* ---------- series ---------- */
+
+/** Σ a(n): exact when finite; infinite ones while the terms shrink fast enough to trust
+ *  (geometric-like), or with the Euler-Maclaurin tail when they are smooth and one-signed,
+ *  or by repeated averaging when they alternate. NaN otherwise. */
+function series(n: Sum, env: Env): number {
+  const lo = evaluate(n.lo, env), hi = evaluate(n.hi, env);
+  if (!Number.isInteger(lo) || !(Number.isInteger(hi) || hi === Infinity)) return NaN;
+  const a = (k: number) => evaluate(n.arg, { ...env, [n.v]: k });
+  if (hi !== Infinity) {
+    if (hi - lo > 1e6) return NaN;
+    let s = 0;
+    for (let k = lo; k <= hi; k++) s += a(k);
+    return s;
+  }
+  let s = 0, small = 0;
+  const N = 400;
+  const terms: number[] = [];
+  for (let k = lo; k < lo + N; k++) {
+    const t = a(k);
+    if (!Number.isFinite(t)) return NaN;
+    terms.push(t);
+    s += t;
+    small = Math.abs(t) <= 1e-17 * (1 + Math.abs(s)) ? small + 1 : 0;
+    if (small >= 5) return s;
+  }
+  const last = terms.slice(-40);
+  const alternating = last.every((t, i) => i === 0 || Math.sign(t) === -Math.sign(last[i - 1]));
+  if (alternating) {
+    // average neighbouring partial sums again and again (Euler's transform)
+    let ps: number[] = [];
+    let acc = s;
+    for (let k = lo + N; k < lo + N + 24; k++) { acc += a(k); ps.push(acc); }
+    while (ps.length > 1) ps = ps.slice(1).map((p, i) => (p + ps[i]) / 2);
+    const tailTerm = Math.abs(a(lo + N + 24));
+    return tailTerm < 0.01 ? ps[0] : NaN;
+  }
+  if (!last.every(t => Math.sign(t) === Math.sign(last[0]))) return NaN;
+  // smooth and one-signed: s + ∫ from M to ∞ − a(M)/2 + a′(M)/12 (Euler-Maclaurin), at two M's
+  const em = (M: number) => {
+    let sm = 0;
+    for (let k = lo; k < M; k++) sm += a(k);
+    const h = 1e-3 * M;
+    const da = (a(M + h) - a(M - h)) / (2 * h);
+    return sm + quad(a, M, Infinity) + a(M) / 2 - da / 12;
+  };
+  const e1 = em(lo + 200), e2 = em(lo + 400);
+  return Math.abs(e1 - e2) <= 1e-8 * (1 + Math.abs(e2)) ? e2 : NaN;
+}
+
+/** Γ(x) by Lanczos, for n! of a non-integer */
+function gamma(x: number): number {
+  if (x < 0.5) return Math.PI / (Math.sin(Math.PI * x) * gamma(1 - x));
+  const g = 7, c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  x -= 1;
+  let s = c[0];
+  for (let i = 1; i < g + 2; i++) s += c[i] / (x + i);
+  const t = x + g + 0.5;
+  return Math.sqrt(2 * Math.PI) * Math.pow(t, x + 0.5) * Math.exp(-t) * s;
+}
+
+CALC.integral = integral;
+CALC.series = series;
+CALC.gamma = gamma;
 CALC.derive = derive;
 CALC.limit = limit;
 CALC.primeDef = primeDef;

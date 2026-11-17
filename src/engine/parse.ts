@@ -1,7 +1,7 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed } from './ast';
+import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed, int, at, sum, symbols } from './ast';
 import { negate, gcd } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
@@ -16,6 +16,8 @@ const GREEK: Record<string, string> = {
 function tokenize(s: string): Tok[] {
   const out: Tok[] = [];
   let i = 0;
+  // integrals still waiting for their dx
+  let open = 0;
   while (i < s.length) {
     const c = s[i];
     if (/\s/.test(c)) { i++; continue; }
@@ -26,6 +28,19 @@ function tokenize(s: string): Tok[] {
     if (cal) { out.push({ t: 'cmd', v: `${/2|²/.test(cal[0]) ? 'deriv2' : 'deriv'}:${cal[1]}` }); i += cal[0].length; continue; }
     const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
     if (leib) { out.push({ t: 'id', v: primed(leib[1] ?? leib[3]) }); i += leib[0].length; continue; }
+    const big = prevLetter ? null : /^(?:∫|\\int(?![a-zA-Z])|integral(?![a-zA-Z])|int(?![a-zA-Z])|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z]))/.exec(rest);
+    if (big) {
+      const isInt = /∫|int/.test(big[0]);
+      out.push({ t: 'cmd', v: isInt ? 'int' : 'sum' });
+      if (isInt) open++;
+      i += big[0].length;
+      if (s[i] === '_') { out.push({ t: 'op', v: '_' }); i++; }
+      continue;
+    }
+    // the dx that closes an integral
+    const dx = open > 0 && !prevLetter ? /^d([a-zA-Zα-ω])(?![a-zA-Z(])/.exec(rest) : null;
+    if (dx) { out.push({ t: 'op', v: 'd:' + dx[1] }); open--; i += dx[0].length; continue; }
+    if (c === '_' && s[i - 1] === ']') { out.push({ t: 'op', v: '_' }); i++; continue; }
     if (/^\\?lim(?![a-zA-Z])/.test(rest)) { out.push({ t: 'cmd', v: 'lim' }); i += rest[0] === '\\' ? 4 : 3; if (s[i] === '_') i++; continue; }
     const arrow = /^(?:->|→|\\to(?![a-zA-Z])|\\rightarrow)/.exec(rest);
     if (arrow) { out.push({ t: 'op', v: '→' }); i += arrow[0].length; continue; }
@@ -79,7 +94,7 @@ function tokenize(s: string): Tok[] {
     const map: Record<string, string> = { '−': '-', '×': '*', '·': '*', '÷': '/', '√': 'sqrt', '⩽': '≤', '⩾': '≥' };
     const v = map[c] ?? c;
     if (v === 'sqrt') out.push({ t: 'cmd', v });
-    else if ('+-*/^=(){}[]|<>≤≥'.includes(v)) out.push({ t: 'op', v });
+    else if ('+-*/^=(){}[]|<>≤≥!'.includes(v)) out.push({ t: 'op', v });
     else throw new ParseError(`I don't know the symbol “${c}”.`);
     i++;
   }
@@ -91,7 +106,7 @@ export class ParseError extends Error {}
 class Parser {
   i = 0;
   abs = 0;
-  constructor(private toks: Tok[]) {}
+  constructor(readonly toks: Tok[]) {}
   peek() { return this.toks[this.i]; }
   isOp(v: string) { const t = this.peek(); return !!t && t.t === 'op' && t.v === v; }
   eat(v: string) {
@@ -140,7 +155,8 @@ class Parser {
   }
 
   power(): Node {
-    const base = this.atom();
+    let base = this.atom();
+    while (this.isOp('!')) { this.i++; base = fn('fact', base); }
     if (this.isOp('^')) {
       this.i++;
       const e = this.isOp('-') ? (this.i++, negate(this.atom())) : this.atom();
@@ -164,6 +180,8 @@ class Parser {
         return t.v.startsWith('deriv2') ? deriv(v, deriv(v, a)) : deriv(v, a);
       }
       if (t.v === 'lim') return this.limit();
+      if (t.v === 'int') return this.integral();
+      if (t.v === 'sum') return this.series();
       if (t.v === 'frac' || t.v === 'dfrac' || t.v === 'tfrac') {
         const a = this.braced(), b = this.braced();
         return frac(a, b);
@@ -187,7 +205,12 @@ class Parser {
       return fn('abs', e);
     }
     const close = ({ '(': ')', '{': '}', '[': ']' } as Record<string, string>)[t.v];
-    if (close) { const outer = this.abs; this.abs = 0; const e = this.expr(); this.abs = outer; this.eat(close); return e; }
+    if (close) {
+      const outer = this.abs; this.abs = 0; const e = this.expr(); this.abs = outer; this.eat(close);
+      // [F]_a^b: what F is worth between two bounds
+      if (t.v === '[' && this.isOp('_')) { this.i++; const b = this.bound(); this.eat('^'); const hi = this.bound(); return at(b.v ?? onlyVar(e), e, b.at, hi.at); }
+      return e;
+    }
     throw new ParseError(`Unexpected “${t.v}”.`);
   }
 
@@ -208,6 +231,46 @@ class Parser {
     if (open) this.eat(open === '{' ? '}' : ')');
     if (!this.peek()) throw new ParseError('Unfinished: what is the limit of?');
     return lim(v.v, to, this.term(), side);
+  }
+
+  /** a bound after _ or ^: a single piece (0, -1, ∞, π) or anything in braces; "n = 1" names the variable */
+  bound(): { v?: string; at: Node } {
+    const open = this.isOp('{') || this.isOp('(') ? this.peek()!.v : null;
+    if (!open) {
+      const minus = this.isOp('-') ? (this.i++, true) : false;
+      const a = this.atom();
+      return { at: minus ? negate(a) : a };
+    }
+    this.i++;
+    let v: string | undefined;
+    const t = this.peek(), next = this.toks[this.i + 1];
+    if (t?.t === 'id' && next?.t === 'op' && next.v === '=') { v = t.v; this.i += 2; }
+    const at = this.expr();
+    this.eat(open === '{' ? '}' : ')');
+    return { v, at };
+  }
+
+  /** ∫ f dx, ∫_a^b f dx */
+  integral(): Node {
+    let lo: Node | undefined, hi: Node | undefined;
+    if (this.isOp('_')) { this.i++; lo = this.bound().at; this.eat('^'); hi = this.bound().at; }
+    if (this.peek()?.t === 'op' && this.peek()!.v.startsWith('d:')) throw new ParseError('What is being integrated? Put it before the dx.');
+    const f = this.expr();
+    const d = this.peek();
+    if (!d || d.t !== 'op' || !d.v.startsWith('d:')) throw new ParseError('Finish the integral with dx (or dt, du…).');
+    this.i++;
+    return int(d.v.slice(2), f, lo, hi);
+  }
+
+  /** Σ_{n=1}^∞ f */
+  series(): Node {
+    if (!this.isOp('_')) throw new ParseError('Write a sum like sum_{n=1}^∞ 1/n^2.');
+    this.i++;
+    const b = this.bound();
+    this.eat('^');
+    const hi = this.bound().at;
+    if (!this.peek()) throw new ParseError('Unfinished: what is being added up?');
+    return sum(b.v ?? 'n', b.at, hi, this.term());
   }
 
   /** argument of a function: braced/parenthesised, or the next power like "ln x²" */
@@ -236,6 +299,11 @@ function number(s: string): Node {
   return d / g === 1 ? num(n / g) : frac(num(n / g), num(d / g));
 }
 
+function onlyVar(e: Node): string {
+  const vs = symbols(e);
+  return vs.includes('x') ? 'x' : vs[0] ?? 'x';
+}
+
 function mulOf(fs: Node[]): Node {
   const flat = fs.flatMap(f => (f.k === 'mul' ? f.factors : [f]));
   return flat.length === 1 ? flat[0] : mul(flat);
@@ -254,7 +322,12 @@ const RELS = ['=', '<', '>', '≤', '≥'];
 /** An equation, an inequality, or (with `allowExpr`) a lone expression. */
 export function parseEquation(src: string, allowExpr = false): Eq {
   const toks = tokenize(src);
-  const rels = toks.filter(t => t.t === 'op' && RELS.includes(t.v));
+  let depth = 0;
+  const rels = toks.filter(t => {
+    if (t.t === 'op' && '({['.includes(t.v)) depth++;
+    if (t.t === 'op' && ')}]'.includes(t.v)) depth--;
+    return depth === 0 && t.t === 'op' && RELS.includes(t.v);
+  });
   if (rels.length === 0) {
     if (!allowExpr) throw new ParseError('Add an “=” to make it an equation.');
     return eq(parseExpr(src), num(0), 'expr');

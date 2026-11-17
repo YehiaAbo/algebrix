@@ -12,7 +12,7 @@ export interface Pow extends Base { k: 'pow'; base: Node; exp: Node }
 export interface Sqrt extends Base { k: 'sqrt'; arg: Node }
 /** how a function name is written */
 export const FN_TEXT: Record<string, string> = { asin: 'sin⁻¹', acos: 'cos⁻¹', atan: 'tan⁻¹' };
-export type FnName = 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan' | 'ln' | 'log' | 'abs';
+export type FnName = 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan' | 'ln' | 'log' | 'abs' | 'fact';
 export interface Fn extends Base { k: 'fn'; name: FnName; arg: Node }
 /** a named function you defined, like f(x + 1) */
 export interface Call extends Base { k: 'call'; name: string; arg: Node }
@@ -20,11 +20,17 @@ export interface Call extends Base { k: 'call'; name: string; arg: Node }
 export interface Deriv extends Base { k: 'deriv'; v: string; arg: Node; dep?: string[] }
 /** the limit of arg as v goes to `to` (from one side with side); v is bound inside */
 export interface Lim extends Base { k: 'lim'; v: string; to: Node; side?: '+' | '-'; arg: Node }
+/** ∫ arg dv, from lo to hi when both are there (then v is bound inside) */
+export interface Int extends Base { k: 'int'; v: string; arg: Node; lo?: Node; hi?: Node }
+/** [arg] from v = lo to v = hi: what an antiderivative is worth between two bounds */
+export interface At extends Base { k: 'at'; v: string; arg: Node; lo: Node; hi: Node }
+/** Σ arg for v = lo to hi (hi may be ∞); v is bound inside */
+export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node }
 /** How the two sides relate. 'expr' is a lone expression (the right side is an unused 0);
  *  '≟' is an identity to prove: each side may only be rewritten into an equal form. */
 export type Rel = '=' | '<' | '>' | '≤' | '≥' | 'expr' | '≟' | 'def';
 export interface Eq extends Base { k: 'eq'; lhs: Node; rhs: Node; rel?: Rel }
-export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Call | Deriv | Lim | Eq;
+export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Call | Deriv | Lim | Int | At | Sum | Eq;
 
 /** Named constants: they look like symbols but are never variables. */
 export const CONSTS: Record<string, number> = { e: Math.E, π: Math.PI, '∞': Infinity };
@@ -52,6 +58,9 @@ export const fn = (name: FnName, arg: Node, id = newId()): Fn => ({ k: 'fn', id,
 export const call = (name: string, arg: Node, id = newId()): Call => ({ k: 'call', id, name, arg });
 export const deriv = (v: string, arg: Node, dep?: string[], id = newId()): Deriv => (dep?.length ? { k: 'deriv', id, v, arg, dep } : { k: 'deriv', id, v, arg });
 export const lim = (v: string, to: Node, arg: Node, side?: '+' | '-', id = newId()): Lim => (side ? { k: 'lim', id, v, to, arg, side } : { k: 'lim', id, v, to, arg });
+export const int = (v: string, arg: Node, lo?: Node, hi?: Node, id = newId()): Int => (lo && hi ? { k: 'int', id, v, arg, lo, hi } : { k: 'int', id, v, arg });
+export const at = (v: string, arg: Node, lo: Node, hi: Node, id = newId()): At => ({ k: 'at', id, v, arg, lo, hi });
+export const sum = (v: string, lo: Node, hi: Node, arg: Node, id = newId()): Sum => ({ k: 'sum', id, v, lo, hi, arg });
 /** the name of a derivative: y → y′, f′ → f″ */
 export const primed = (name: string) => name + '′';
 /** names that read as function calls when followed by "(" */
@@ -85,6 +94,9 @@ export function children(n: Node): Node[] {
     case 'mul': return n.factors;
     case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': return [n.arg];
     case 'lim': return [n.to, n.arg];
+    case 'int': return n.lo && n.hi ? [n.lo, n.hi, n.arg] : [n.arg];
+    case 'at': return [n.arg, n.lo, n.hi];
+    case 'sum': return [n.lo, n.hi, n.arg];
     case 'frac': return [n.num, n.den];
     case 'pow': return [n.base, n.exp];
     case 'eq': return [n.lhs, n.rhs];
@@ -99,6 +111,9 @@ export function withChildren<T extends Node>(n: T, kids: Node[]): T {
     case 'mul': return { ...n, factors: kids };
     case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': return { ...n, arg: kids[0] };
     case 'lim': return { ...n, to: kids[0], arg: kids[1] };
+    case 'int': return n.lo && n.hi ? { ...n, lo: kids[0], hi: kids[1], arg: kids[2] } : { ...n, arg: kids[0] };
+    case 'at': return { ...n, arg: kids[0], lo: kids[1], hi: kids[2] };
+    case 'sum': return { ...n, lo: kids[0], hi: kids[1], arg: kids[2] };
     case 'frac': return { ...n, num: kids[0], den: kids[1] };
     case 'pow': return { ...n, base: kids[0], exp: kids[1] };
     case 'eq': return { ...n, lhs: kids[0], rhs: kids[1] };
@@ -162,6 +177,9 @@ export function key(n: Node): string {
     case 'call': return '(call ' + n.name + ' ' + key(n.arg) + ')';
     case 'deriv': return '(d/d' + n.v + (n.dep ? '[' + n.dep.join(',') + ']' : '') + ' ' + key(n.arg) + ')';
     case 'lim': return '(lim ' + n.v + ' ' + key(n.to) + (n.side ?? '') + ' ' + key(n.arg) + ')';
+    case 'int': return '(int ' + n.v + (n.lo && n.hi ? ' ' + key(n.lo) + ' ' + key(n.hi) : '') + ' ' + key(n.arg) + ')';
+    case 'at': return '(at ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
+    case 'sum': return '(sum ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
     case 'eq': return '(' + (n.rel ?? '=') + ' ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
   }
 }
@@ -189,6 +207,7 @@ export function evaluate(n: Node, env: Env): number {
         case 'ln': return a > 0 ? Math.log(a) : NaN;
         case 'log': return a > 0 ? Math.log10(a) : NaN;
         case 'abs': return Math.abs(a);
+        case 'fact': return a >= 0 && a <= 170 && Number.isInteger(a) ? factorial(a) : CALC.gamma(a + 1);
       }
       return NaN;
     }
@@ -200,6 +219,9 @@ export function evaluate(n: Node, env: Env): number {
     }
     case 'deriv': { const d = CALC.derive(n); return d ? evaluate(d, env) : NaN; }
     case 'lim': return CALC.limit(n, env);
+    case 'int': return n.lo && n.hi ? CALC.integral(n, env) : NaN;
+    case 'at': return evaluate(n.arg, { ...env, [n.v]: evaluate(n.hi, env) }) - evaluate(n.arg, { ...env, [n.v]: evaluate(n.lo, env) });
+    case 'sum': return CALC.series(n, env);
     case 'eq': return evaluate(n.lhs, env) - evaluate(n.rhs, env);
   }
 }
@@ -210,6 +232,7 @@ export function symbols(n: Node): string[] {
   const visit = (m: Node, bound: Set<string>) => {
     if (m.k === 'sym') { if (!(m.name in CONSTS) && !bound.has(m.name)) s.add(m.name); return; }
     if (m.k === 'lim') { visit(m.to, bound); visit(m.arg, new Set([...bound, m.v])); return; }
+    if ((m.k === 'int' && m.lo && m.hi) || m.k === 'at' || m.k === 'sum') { children(m).forEach(c => visit(c, c === m.arg ? new Set([...bound, m.v]) : bound)); return; }
     if (m.k === 'deriv' && m.dep) { const inner = new Set<string>(); walk(m.arg, q => { if (q.k === 'sym') inner.add(q.name); }); m.dep.forEach(w => { if (inner.has(w) && !bound.has(w)) s.add(primed(w)); }); }
     children(m).forEach(c => visit(c, bound));
   };
@@ -221,8 +244,13 @@ export function symbols(n: Node): string[] {
 export const CALC: {
   derive: (n: Deriv) => Node | null;
   limit: (n: Lim, env: Env) => number;
+  integral: (n: Int, env: Env) => number;
+  series: (n: Sum, env: Env) => number;
+  gamma: (x: number) => number;
   primeDef: (name: string) => { param: string; body: Node } | undefined;
-} = { derive: () => null, limit: () => NaN, primeDef: () => undefined };
+} = { derive: () => null, limit: () => NaN, integral: () => NaN, series: () => NaN, gamma: () => NaN, primeDef: () => undefined };
+
+function factorial(n: number) { let p = 1; for (let i = 2; i <= n; i++) p *= i; return p; }
 
 export const hasSymbols = (n: Node) => symbols(n).length > 0;
 

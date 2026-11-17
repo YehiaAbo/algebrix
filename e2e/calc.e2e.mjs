@@ -28,6 +28,21 @@ export const tests = {
     await key('e'); await expectEq('6x − 4', 10000);
   },
 
+  async 'u-substitution puts u = … on the shelf, and e puts it back'({ load, hold, key, until, p, assert }) {
+    await load('int 2x cos(x^2) dx');
+    await hold('c', 'u');
+    await until(s => s.eq === '∫ cos(u) du' && s.slots === 2, 'the integral in u, u = x² beside it');
+    const shelf = await p.evaluate(() => [...document.querySelectorAll('#dock-row .lane')].length);
+    assert(shelf === 1, 'u = x² is on the shelf');
+    await key('e'); await until(s => s.eq === 'sin(x^2) + C', 'integrated and put back', 10000);
+  },
+
+  async 'a definite integral typed in the box works out to a number'({ key, type, until }) {
+    await key('i'); await type('int_0^3 x^2 dx'); await key('Enter');
+    await until(s => s.eq === '∫_{0}^{3} x^2 dx', 'the integral typed');
+    await key('e'); await until(s => s.eq === '9', 'and worked out', 10000);
+  },
+
   async 'typing d/dx and lim in the box'({ key, type, until }) {
     await key('i'); await type('lim x->0 sin(x)/x'); await key('Enter');
     await until(s => s.eq === 'lim_{x→0} sin(x)/x', 'the limit typed');
