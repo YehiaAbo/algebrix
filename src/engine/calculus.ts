@@ -158,8 +158,20 @@ function oneSide(f: (x: number) => number, a: number, s: 1 | -1): number {
   const big = [1e-4, 1e-6, 1e-8].map(at);
   if (big.every(Number.isFinite) && Math.abs(big[2]) > 1e6 && Math.abs(big[2]) > 10 * Math.abs(big[1]) && Math.abs(big[1]) > 10 * Math.abs(big[0]) * 0.9 && Math.sign(big[0]) === Math.sign(big[2])) return Math.sign(big[2]) * Infinity;
   const r = extrapolate(at, Number.isFinite(a) ? 0.05 : 0.02);
-  if (!Number.isFinite(r.value)) return NaN;
-  return r.err <= 1e-8 * (1 + Math.abs(r.value)) ? r.value : NaN;
+  if (Number.isFinite(r.value) && r.err <= 1e-8 * (1 + Math.abs(r.value))) return r.value;
+  // slow but steady, like x ln x or √x → 0: the steps toward it shrink by a steady factor, so
+  // what is left to go is small; a value that close to a simple number is that number
+  const ys = (Number.isFinite(a) ? [1e-8, 1e-10, 1e-12, 1e-14, 1e-16] : [1e-8, 1e-11, 1e-14, 1e-17, 1e-20]).map(at);
+  if (!ys.every(Number.isFinite)) return NaN;
+  const ds = ys.slice(1).map((y, i) => Math.abs(y - ys[i]));
+  // growing without settling, one sign, like ln x as x → 0: it goes off to ±∞
+  if (ys.every(y => Math.sign(y) === Math.sign(ys[0]) && y !== 0) && ys.every((y, i) => !i || Math.abs(y) > Math.abs(ys[i - 1])) && ds.every((d, i) => !i || d >= 0.5 * ds[i - 1])) return Math.sign(ys[0]) * Infinity;
+  const q = ds[3] / (ds[2] || 1e-300);
+  if (!(ds[1] <= ds[0] / 3 + 1e-300 && ds[2] <= ds[1] / 3 + 1e-300 && q <= 1 / 3)) return NaN;
+  const left = ds[3] * q / (1 - q), y = ys[4];
+  if (left > 1e-6 * (1 + Math.abs(y))) return NaN;
+  for (let d = 1; d <= 12; d++) { const p = Math.round(y * d); if (Math.abs(p / d - y) <= 4 * left + 1e-12) return p / d; }
+  return y;
 }
 
 function limit(n: Lim, env: Env): number {

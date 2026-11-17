@@ -114,7 +114,7 @@ describe('limits by steps', () => {
   it('0/0 says what to do', () => expect(txt(plugIn(ex('lim x->2 (x^2 - 4)/(x - 2)'), null))).toMatch(/0\/0/));
   it("L'Hôpital on 0/0, then plug in", () => {
     const r = lhopital(ex('lim x->0 sin(x)/x'), null);
-    expect(txt(r)).toBe('lim_{x→0} cos(x)/1');
+    expect(txt(r)).toBe('lim_{x→0} cos(x)');
   });
   it("L'Hôpital refuses when it isn't 0/0 or ∞/∞", () => expect(txt(lhopital(ex('lim x->1 (x + 1)/x'), null))).toMatch(/plug in/));
   it('e finishes a limit', () => {

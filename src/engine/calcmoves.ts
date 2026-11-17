@@ -233,6 +233,10 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
     return checked(e, { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' });
   }
   const body = plugged(L);
+  // 0⁰ is a form, not 1: the power has to come down first
+  let zz = false;
+  walk(body, n => { if (n.k === 'pow' && evaluate(n.base, env) === 0 && evaluate(n.exp, env) === 0) zz = true; });
+  if (zz) return { error: `Plugging in ${L.v} = ${toText(L.to)} gives 0⁰, which could be anything. Bring the power down: e^(lim g ln f).` };
   const at = evaluate(body, env);
   if (!Number.isFinite(at)) {
     if (L.arg.k === 'frac') {
@@ -240,9 +244,19 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
       if (Math.abs(t) < 1e-12 && Math.abs(b) < 1e-12) return { error: `Plugging in ${L.v} = ${toText(L.to)} gives 0/0. Factor and cancel (Tab + f, then s), or use L'Hôpital (C + l).` };
       if (Math.abs(b) < 1e-12) return { error: `Plugging in gives ${fmt(t)}/0: the limit is infinite or doesn't exist. Look from each side.` };
     }
-    return { error: `Plugging in ${L.v} = ${toText(L.to)} is undefined.` };
+    return { error: oneSided(L, env, a) ?? `Plugging in ${L.v} = ${toText(L.to)} is undefined.` };
   }
-  return checked(e, { eq: replace(e, L.id, body), label: `plug in ${L.v} = ${toText(L.to)}`, hints: newHints(), factor: one, select: null, rule: 'plug in' });
+  const r = checked(e, { eq: replace(e, L.id, body), label: `plug in ${L.v} = ${toText(L.to)}`, hints: newHints(), factor: one, select: null, rule: 'plug in' });
+  const o = isErr(r) ? oneSided(L, env, a) : null;
+  return o ? { error: o } : r;
+}
+
+/** defined on one side only (√x, x ln x at 0): the two-sided limit isn't there, a one-sided one is */
+function oneSided(L: Lim, env: Env, a: number): string | null {
+  if (L.side) return null;
+  const f = (x: number) => evaluate(L.arg, { ...env, [L.v]: x });
+  const only = ([1, -1] as const).find(s => [1e-3, 1e-6].every(h => Number.isNaN(f(a - s * h))) && [1e-3, 1e-6].every(h => Number.isFinite(f(a + s * h))));
+  return only ? `${toText(L.arg).replace(/sqrt\(/g, '√(')} only exists to the ${only > 0 ? 'right' : 'left'} of ${L.v} = ${toText(L.to)}, so the limit can only come from that side: lim_(${L.v}→${toText(L.to)}${only > 0 ? '+' : '−'}).` : null;
 }
 
 /** C + l: 0/0 or ∞/∞ becomes the limit of the derivatives' quotient */
@@ -252,13 +266,48 @@ export function lhopital(e: Eq, sel: string | null): MoveResult {
   const f = L.arg;
   if (f.k !== 'frac') return { error: "L'Hôpital needs a fraction. Make it one first (Tab + c)." };
   const env = sampleEnv(L);
-  const part = (n: Node) => evaluate(lim(L.v, L.to, n, L.side), env);
+  // ±∞ from the two sides (1/x at 0) still counts as ∞
+  const part = (n: Node) => { const x = evaluate(lim(L.v, L.to, n, L.side), env); return Number.isNaN(x) ? evaluate(lim(L.v, L.to, fn('abs', fresh(n)), L.side), env) : x; };
   const t = part(f.num), b = part(f.den);
   const zero = (x: number) => Math.abs(x) < 1e-9, inf = (x: number) => !Number.isFinite(x) && !Number.isNaN(x);
   if (!((zero(t) && zero(b)) || (inf(t) && inf(b)))) return { error: `L'Hôpital needs 0/0 or ∞/∞. Here it is ${fmt(t)}/${fmt(b)}${Number.isFinite(t) && Number.isFinite(b) && !zero(b) ? ', so just plug in (C + p)' : ''}.` };
   const c: Ctx = { v: L.v, dep: [] };
-  const next = lim(L.v, L.to, frac(inner(f.num, c), inner(f.den, c)), L.side, L.id);
+  const dt = inner(f.num, c), db = inner(f.den, c);
+  const next = lim(L.v, L.to, db.k === 'num' && db.v === 1 ? dt : frac(dt, db), L.side, L.id);
   return checked(e, { eq: replace(e, L.id, next), label: `L'Hôpital (${zero(t) ? '0/0' : '∞/∞'})`, hints: newHints(), factor: one, select: null, rule: "L'Hôpital" });
+}
+
+/** what each piece of a limit's inside tends to */
+function tends(L: Lim) {
+  const env = sampleEnv(L);
+  return (n: Node) => evaluate(lim(L.v, L.to, n, L.side), env);
+}
+const near = (x: number, y: number) => Math.abs(x - y) < 1e-6;
+const huge = (x: number) => !Number.isFinite(x) && !Number.isNaN(x);
+
+/** 1^∞, 0⁰ and ∞⁰: lim f^g = e^(lim g ln f), so the power comes down as a product */
+export function expLog(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L || L.arg.k !== 'pow' || !dependsOn(L.arg.exp, L.v)) return { error: 'Needs a limit of f^g with the letter in the power.' };
+  const t = tends(L), b = t(L.arg.base), x = Math.abs(t(L.arg.exp)) || t(fn('abs', fresh(L.arg.exp)));
+  const form = near(b, 1) && huge(x) ? '1^∞' : near(b, 0) && near(x, 0) ? '0⁰' : huge(b) && near(x, 0) ? '∞⁰' : null;
+  if (!form) return { error: 'Only for 1^∞, 0⁰ or ∞⁰.' };
+  const next = pow(sym('e'), lim(L.v, fresh(L.to), mul([fresh(L.arg.exp), fn('ln', fresh(L.arg.base))]), L.side));
+  return checked(e, { eq: replace(e, L.id, next), label: `${form}: bring the power down, e^(lim g ln f)`, hints: newHints(), factor: one, select: null, rule: 'limit of a power' });
+}
+
+/** 0·∞: one factor goes underneath as 1/it, so L'Hôpital can take the 0/0 */
+export function asQuotient(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L || L.arg.k !== 'mul' || L.arg.factors.length !== 2) return { error: 'Needs a limit of a product.' };
+  const t = tends(L), [A, B] = L.arg.factors, size = (n: Node) => { const x = t(n); return Number.isNaN(x) ? t(fn('abs', fresh(n))) : x; }, a = size(A), b = size(B);
+  if (!((huge(a) && near(b, 0)) || (huge(b) && near(a, 0)))) return { error: 'Only for 0·∞.' };
+  // a ln or an inverse trig stays on top (its derivative is the easy one); else the 0 does, for 0/0
+  const keep = (n: Node) => n.k === 'fn' && ['ln', 'log', 'asin', 'acos', 'atan'].includes(n.name);
+  const [top, other] = keep(A) ? [A, B] : keep(B) ? [B, A] : near(a, 0) ? [A, B] : [B, A];
+  const under = other.k === 'frac' && other.num.k === 'num' && other.num.v === 1 ? fresh(other.den) : frac(num(1), fresh(other));
+  const next = lim(L.v, fresh(L.to), frac(fresh(top), under), L.side, L.id);
+  return checked(e, { eq: replace(e, L.id, next), label: '0·∞: write it as a fraction', hints: newHints(), factor: one, select: null, rule: 'limit of a product' });
 }
 
 /* ---------- e: finish all the calculus ---------- */
@@ -294,6 +343,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     else if (t.k === 'lim') {
       r = plugIn(cur, t.id);
       if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }
+      if (isErr(r)) { const h = expLog(cur, t.id); if (!isErr(h)) r = h; }
+      if (isErr(r)) { const h = asQuotient(cur, t.id); if (!isErr(h)) r = h; }
     } else if (t.k === 'at') r = plugBounds(cur, t.id);
     else if (t.k === 'sum') r = typeof finiteTerms(t) === 'string' ? geometric(cur, t.id) : writeOut(cur, t.id);
     else if (t.k === 'grad') r = gradStep(cur, t.id);
@@ -310,10 +361,14 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     steps.push(r);
     cur = r.eq;
     // an inner integral just worked out: tidy what the outer one now holds
-    if (t?.k === 'at' || t?.k === 'int') { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
+    // and a derivative just taken inside a limit (L'Hôpital): tidy the quotient before plugging in
+    if (t?.k === 'at' || t?.k === 'int' || (t?.k === 'deriv' && inLim(cur))) { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
   }
   return { steps };
 }
+
+/** a limit whose inside has no derivatives left to take */
+const inLim = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'lim' && !hasCalc(n.arg)) f = true; }); return f; };
 
 /** x²(sin x − x cos x): multiply the inside out, so the sum rule can take it term by term */
 function expandInside(e: Eq, t: Node): MoveOk | null {
@@ -338,7 +393,7 @@ function tidyIntegrands(e: Eq): MoveOk | null {
       if (toText(a) !== toText(n)) { changed = true; return a; }
       return n;
     }
-    if (n.k === 'int' && !hasCalc(n.arg)) {
+    if ((n.k === 'int' || n.k === 'lim') && !hasCalc(n.arg)) {
       const a = simplify(n.arg, h);
       if (toText(a) !== toText(n.arg)) { changed = true; return withChildren(n, children(n).map(c => (c === n.arg ? a : c))); }
       return n;

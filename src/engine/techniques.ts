@@ -1,7 +1,7 @@
 // Bigger tools built from the small moves: apply a function to both sides, peel
 // the outer function off a side, move anything across "=", isolate a variable
 // in several steps, substitute one equation into another, split |X| = B.
-import { Node, Eq, find, children, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf } from './ast';
+import { Node, Eq, find, children, withChildren, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf } from './ast';
 import { parseExpr } from './parse';
 import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
 import { simplify, newHints } from './simplify';
@@ -216,6 +216,19 @@ export function tidy(e: Eq): MoveOk | null {
   return isErr(r) ? null : r;
 }
 
+/** a sum that starts with a minus starts with its constant of integration instead: −x² + C is
+ *  C − x² (but −2 + √3 stays, as the quadratic formula writes it) */
+export function leadPositive<T extends Node>(n: T): T {
+  const ks = children(n);
+  const m = (ks.length ? withChildren(n, ks.map(leadPositive)) : n) as Node;
+  if (m.k !== 'add' || m.terms.length < 2) return m as T;
+  const minus = (t: Node): boolean => isNeg(t) || (t.k === 'frac' && minus(t.num));
+  if (!minus(m.terms[0])) return m as T;
+  const theirs = new Set(m.terms.filter(minus).flatMap(t => symbols(t)));
+  const i = m.terms.findIndex(t => !minus(t) && symbols(t).includes('C') && symbols(t).every(v => !theirs.has(v)));
+  return (i < 0 ? m : { ...m, terms: [m.terms[i], ...m.terms.filter((_, j) => j !== i)] }) as T;
+}
+
 /* ---------- isolate a variable: a short chain of moves ---------- */
 /** Multiply both sides by the LCD of the number denominators, then expand. */
 export function clearFractions(e: Eq, v?: string): MoveOk | null {
@@ -231,6 +244,42 @@ export function clearFractions(e: Eq, v?: string): MoveOk | null {
   const h = newHints();
   const clear = (s: Node) => simplify(expandAll(mul([num(L), s]), h), h);
   const r = checked(e, { eq: eq(clear(e.lhs), clear(e.rhs)), label: `× ${L} to clear fractions`, hints: h, factor: () => L, select: null });
+  return isErr(r) ? null : r;
+}
+
+/** 1/(x − 1) + 1/(x + 1) = 1: × every bottom with the letter in it, so what is left has no fractions.
+ *  Each bottom can't be 0, which is noted; an answer that makes one 0 is caught by the check. */
+export function clearLetterFractions(e: Eq, v: string): MoveOk | null {
+  if (relOf(e) !== '=') return null;
+  const dens: Node[] = [];
+  walk(e, n => { if (n.k === 'frac' && has(n.den, v) && !dens.some(d => key(d) === key(n.den))) dens.push(n.den); });
+  if (!dens.length) return null;
+  dens.sort((a, b) => toText(a).length - toText(b).length);
+  const D = dens.length === 1 ? fresh(dens[0]) : mul(dens.map(fresh));
+  const h = newHints();
+  // each term's own bottom cancels against its copy in D before anything is multiplied out
+  const others = (i: number) => dens.filter((_, j) => j !== i).map(fresh);
+  const over = (t: Node): Node => {
+    if (t.k === 'neg') return negate(over(t.arg));
+    if (t.k === 'frac') { const i = dens.findIndex(d => key(d) === key(t.den)); if (i >= 0) return mul([...others(i), fresh(t.num)]); }
+    if (t.k === 'mul') {
+      const fi = t.factors.findIndex(f => f.k === 'frac' && dens.some(d => key(d) === key(f.den)));
+      if (fi >= 0) {
+        const f = t.factors[fi] as Extract<Node, { k: 'frac' }>, i = dens.findIndex(d => key(d) === key(f.den));
+        return mul([...others(i), ...t.factors.filter((_, j) => j !== fi).map(fresh), fresh(f.num)]);
+      }
+    }
+    return mul([fresh(D), fresh(t)]);
+  };
+  const clear = (side: Node) => simplify(expandAll(side.k === 'add' ? add(side.terms.map(over)) : over(side), h), h);
+  const next = eq(clear(e.lhs), clear(e.rhs));
+  let still = false;
+  walk(next, n => { if (n.k === 'frac' && has(n.den, v)) still = true; });
+  if (still) return null;
+  const r = checked(e, {
+    eq: next, label: `× ${toText(D)} to clear fractions`, hints: h, factor: env => evaluate(D, env), select: null,
+    conditions: dens.map(d => `${toText(d)} ≠ 0`),
+  });
   return isErr(r) ? null : r;
 }
 
@@ -369,6 +418,9 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
   if (!has(cur, v)) return { error: `${v} cancels out completely, so there is nothing to solve for.` };
   const cf = clearFractions(cur, v);
   if (cf) take(cf);
+  // a letter in a bottom (that isn't just 3/x = 6, which one × does anyway): clear them all at once
+  const cl = clearLetterFractions(cur, v);
+  if (cl) take(cl);
   const seen = new Set<string>();
   for (let i = 0; i < 24; i++) {
     if (splitCases(cur, v)) return steps; // the caller splits into cases
@@ -395,6 +447,16 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
       if (hl && hr) return stuck(noNiceFactors(cur, v, poly.c));
     }
     if (hl && hr) {
+      // 2^x = 3^(x − 1): an exponential each side, so ln both sides brings both exponents down
+      const expo = (n: Node) => n.k === 'pow' && !has(n.base, v) && has(n.exp, v) || (n.k === 'mul' && n.factors.some(f => f.k === 'pow' && !has(f.base, v) && has(f.exp, v)) && n.factors.every(f => f.k === 'pow' || !has(f, v)));
+      if (expo(cur.lhs) && expo(cur.rhs) && !(cur.lhs.k === 'pow' && cur.rhs.k === 'pow' && key(cur.lhs.base) === key(cur.rhs.base))) {
+        const lnd = wrapBoth(cur, 'ln');
+        if (push(lnd)) {
+          const h = newHints(), tidyLn = (n: Node) => simplify(expandAll(simplify(n, h), h), h);
+          push({ eq: eq(tidyLn(cur.lhs), tidyLn(cur.rhs)), label: 'expand', hints: h, factor: one, select: null });
+          continue;
+        }
+      }
       // undo an outer function first (√(x + 1) = x − 1 → square), else gather the v terms on the left
       const wrapped = (['lhs', 'rhs'] as const).find(k => inverseOf(cur[k]) && cur[k].k !== 'frac');
       if (wrapped && push(peel(cur, cur[wrapped].id))) {

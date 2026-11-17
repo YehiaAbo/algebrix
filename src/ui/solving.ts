@@ -6,10 +6,11 @@ import { inverseFunction } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
 import { setDomains, Domain } from '../engine/moves';
 import { toText } from '../engine/print';
-import { isErr, solvedFor } from '../engine/moves';
-import { absorbConstant } from '../engine/ode';
+import { isErr, solvedFor, checked, MoveOk, MoveResult } from '../engine/moves';
+import { newHints } from '../engine/simplify';
+import { absorbConstant, shareExponential, renameConstant } from '../engine/ode';
 import { negate } from '../engine/terms';
-import { isolate, substitute, splitCases, tidy, Cases, impossible } from '../engine/techniques';
+import { isolate, substitute, splitCases, tidy, Cases, impossible, leadPositive } from '../engine/techniques';
 import { evaluate } from '../engine/ast';
 import { sound } from './sound';
 import { ms } from './prefs';
@@ -38,13 +39,30 @@ export function solveFor(this: App, v: string) {
   this.play(r, () => this.afterSolve(v));
 }
 
+/** a C the person typed is theirs, not a constant of integration to rename */
+const ownC = (app: App) => symbols(app.slot?.origin ?? app.steps[0].eq).includes('C');
+
 /** after isolating: split into cases and solve each one, or say where it got stuck */
 export function afterSolve(this: App, v: string) {
   // solving means a finished answer: take what simplifies at the end
-  if (solvedFor(this.eq) === v) { const t = tidy(this.eq); if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2); return; }
+  if (solvedFor(this.eq) === v) {
+    // 2C is just C; an exponential bottom over a sum reads better shared out: e^x/3 + Ce^(−2x)
+    // and a sum reads from its plus term: C − x², not −x² + C
+    const steps: MoveOk[] = [];
+    let cur = this.eq;
+    const take = (r: MoveResult | null, label?: string) => { if (r && !isErr(r) && key(r.eq) !== key(cur)) { steps.push({ ...r, auto: true, ...(label ? { label } : {}) }); cur = r.eq; } };
+    if (!ownC(this)) take(renameConstant(cur));
+    take(shareExponential(cur));
+    take(tidy(cur), 'simplify');
+    take(checked(cur, { eq: leadPositive(cur), label: 'simplify', hints: newHints(), factor: () => 1, select: null }));
+    if (steps.length) this.play(steps);
+    return;
+  }
   // |y| = e^(g + C) from a differential equation: one family y = C e^g, not two cases
   const ab = absorbConstant(this.eq, v);
   if (!isErr(ab)) { this.apply(ab, 1.15); return; }
+  // rename 2C to C before splitting, so both cases carry the same plain C
+  if (symbols(this.eq).includes('C') && !ownC(this)) { const rc = renameConstant(this.eq); if (!isErr(rc)) { this.play([{ ...rc, auto: true }], () => this.afterSolve(v)); return; } }
   if (splitCases(this.eq, v)) { this.split(v); return; }
   // the letter cancelled: what's left is a plain fact, true or false
   const always = !symbols(this.eq).length && relOf(this.eq) !== 'expr' ? holds(this.eq, {}) : null;
@@ -63,6 +81,9 @@ export function split(this: App, v?: string, cases?: Cases) {
   if (this.slots.length + c.rest.length > 9) { this.refuse('Nine equations is the limit for now.'); return; }
   const origin = this.slot!.origin ?? this.steps[0].eq;
   const at = this.cur;
+  // each case reads from its plus term: y = √(C − x²)
+  c.first.eq = leadPositive(c.first.eq);
+  c.rest = c.rest.map(e => leadPositive(e));
   this.apply(c.first, 1.1);
   c.rest.forEach((e, j) => {
     const slot: Slot = { steps: [{ eq: e, label: `case ${j + 2}`, conditions: [...this.step.conditions] }], at: 0, sel: null, origin };

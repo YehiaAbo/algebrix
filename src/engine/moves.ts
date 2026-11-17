@@ -403,8 +403,10 @@ export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): MoveRe
 
 /** Is this equation solved for some variable? Returns that variable. */
 export function solvedFor(e: Eq): string | null {
+  // an expression (a limit that came out as e) isn't solved for anything
+  if (e.rel === 'expr' || e.rel === 'def') return null;
   for (const [a, b] of [[e.lhs, e.rhs], [e.rhs, e.lhs]] as const) {
-    if (a.k === 'sym' && !isDiff(a.name) && !symbols(b).includes(a.name)) return a.name;
+    if (a.k === 'sym' && !isDiff(a.name) && a.name !== 'e' && a.name !== 'π' && !symbols(b).includes(a.name)) return a.name;
   }
   return null;
 }

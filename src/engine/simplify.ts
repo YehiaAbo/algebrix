@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -66,6 +66,12 @@ function rule(n: Node, h: Hints): Node | null {
       }
       // inverse pairs: e^(ln a) = a, 10^(log a) = a, (√a)² = a
       if (base.k === 'sym' && base.name === 'e' && exp.k === 'fn' && exp.name === 'ln') return exp.arg;
+      // e^(k ln a) = a^k: e^(5 ln 2) is 32
+      if (base.k === 'sym' && base.name === 'e' && exp.k === 'mul' && exp.factors.length === 2 && exp.factors[0].k === 'num' && exp.factors[1].k === 'fn' && exp.factors[1].name === 'ln') {
+        return pow(exp.factors[1].arg, exp.factors[0], n.id);
+      }
+      // e^(−ln a) = 1/a
+      if (base.k === 'sym' && base.name === 'e' && exp.k === 'neg' && exp.arg.k === 'fn' && exp.arg.name === 'ln') return frac(num(1), exp.arg.arg, n.id);
       // e^(ln a + b) = a·e^b
       if (base.k === 'sym' && base.name === 'e' && exp.k === 'add' && exp.terms.some(x => x.k === 'fn' && x.name === 'ln')) {
         const logs = exp.terms.filter(x => x.k === 'fn' && x.name === 'ln') as Extract<Node, { k: 'fn' }>[];
@@ -115,6 +121,21 @@ function rule(n: Node, h: Hints): Node | null {
 
 const ratOf = (n: Node) => (n.k === 'num' ? rat(n.v) : n.k === 'frac' && n.num.k === 'num' && n.den.k === 'num' && n.den.v !== 0 ? rat(n.num.v, n.den.v) : null);
 
+/** never below 0, whatever the letters are: squares, exponentials, roots, and sums and products of them */
+function nonneg(n: Node): boolean {
+  switch (n.k) {
+    case 'num': return n.v >= 0;
+    case 'sym': return n.name === 'e' || n.name === 'π';
+    case 'sqrt': return true;
+    case 'fn': return n.name === 'abs';
+    case 'pow': return (n.exp.k === 'num' && n.exp.v % 2 === 0) || (n.base.k === 'sym' && n.base.name === 'e') || (n.base.k === 'num' && n.base.v > 0) || nonneg(n.base);
+    case 'add': return n.terms.every(nonneg);
+    case 'mul': return n.factors.every(nonneg);
+    case 'frac': return nonneg(n.num) && nonneg(n.den);
+    default: return false;
+  }
+}
+
 function fnRule(name: string, a: Node, id: string, h: Hints): Node | null {
   switch (name) {
     case 'abs':
@@ -123,6 +144,8 @@ function fnRule(name: string, a: Node, id: string, h: Hints): Node | null {
       if (a.k === 'fn' && a.name === 'abs') return a;
       if (a.k === 'sqrt') return a;
       if (a.k === 'pow' && a.exp.k === 'num' && a.exp.v % 2 === 0) return a;
+      // |x² + 1| is x² + 1: nothing inside can go below 0
+      if (nonneg(a)) return a;
       if (a.k === 'mul' && a.factors[0]?.k === 'num' && a.factors[0].v < 0) return fn('abs', { ...a, factors: [num(-a.factors[0].v, a.factors[0].id), ...a.factors.slice(1)] }, id);
       return null;
     case 'ln':
@@ -260,6 +283,8 @@ function divideContent(n: Node, g: number): Node {
 
 function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
   if (a.k === 'num' && a.v === 0 && !(d.k === 'num' && d.v === 0)) return a;
+  // −x²/x: cancel under the minus
+  if (a.k === 'neg') { const r = fracRule(a.arg, d, id, h); if (r) return negate(r); }
   // a / b^(−k) = a·b^k
   if (d.k === 'pow' && d.exp.k === 'num' && d.exp.v < 0) return mulOf([a, pow(d.base, num(-d.exp.v, d.exp.id), d.id)].filter(f => !(f.k === 'num' && f.v === 1)), id);
   if (d.k === 'num') {
@@ -283,7 +308,29 @@ function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
       nf.splice(j, 1); df.splice(i, 1); cancelled = true;
     }
   }
+  // powers of the same thing: x³/x² = x, x/x³ = 1/x²
+  const baseOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? f.base : f);
+  const expOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? f.exp.v : 1);
+  for (let i = df.length - 1; i >= 0; i--) {
+    if (df[i].k === 'num') continue;
+    const b = key(baseOf(df[i]));
+    const j = nf.findIndex(f => f.k !== 'num' && key(baseOf(f)) === b);
+    if (j < 0) continue;
+    const r = expOf(nf[j]) - expOf(df[i]), base = baseOf(nf[j]);
+    const p = (k: number, like: Node) => (k === 1 ? base : pow(base, num(k), like.id));
+    h.absorbs.set((r >= 0 ? df[i] : nf[j]).id, (r >= 0 ? nf[j] : df[i]).id);
+    if (r > 0) { nf[j] = p(r, nf[j]); df.splice(i, 1); }
+    else if (r < 0) { df[i] = p(-r, df[i]); nf.splice(j, 1); }
+    else { nf.splice(j, 1); df.splice(i, 1); }
+    cancelled = true;
+  }
   if (cancelled) return frac(mulOf(nf, a.k === 'mul' ? a.id : undefined), mulOf(df, d.k === 'mul' ? d.id : undefined), id);
+  // a minus underneath goes on top: x/(−y) = −x/y
+  if (d.k === 'neg') return fracRule(negate(a), d.arg, id, h) ?? frac(negate(a), d.arg, id);
+  // a minus on top over a difference: turn the bottom round instead, −3/(2 − x) = 3/(x − 2)
+  const negTop = a.k === 'neg' || (a.k === 'num' && a.v < 0) || (a.k === 'mul' && a.factors[0].k === 'num' && a.factors[0].v < 0);
+  if (negTop && d.k === 'add' && d.terms.length === 2 && d.terms[0].k !== 'neg' && !(d.terms[0].k === 'num' && d.terms[0].v < 0) && d.terms[1].k === 'neg')
+    return frac(negate(a), add([d.terms[1].arg, negate(d.terms[0])], d.id), id);
   return null;
 }
 

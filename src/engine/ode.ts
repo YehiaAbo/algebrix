@@ -3,7 +3,7 @@
 // (the characteristic equation). Steps are checked like any other: y and y′ are letters of their
 // own, and a one-way step is checked by differentiating back. A general solution is checked by
 // putting it into the equation.
-import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, int, deriv, eq, evaluate, symbols, relOf, Env, primed, cloneFresh, children, withChildren, key, walk } from './ast';
+import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, int, deriv, eq, evaluate, symbols, relOf, Env, primed, cloneFresh, children, withChildren, key, walk, replace } from './ast';
 import { derivative, dependsOn, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { simplify, newHints } from './simplify';
@@ -357,21 +357,62 @@ export function generalSolution(e: Eq): Eq | { error: string } {
 }
 
 /**
- * |y| = e^(g + C) → y = C e^g: ±e^C is just another constant, so the two cases are one family.
- * Checked with the new C put to ±e^(old C), the sign being y's.
+ * |y| = e^(g + C) → y = C e^g, and |y| = |x|·e^C → y = Cx: ±e^C (and the sign of |x|) is just
+ * another constant, so the cases are one family. Checked with the new C put to that ± e^(old C).
  */
 export function absorbConstant(e: Eq, y: string): MoveResult {
+  const no = { error: 'Needs |y| = … e^(… + C).' };
   const [a, b] = e.lhs.k === 'fn' && e.lhs.name === 'abs' ? [e.lhs, e.rhs] : [e.rhs, e.lhs];
-  if (relOf(e) !== '=' || a.k !== 'fn' || a.name !== 'abs' || a.arg.k !== 'sym' || a.arg.name !== y) return { error: 'Needs |y| = e^(… + C).' };
-  if (b.k !== 'pow' || b.base.k !== 'sym' || b.base.name !== 'e') return { error: 'Needs |y| = e^(… + C).' };
-  const terms = b.exp.k === 'add' ? b.exp.terms : [b.exp];
-  const c = terms.find(t => t.k === 'sym' && /^C$/.test(t.name));
-  if (!c || symbols(b.exp).filter(v => v === 'C').length !== 1) return { error: 'Needs |y| = e^(… + C).' };
+  if (relOf(e) !== '=' || a.k !== 'fn' || a.name !== 'abs' || a.arg.k !== 'sym' || a.arg.name !== y) return no;
+  if (symbols(b).filter(v => v === 'C').length !== 1 || symbols(b).includes(y)) return no;
+  const fs = b.k === 'mul' ? b.factors : [b];
+  const ec = fs.find(f => f.k === 'pow' && f.base.k === 'sym' && f.base.name === 'e' && symbols(f.exp).includes('C'));
+  if (!ec || ec.k !== 'pow') return no;
+  const terms = ec.exp.k === 'add' ? ec.exp.terms : [ec.exp];
+  const c = terms.find(t => t.k === 'sym' && t.name === 'C');
+  if (!c) return no;
   const rest = terms.filter(t => t !== c);
-  const g = rest.length ? S(add(rest.map(t => cloneFresh(t)))) : null;
-  const next = eq(sym(y), g ? mul([sym('C'), pow(sym('e'), g)]) : sym('C'));
+  // what else multiplies: an |u| loses its bars, its sign goes into C too
+  const signs: Node[] = [];
+  const others = fs.filter(f => f !== ec).map(f => { if (f.k === 'fn' && f.name === 'abs') { signs.push(f.arg); return S(cloneFresh(f.arg)); } return S(cloneFresh(f)); });
+  const parts = [sym('C'), ...others, ...(rest.length ? [pow(sym('e'), S(add(rest.map(t => cloneFresh(t)))))] : [])];
+  const next = eq(sym(y), parts.length === 1 ? parts[0] : mul(parts));
   return checked(e, {
-    eq: next, label: '±e^C is one constant: call it C', hints: newHints(), factor: one, select: null, rule: 'constant of integration', implies: true,
-    check: env => { const s = Math.sign(env[y]) || 1; return [[evaluate(next, { ...env, C: s * Math.exp(env.C) }), s * evaluate(e, env)]]; },
+    eq: next, label: signs.length ? 'the ±, the signs and e^C are one constant: call it C' : '±e^C is one constant: call it C', hints: newHints(), factor: one, select: null, rule: 'constant of integration', implies: true,
+    check: env => {
+      const s = (Math.sign(env[y]) || 1) * signs.reduce((m, u) => m * (Math.sign(evaluate(u, env)) || 1), 1);
+      return [[evaluate(next, { ...env, C: s * Math.exp(env.C) }), (Math.sign(env[y]) || 1) * evaluate(e, env)]];
+    },
   });
+}
+
+/** y = sqrt(2C − x²) → y = sqrt(C − x²): any number times C is just another constant */
+export function renameConstant(e: Eq): MoveResult {
+  if (symbols(e).filter(v => v === 'C').length !== 1) return { error: 'No constant to rename.' };
+  let k: number | null = null, at: Node | null = null;
+  walk(e, n => {
+    if (at) return;
+    if (n.k === 'mul' && n.factors.length === 2 && n.factors[0].k === 'num' && n.factors[1].k === 'sym' && n.factors[1].name === 'C') { k = n.factors[0].v; at = n; }
+    else if (n.k === 'frac' && n.num.k === 'sym' && n.num.name === 'C' && n.den.k === 'num') { k = 1 / n.den.v; at = n; }
+    else if (n.k === 'neg' && n.arg.k === 'sym' && n.arg.name === 'C') { k = -1; at = n; }
+  });
+  if (!at || k === null || k === 0) return { error: 'No constant to rename.' };
+  const kk = k as number, node = at as Node;
+  const next = replace(e, node.id, sym('C')) as Eq;
+  return checked(e, {
+    eq: next, label: `${toText(node)} is just another constant: call it C`, hints: newHints(), factor: one, select: null, rule: 'constant of integration', implies: true,
+    check: env => [[evaluate(next, { ...env, C: kk * env.C }), evaluate(e, env)]],
+  });
+}
+
+/** y = (e^(3x)/3 + C)/e^(2x) → y = e^x/3 + Ce^(−2x): an exponential bottom shared out over the top */
+export function shareExponential(e: Eq): MoveResult {
+  const side = e.rhs.k === 'frac' ? 'rhs' : e.lhs.k === 'frac' ? 'lhs' : null;
+  const f = side ? e[side] : null;
+  if (!f || f.k !== 'frac' || f.num.k !== 'add') return { error: 'Nothing to share out.' };
+  const expo = (n: Node): boolean => (n.k === 'pow' && n.base.k === 'sym' && n.base.name === 'e') || (n.k === 'mul' && n.factors.every(m => m.k === 'num' || expo(m)));
+  if (!expo(f.den)) return { error: 'Nothing to share out.' };
+  const terms = f.num.terms.map(t => S(frac(cloneFresh(t), cloneFresh(f.den))));
+  const next = side === 'rhs' ? eq(e.lhs, add(terms)) : eq(add(terms), e.rhs);
+  return checked(e, { eq: next, label: `share out the ÷ ${toText(f.den)}`, hints: newHints(), factor: one, select: null, rule: 'split into terms' });
 }
