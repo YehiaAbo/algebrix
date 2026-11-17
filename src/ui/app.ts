@@ -750,7 +750,12 @@ export class App {
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     const v = aimed?.k === 'sym' && vars.includes(aimed.name) ? aimed.name : vars.length === 1 ? vars[0] : null;
     if (v) return this.solveFor(v);
-    if (!vars.length) return this.refuse('No variable to solve for.');
+    if (!vars.length) {
+      // 2 = 3 has nothing to solve, but it can still be judged
+      const a = evaluate(this.eq.lhs, {}), b = evaluate(this.eq.rhs, {}), r = relOf(this.eq), d = a - b, tol = 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+      const holds = r === '=' ? Math.abs(d) < tol : r === '<' ? d < -tol : r === '>' ? d > tol : r === '≤' ? d < tol : r === '≥' ? d > -tol : null;
+      return this.refuse(holds === null || !isFinite(d) ? 'No letter to solve for.' : `No letter to solve for, and ${toText(this.eq)} is ${holds ? 'true' : 'false'}.`);
+    }
     this.openHub(true);
     this.askVar();
   }

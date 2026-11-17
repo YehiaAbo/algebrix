@@ -4,9 +4,11 @@ import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, 
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, combineFractions, standardOrder, hasExpandable } from './rewrite';
-import { verify, MoveOk, MoveResult, relAfter, isErr } from './moves';
+import { verify, MoveOk, MoveResult, relAfter, isErr, neverZero } from './moves';
+import { toText } from './print';
 import { isLeibniz, toLeibniz, toPrime, toDifferentials } from './leibniz';
 import { gcd } from './terms';
+import { combineLogs } from './techniques';
 import { longDivide, partialFractions, rationalize, trigForms, completeSquare, Range, factorFully } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
@@ -14,7 +16,7 @@ export interface Form extends MoveOk { name: string; chord: string }
 const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
   'factored': 'f', 'split into terms': 't', 'highest power first': 'o', 'log rules': 'l', 'as powers': 'p', 'as roots': 'r',
-  'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
+  'one log': 'l', 'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
   'as dy/dx': 'y', 'as y′': 'y', 'as d²y/dx²': 'y', 'as y″': 'y', 'as differentials': 'k',
 };
 
@@ -33,6 +35,9 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
       f.check = env => { const u = evaluate(range.u, env); return u >= range.lo && u <= range.hi ? [[evaluate(next, env), evaluate(e, env)]] : [[NaN, NaN]]; };
     }
     if (verify(e, f)) return;
+    // cancelling a bottom away (x²−1)/(x−1) → x + 1 keeps x − 1 ≠ 0 from the original
+    const lost = lostBottoms(e, next);
+    if (lost.length) f.conditions = [...(f.conditions ?? []), ...lost];
     const rel = relAfter(e, f);
     if (typeof rel !== 'string') return;
     f.eq = eq(f.eq.lhs, f.eq.rhs, rel);
@@ -46,7 +51,8 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     seen.add(sides(r.eq));
     out.push({ ...r, name, chord: CHORDS[name] });
   };
-  const target = sel && sel !== 'eq' ? find(e, sel) : null;
+  // a lone expression with nothing aimed: its forms are the whole thing's
+  const target = sel && sel !== 'eq' ? find(e, sel) : relOf(e) === 'expr' ? e.lhs : null;
   if (target?.k === 'sym' && /^[a-zA-Zα-ω][′″]$/.test(target.name)) slope(target.name.endsWith('″') ? 'as d²y/dx²' : 'as dy/dx', toLeibniz(e, target.id));
   if (target && (isLeibniz(target) || isLeibniz2(target))) slope(isLeibniz2(target) ? 'as y″' : 'as y′', toPrime(e, target.id));
   if (!target || (target.k === 'sym' && target.name.endsWith('′')) || isLeibniz(target)) slope('as differentials', toDifferentials(e));
@@ -76,6 +82,13 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     if (relOf(e) !== 'expr') push('sides swapped', eq(e.rhs, e.lhs), h, () => -1, null);
     const ll = logRules(e.lhs), lr = relOf(e) === 'expr' ? null : logRules(e.rhs);
     if (ll || lr) push('log rules', eq(ll ?? e.lhs, lr ?? e.rhs), newHints(), one, null);
+    const cl1 = combineLogs(e.lhs), cr1 = relOf(e) === 'expr' ? null : combineLogs(e.rhs);
+    if (cl1 || cr1) {
+      h = newHints();
+      push('one log', eq(cl1 ? simplify(cl1.n, h) : e.lhs, cr1 ? simplify(cr1.n, h) : e.rhs), h, one, null);
+      const f = out.find(x => x.name === 'one log');
+      if (f) f.conditions = [...(f.conditions ?? []), ...(cl1?.conditions ?? []), ...(cr1?.conditions ?? [])];
+    }
     // identities on a whole side, so sin²x + cos²x needs no aiming
     for (const side of ['lhs', 'rhs'] as const) for (const f of trigForms(e[side])) push(`trig: ${f.name}`, side === 'lhs' ? eq(f.node, e.rhs) : eq(e.lhs, f.node), newHints(), one, null, f.range);
     return out;
@@ -84,10 +97,15 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   const at = (name: string, build: (h: Hints) => Node | null, range?: Range) => {
     const h = newHints();
     const r = build(h);
-    if (r) push(name, replace(e, target.id, r), h, one, r.id, range);
+    if (r) push(name, replace(e, target.id, r), h, one, sel ? r.id : null, range);
   };
   at('one fraction', h => combineFractions(target, h));
-  at('factored', h => factorFully(target, h));
+  // a fraction factors top and bottom, so a common factor shows: (x − 1)(x + 1)/(x − 1)
+  at('factored', h => {
+    if (target.k !== 'frac') return factorFully(target, h);
+    const t = factorFully(target.num, h), b = factorFully(target.den, h);
+    return t || b ? frac(t ?? target.num, b ?? target.den, target.id) : null;
+  });
   if (!out.some(f => f.name === 'factored')) {
     // aimed at a piece of a sum: offer factoring the nearest sum around it that factors
     const path = findPath(e, target.id) ?? [];
@@ -108,6 +126,9 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   at('simplified', h => { const r = simplify(target, h); return key(r) === key(target) ? null : r; });
   at('highest power first', () => standardOrder(target));
   at('log rules', () => logRules(target));
+  // ln x + ln y = ln(xy), only where each is positive
+  const logs = combineLogs(target);
+  if (logs) { at('one log', h => simplify(logs.n, h)); const f = out.find(x => x.name === 'one log'); if (f) f.conditions = logs.conditions; }
   at('as powers', () => asPowers(target));
   at('as roots', () => asRoots(target));
   at('long division', () => longDivide(target));
@@ -116,6 +137,25 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   for (const f of trigForms(target)) at(`trig: ${f.name}`, () => f.node, f.range);
   return out;
 }
+
+/** the letter factors of the bottoms in `a` that no bottom in `b` still has, as "… ≠ 0" */
+function lostBottoms(a: Eq, b: Eq): string[] {
+  const factors = (e: Eq) => {
+    const out = new Map<string, Node>();
+    walk(e, n => {
+      if (n.k !== 'frac' || !hasLetters(n.den)) return;
+      const f = factorFully(n.den, newHints()) ?? n.den;
+      for (const x of f.k === 'mul' ? f.factors : [f]) {
+        const base = x.k === 'pow' && x.exp.k === 'num' ? x.base : x;
+        if (hasLetters(base) && !neverZero(base)) out.set(key(base), base);
+      }
+    });
+    return out;
+  };
+  const after = factors(b);
+  return [...factors(a)].filter(([k]) => !after.has(k)).map(([, n]) => `${toText(n)} ≠ 0`);
+}
+const hasLetters = (n: Node) => { let y = false; walk(n, x => { if (x.k === 'sym' && x.name !== 'e' && x.name !== 'π') y = true; }); return y; };
 
 function denominatorLcm(e: Eq): number {
   let L = 1;

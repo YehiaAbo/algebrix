@@ -230,11 +230,11 @@ export function leadPositive<T extends Node>(n: T): T {
 }
 
 /** a sum with two or more logs of the letter: ln A + ln B − ln D = ln(AB/D), with A, B, D > 0 */
-function combineLogs(n: Node, v: string): { n: Node; label: string; conditions: string[] } | null {
+export function combineLogs(n: Node, v?: string): { n: Node; label: string; conditions: string[] } | null {
   if (n.k !== 'add') return null;
   const lnOf = (t: Node): { arg: Node; sign: 1 | -1; name: string } | null => {
     const m = t.k === 'neg' ? t.arg : t, sign = t.k === 'neg' ? -1 : 1;
-    return m.k === 'fn' && (m.name === 'ln' || m.name === 'log') && has(m.arg, v) ? { arg: m.arg, sign, name: m.name } : null;
+    return m.k === 'fn' && (m.name === 'ln' || m.name === 'log') && (!v || has(m.arg, v)) ? { arg: m.arg, sign, name: m.name } : null;
   };
   const ls = n.terms.map(lnOf);
   const found = ls.filter(Boolean) as { arg: Node; sign: 1 | -1; name: string }[];
@@ -505,7 +505,10 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
       // x + 1 = 3(x − 1): multiply out a side where the letter sits in brackets, then gather
       const inBrackets = (['rhs', 'lhs'] as const).find(k => { const f = findExpandable(cur[k]); return !!f && has(f, v); });
       if (inBrackets) { const h = newHints(); if (push({ eq: replace(cur, cur[inBrackets].id, expandAll(cur[inBrackets], h)) as Eq, label: 'expand', hints: h, factor: one, select: null })) continue; }
-      const rt = cur.rhs.k === 'add' ? cur.rhs.terms : [cur.rhs];
+      // gather on the side with more of v, as by hand: x + 1 = 3x takes x across, to 1 = 2x (not −2x = −1)
+      const slope = (n: Node) => { const q = polyOf(expandAll(n, newHints())); return q && q.v === v && q.c.length === 2 ? q.c[1].p / q.c[1].q : NaN; };
+      const from = slope(cur.lhs) < slope(cur.rhs) ? cur.lhs : cur.rhs;
+      const rt = from.k === 'add' ? from.terms : [from];
       const term = rt.find(x => has(x, v))!;
       if (!push(moveAcross(cur, term.id))) return stuck(`Couldn't gather the ${v} terms.`);
       continue;
@@ -515,6 +518,12 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     // ln x + ln(x − 2) = ln 3: two logs of the letter make one, ln(x(x − 2)), and then e undoes it
     const logs = combineLogs(side, v);
     if (logs && push({ eq: replace(cur, side.id, logs.n) as Eq, label: logs.label, hints: newHints(), factor: one, select: null, conditions: logs.conditions })) continue;
+    // |x − 1| = 0 is one case, not two: only 0 has size 0
+    const zero = cur[s === 'lhs' ? 'rhs' : 'lhs'];
+    if (side.k === 'fn' && side.name === 'abs' && zero.k === 'num' && zero.v === 0) {
+      const A = replace(cur, side.id, side.arg) as Eq, before = cur;
+      if (push({ eq: A, label: `|${toText(side.arg)}| = 0 only when ${toText(side.arg)} = 0`, hints: newHints(), factor: one, select: null, check: env => [[evaluate(A, env) ** 2, evaluate(before, env) ** 2]] })) continue;
+    }
     if (side.k === 'sym' && side.name === v) {
       if (s === 'rhs') push(swapSides(cur, null));
       // x = √2 + 1 reads 1 + √2: the whole number first, as the root is added to it
@@ -588,7 +597,7 @@ export function splitCases(e: Eq, v?: string): Cases | null {
   }
   for (const [, S, B] of sides) {
     if (S.k === 'fn' && S.name === 'abs' && (!v || has(S, v)) && !(v && has(B, v))) {
-      if (B.k === 'num' && B.v < 0) return null;
+      if (B.k === 'num' && B.v <= 0) return null;
       const X = S.arg;
       const A = eq(X, B);
       const other = eq(fresh(X), negate(fresh(B)));

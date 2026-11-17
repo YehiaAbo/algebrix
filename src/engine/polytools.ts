@@ -240,6 +240,10 @@ export function trigForms(n: Node): TrigForm[] {
   if (n.k === 'mul' && n.factors.length === 3 && n.factors[0].k === 'num' && n.factors[0].v === 2 && isF(n.factors[1], 'sin') && isF(n.factors[2], 'cos') && key(n.factors[1].arg) === key(n.factors[2].arg)) {
     offer('double angle', fn('sin', mul([num(2), cloneFresh(n.factors[1].arg)])));
   }
+  // sin u cos u is half of sin 2u
+  if (n.k === 'mul' && n.factors.length === 2 && isF(n.factors[0], 'sin') && isF(n.factors[1], 'cos') && key(n.factors[0].arg) === key(n.factors[1].arg)) {
+    offer('double angle', frac(fn('sin', mul([num(2), cloneFresh(n.factors[0].arg)])), num(2)));
+  }
   if (n.k === 'add') {
     const ts = n.terms;
     // sin²u + cos²u → 1

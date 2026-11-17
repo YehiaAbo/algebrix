@@ -88,4 +88,14 @@ export const tests = {
     await load('x^3 = 4x');
     await key('e'); await until(s => /^x = (0|2|−2)$/.test(s.eq), 'a cubic factors and splits', 12000);
   },
+  async 'Tab on a lone fraction factors it, cancels, and keeps what was cancelled'({ load, hold, until, p, assert, key, wait }) {
+    await load('(x^2 - 1)/(x - 1)');
+    await hold('Tab', 'f'); await until(s => s.eq === '((x − 1)(x + 1))/(x − 1)', 'factored top and bottom');
+    await hold('Tab', 's'); await until(s => s.eq === 'x + 1', 'cancelled');
+    const conds = await p.evaluate(() => document.getElementById('conds').textContent);
+    assert(conds.includes('≠'), `x − 1 ≠ 0 kept: ${conds}`);
+    await load('2 = 3'); await key('e'); await wait(300);
+    const bar = await p.evaluate(() => document.getElementById('hints').textContent);
+    assert(bar.includes('is false'), `2 = 3 is judged: ${bar}`);
+  },
 };

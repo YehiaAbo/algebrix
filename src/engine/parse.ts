@@ -143,6 +143,8 @@ function tokenize(src: string): Tok[] {
       out.push({ t: 'cmd', v: inv ? 'a' + word : sq ? `${word}^${sq[1] ?? sq[2]}` : word });
       // log_2 x: the base
       if (word === 'log' && s[i] === '_') { out.push({ t: 'op', v: '_' }); i++; }
+      // log2(x) and log10 x, as in code: the digits straight after log are the base
+      else if (word === 'log' && !sq && /^\d+(?=[\s(a-zA-Z])/.test(s.slice(i))) out.push({ t: 'op', v: '_' });
       continue;
     }
     const greek = prevLetter ? null : GREEK_WORDS.exec(rest);
