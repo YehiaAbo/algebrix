@@ -219,3 +219,15 @@ App:
 - Series: C + g (geometric: first term over 1 − r, with |r| < 1 noted), C + r (the ratio test's verdict in the bar), C + t (the Taylor polynomial of degree 5 about 0, or about 1 when 0 won't do, as a new expression to compare on the graph).
 - A sum subtracted as a whole keeps its brackets when drawn: F(b) − (a + b).
 - Tours (Calculus 2): antiderivatives, definite integrals, u-substitution, by parts, series.
+
+### Round 12: Calculus 3 on C
+
+**How vectors are checked.** A vector is worth one number: a fixed mix of its entries with irrational weights (1, √2, √3, …). Equal vectors give equal numbers, sums and multiples keep the mix, and swapping two entries changes it, so a step on a vector equation is checked like any other. Two vectors side by side are a dot product. ∇f is worth the mix of its partials, which the kernel works out. Splitting a vector equation into its entries is a ⇒ step, and its check covers every entry, including the ones that become new equations.
+
+- Notation: `∂/∂x`, `\frac{\partial}{\partial x}`, `∇(…)`, `\nabla`, `grad`, `⟨1, 2⟩` or `(1, 2)`, nested integrals `int_0^1 int_0^x … dy dx`.
+- On an expression with two or more letters, C changes: d is ∂/∂x as a new expression (aim at a letter for another), n the gradient, m sets ∇f = 0 (critical points), k is Lagrange (∇f = λ∇g with the first other equation that shares a letter), i the antiderivative in that letter.
+- On worked pieces: C + n turns ∇f into a vector of partials, C + o works out a dot product, C + s splits a vector equation; e does all of it, then splits.
+- Partial derivatives use the same rules as d/dx, with the other letters as constants; products keep their letters in x, y, z order.
+- Double integrals go inside out: C + i takes the innermost, and after its bounds go in, e tidies what the outer one holds.
+- Vectors are not graphed: the graph says to split into components.
+- Tours (Calculus 3): partial derivatives, the gradient, max and min in 3D, Lagrange multipliers, double integrals. Past 31 tours the menu uses capitals.

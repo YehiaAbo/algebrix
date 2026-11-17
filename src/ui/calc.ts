@@ -1,10 +1,10 @@
 // The calculus hub (C): derivatives a rule at a time, limits, both sides, critical points.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, relOf, key, Eq, Node, symbols, walk, int, num, cloneFresh, eq as mkEq } from '../engine/ast';
+import { find, relOf, key, Eq, Node, symbols, walk, int, num, cloneFresh, eq as mkEq, grad } from '../engine/ast';
 import { isErr, MoveOk } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { tidy } from '../engine/techniques';
-import { derivStep, plugIn, lhopital, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm } from '../engine/calcmoves';
+import { derivStep, plugIn, lhopital, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
 import { intStep, uSub, byParts, plugBounds, geometric, ratioTest, taylor } from '../engine/integrate';
 import { Form } from '../engine/forms';
 import { sound } from './sound';
@@ -18,6 +18,23 @@ export function calcTechniques(this: App): Tech[] {
   const v = calcVar(eq, aimed?.k === 'sym' ? aimed.name : null);
   const rel = relOf(eq);
   const out: Tech[] = [];
+  // a function of two or more letters: partial derivatives, the gradient, Lagrange
+  const vs = rel === 'expr' || rel === 'def' ? calcVars(eq) : [];
+  const multi = vs.length >= 2 && !hasCalc(eq);
+  const pv = aimed?.k === 'sym' && vs.includes(aimed.name) ? aimed.name : vs[0];
+  if (multi) {
+    out.push({ key: 'd', label: `∂/∂${pv}${aimed?.k === 'sym' ? '' : ' (aim at a letter for another)'}`, ok: true, run: () => this.addWork(partialOf(this.eq, pv), `partial derivative in ${pv}`) });
+    out.push({ key: 'n', label: 'gradient ∇', ok: true, run: () => this.addWork(mkEq(grad(cloneFresh(body(this.eq)), vs), num(0), 'expr'), 'gradient') });
+    out.push({ key: 'm', label: 'max and min (∇ = 0)', ok: true, run: () => this.addWork(gradientZero(this.eq), 'critical points: every partial is 0') });
+    const j = this.slots.findIndex((_, i) => i !== this.cur && !('error' in lagrange(eq, this.eqOf(i))));
+    out.push({ key: 'k', label: j >= 0 ? `Lagrange, on (${j + 1})` : 'Lagrange (type a constraint first)', ok: j >= 0, run: () => this.addWork(lagrange(this.eq, this.eqOf(j)), `Lagrange condition with equation ${j + 1}`) });
+    out.push({ key: 'i', label: `antiderivative (∫ d${pv})`, ok: true, run: () => this.addWork(eqOf(int(pv, cloneFresh(body(this.eq)))), 'antiderivative') });
+    return out;
+  }
+  if (has(eq, 'grad')) out.push({ key: 'n', label: 'gradient: a partial each', ok: true, run: () => this.apply(gradStep(this.eq, this.sel), 1.1) });
+  if (hasDot(eq)) out.push({ key: 'o', label: 'dot product', ok: true, run: () => this.apply(dotStep(this.eq, this.sel), 1.1) });
+  const parts = components(eq);
+  if (!isErr(parts.first)) out.push({ key: 's', label: 'split into components', ok: true, run: () => this.splitComponents() });
   if (has(eq, 'deriv')) {
     const r = derivStep(eq, this.sel);
     out.push({ key: 'd', label: isErr(r) ? 'next rule' : r.label, ok: !isErr(r), run: () => this.apply(derivStep(this.eq, this.sel), 1.1) });
@@ -55,6 +72,7 @@ export function calcTechniques(this: App): Tech[] {
   return out;
 }
 
+const hasDot = (n: Node) => { let f = false; walk(n, m => { if (m.k === 'mul' && m.factors.filter(x => x.k === 'vec').length === 2) f = true; }); return f; };
 const has = (n: Node, k: string) => { let f = false; walk(n, m => { if (m.k === k) f = true; }); return f; };
 const body = (e: Eq) => (e.rel === 'def' ? e.rhs : e.lhs);
 const eqOf = (n: Node): Eq => mkEq(n, num(0), 'expr');
@@ -68,6 +86,13 @@ export function substituteU(this: App) {
     this.slots.push({ steps: [{ eq: r.side, label: 'substitution', conditions: [] }], at: 0, sel: null });
   }
   this.apply(r.move, 1.1);
+}
+
+/** a vector equation: one equation for each entry, side by side on the shelf */
+export function splitComponents(this: App) {
+  const c = components(this.eq);
+  if (isErr(c.first)) return this.refuse(c.first.error);
+  this.split(undefined, { first: c.first, rest: c.rest, why: 'one equation for each entry' });
 }
 
 /** u-substitutions on the shelf: u → what it stands for */
@@ -106,6 +131,7 @@ export function finishCalculus(this: App) {
   const then = () => {
     if (stuck) return this.say(stuck, true);
     if (hasCalc(this.eq)) return;
+    if (!isErr(components(this.eq).first)) return this.splitComponents();
     const rel = relOf(this.eq);
     if (rel === 'expr' || rel === 'def') {
       const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');

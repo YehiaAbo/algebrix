@@ -3,7 +3,7 @@
 // differentiation, kept apart from the step-by-step rules in calcmoves.ts (and fuzzed against
 // finite differences in the tests), so a slip in one is caught by the other. Limits are
 // estimated numerically, and give NaN (can't check) when the estimate isn't clean.
-import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh } from './ast';
+import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, vec, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh } from './ast';
 
 /** does n change with v (directly, or through a variable that depends on v)? */
 export function dependsOn(n: Node, v: string, dep: string[] = []): boolean {
@@ -90,7 +90,8 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       const a = d(n.arg);
       return a && sum(n.v, n.lo, n.hi, a);
     }
-    case 'num': case 'lim': case 'eq': return null;
+    case 'vec': { const ds = n.items.map(d); return ds.every(Boolean) ? vec(ds as Node[]) : null; }
+    case 'num': case 'lim': case 'grad': case 'eq': return null;
   }
 }
 
@@ -274,5 +275,6 @@ CALC.integral = integral;
 CALC.series = series;
 CALC.gamma = gamma;
 CALC.derive = derive;
+CALC.partialOf = (n, v) => derivative(n, v);
 CALC.limit = limit;
 CALC.primeDef = primeDef;

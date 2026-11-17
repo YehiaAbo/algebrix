@@ -11,7 +11,7 @@ export function bind(this: App) {
   const input = $<HTMLInputElement>('input');
   input.addEventListener('input', () => this.onType());
   // quick inserts under the box, for what's awkward to type
-  const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', ''], ['d/dx', 'd/dx(', ''], ['lim', 'lim x->0 ', ''], ['∫', 'int ', ''], ['Σ', 'sum_{n=1}^∞ ', '']];
+  const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', ''], ['d/dx', 'd/dx(', ''], ['lim', 'lim x->0 ', ''], ['∫', 'int ', ''], ['Σ', 'sum_{n=1}^∞ ', ''], ['∂', '∂/∂x(', ''], ['∇', '∇(', ''], ['⟨ ⟩', '⟨', 'vector']];
   for (const [label, ins, hint] of KEYS) {
     const b = document.createElement('button');
     b.type = 'button';

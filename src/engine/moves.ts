@@ -287,7 +287,9 @@ export function verify(before: Eq, r: MoveOk): string | null {
   }
   const vars = symbols(eq(before.lhs, add([before.rhs, r.eq.lhs, r.eq.rhs])));
   let checked = 0;
-  for (let i = 0; i < 120 && checked < 6; i++) {
+  // with nothing to vary, one look is enough (and integrals in several dimensions aren't cheap)
+  const enough = vars.length ? 6 : 1;
+  for (let i = 0; i < 120 && checked < enough; i++) {
     // small values first, then positive ones (logs, roots), then wide ones
     const span = i < 40 ? () => rand() * 9 - 4.5 : i < 80 ? () => rand() * 9 + 0.05 : () => rand() * 120 - 60;
     const env: Env = {};
@@ -296,7 +298,7 @@ export function verify(before: Eq, r: MoveOk): string | null {
       const d0 = evaluate(before, env), d1 = evaluate(r.eq, env), f = r.factor(env);
       return Number.isFinite(f) && Number.isFinite(d0) ? [[d1, f * d0]] : [[NaN, NaN]];
     })();
-    if (!pairs.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))) continue;
+    if (!pairs.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))) { if (!vars.length) break; continue; }
     checked++;
     for (const [got, want] of pairs) {
       if (Math.abs(got - want) > 1e-6 * (1 + Math.abs(want) + Math.abs(got))) return `mismatch at ${JSON.stringify(env)}: ${got} vs ${want}`;

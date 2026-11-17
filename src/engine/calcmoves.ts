@@ -2,7 +2,7 @@
 // limits (plug in, L'Hôpital), differentiating both sides, and the definition of the
 // derivative. Every step goes through the same numeric check as an algebra move: the kernel
 // in calculus.ts says what a derivative or limit is worth.
-import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren } from './ast';
+import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
 import { dependsOn, derivative } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
@@ -33,7 +33,9 @@ export function times(...fs: Node[]): Node {
   if (q < 0) { p = -p; q = -q; }
   // simple pieces (letters, powers of letters) read best in front: 2x·cos(x²)
   const simple = (n: Node) => n.k === 'sym' || (n.k === 'pow' && n.base.k === 'sym');
-  const sorted = [...rest.filter(simple), ...rest.filter(f => !simple(f))];
+  const letter = (n: Node) => (n.k === 'sym' ? n.name : n.k === 'pow' && n.base.k === 'sym' ? n.base.name : '');
+  const rank = (n: Node) => { const i = ['x', 'y', 'z'].indexOf(letter(n)); return i < 0 ? 9 : i; };
+  const sorted = [...rest.filter(simple).sort((a, b) => rank(a) - rank(b)), ...rest.filter(f => !simple(f))];
   const body = (c: number): Node => {
     if (!sorted.length) return num(c);
     if (c === 1) return sorted.length === 1 ? sorted[0] : mul(sorted);
@@ -78,7 +80,7 @@ function outer(name: string, u: Node): Node {
 }
 const FN_NAME: Record<string, string> = { asin: 'sin⁻¹', acos: 'cos⁻¹', atan: 'tan⁻¹', abs: '|u|' };
 
-interface Ctx { v: string; dep: string[] }
+interface Ctx { v: string; dep: string[]; partial?: boolean }
 const dep = (n: Node, c: Ctx) => dependsOn(n, c.v, c.dep);
 
 /** the derivatives you'd just write down: constants, x, xⁿ, c·xⁿ, sin x, eˣ, ln x, and sums of them */
@@ -113,7 +115,7 @@ export function prettyDerivative(u: Node, v: string): Node {
 }
 
 /** d/dv w as the next piece of a rule: worked out if it is simple, otherwise left to do */
-const inner = (w: Node, c: Ctx): Node => quick(w, c)?.d ?? deriv(c.v, fresh(w), c.dep);
+const inner = (w: Node, c: Ctx): Node => quick(w, c)?.d ?? (c.partial ? partial(c.v, fresh(w)) : deriv(c.v, fresh(w), c.dep));
 
 /** the one rule that fits the outside of u */
 function rule(u: Node, c: Ctx): { d: Node; label: string } | { error: string } {
@@ -174,7 +176,7 @@ export function derivStep(e: Eq, sel: string | null): MoveResult {
   const D = derivTarget(e, sel);
   if (!D) return { error: 'No derivative here. C + d takes one.' };
   if (hasLim(D.arg)) return { error: 'Work out the limit inside first.' };
-  const r = rule(D.arg, { v: D.v, dep: D.dep ?? [] });
+  const r = rule(D.arg, { v: D.v, dep: D.dep ?? [], partial: D.partial });
   if ('error' in r) return r;
   return checked(e, { eq: replace(e, D.id, r.d), label: r.label, hints: newHints(), factor: one, select: null, rule: r.label });
 }
@@ -261,13 +263,15 @@ export function lhopital(e: Eq, sel: string | null): MoveResult {
 /* ---------- e: finish all the calculus ---------- */
 
 /** derivatives, limits, integrals, bounds or sums still to work out */
-export const hasCalc = (n: Node) => { let f = false; walk(n, m => { if (CALC.includes(m.k)) f = true; }); return f; };
-const CALC = ['deriv', 'lim', 'int', 'at', 'sum'];
+export const hasCalc = (n: Node) => { let f = false; walk(n, m => { if (CALC.includes(m.k) || isDot(m)) f = true; }); return f; };
+/** two vectors side by side: a dot product to work out */
+const isDot = (n: Node) => n.k === 'mul' && n.factors.filter(f => f.k === 'vec').length === 2;
+const CALC = ['deriv', 'lim', 'int', 'at', 'sum', 'grad'];
 
 /** the innermost piece of calculus: children before parents, left to right */
 function nextCalc(n: Node): Node | null {
   for (const c of children(n)) { const t = nextCalc(c); if (t) return t; }
-  return CALC.includes(n.k) ? n : null;
+  return CALC.includes(n.k) || isDot(n) ? n : null;
 }
 
 /** the steps that work out every derivative, limit and integral, in order; stops at the first
@@ -291,6 +295,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }
     } else if (t.k === 'at') r = plugBounds(cur, t.id);
     else if (t.k === 'sum') r = geometric(cur, t.id);
+    else if (t.k === 'grad') r = gradStep(cur, t.id);
+    else if (t.k === 'mul') r = dotStep(cur, t.id);
     else {
       r = intStep(cur, t.id);
       if (isErr(r)) {
@@ -302,8 +308,30 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     if (isErr(r)) return { steps, stuck: r.error };
     steps.push(r);
     cur = r.eq;
+    // an inner integral just worked out: tidy what the outer one now holds
+    if (t?.k === 'at') { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
   }
   return { steps };
+}
+
+/** simplify the inside of each integral that has no calculus left in it (a double integral's
+ *  outer one, once the inner is done) */
+function tidyIntegrands(e: Eq): MoveOk | null {
+  const h = newHints();
+  let changed = false;
+  const go = (n: Node): Node => {
+    if (n.k === 'int' && !hasCalc(n.arg)) {
+      const a = simplify(n.arg, h);
+      if (toText(a) !== toText(n.arg)) { changed = true; return withChildren(n, children(n).map(c => (c === n.arg ? a : c))); }
+      return n;
+    }
+    const ks = children(n);
+    return ks.length ? withChildren(n, ks.map(go)) : n;
+  };
+  const next = go(e) as Eq;
+  if (!changed) return null;
+  const r = checked(e, { eq: next, label: 'tidy', hints: h, factor: one, select: null, auto: true });
+  return isErr(r) ? null : r;
 }
 
 /* ---------- new work from the current equation ---------- */
@@ -362,4 +390,112 @@ export function definitionForm(e: Eq, sel: string | null): MoveOk | null {
   const q = frac(add([shifted(fresh(D.arg)), neg(fresh(D.arg))]), sym(h));
   const r = checked(e, { eq: replace(e, D.id, lim(h, num(0), q)), label: 'the definition', hints: newHints(), factor: one, select: null, rule: 'definition of the derivative' });
   return isErr(r) ? null : r;
+}
+
+/* ---------- several variables ---------- */
+
+/** the letters a function of several variables uses, x, y, z first (not y′, not λ) */
+export function calcVars(e: Eq): string[] {
+  const body = relOf(e) === 'def' ? e.rhs : e.lhs;
+  return varOrder(symbols(body).filter(v => !v.endsWith('′') && v !== 'λ'));
+}
+
+const bodyOf = (e: Eq) => (relOf(e) === 'expr' ? e.lhs : relOf(e) === 'def' ? e.rhs : null);
+
+/** C + d with two or more letters: ∂/∂v of it, as a new expression */
+export function partialOf(e: Eq, v: string): Eq | { error: string } {
+  const b = bodyOf(e);
+  if (!b) return { error: 'Partial derivatives are for a function: type an expression in x and y.' };
+  return eq(partial(v, fresh(b)), num(0), 'expr');
+}
+
+/** the innermost node of kind k, around the aim if there is one */
+function target(e: Eq, sel: string | null, ok: (n: Node) => boolean): Node | null {
+  const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
+  let t: Node | null = path ? [...path].reverse().find(ok) ?? null : null;
+  if (!t && path) walk(path[path.length - 1], n => { if (!t && ok(n)) t = n; });
+  if (!t) walk(e, n => { if (!t && ok(n)) t = n; });
+  return t;
+}
+
+/** ∇f → ⟨∂f/∂x, ∂f/∂y, …⟩ */
+export function gradStep(e: Eq, sel: string | null): MoveResult {
+  const G = target(e, sel, n => n.k === 'grad') as Grad | null;
+  if (!G) return { error: 'No gradient here.' };
+  const next = vec(G.vars.map(v => partial(v, fresh(G.arg))));
+  return checked(e, { eq: replace(e, G.id, next), label: 'gradient: a partial for each letter', hints: newHints(), factor: one, select: null, rule: 'gradient' });
+}
+
+/** ⟨a, b⟩ ⟨c, d⟩ → ac + bd */
+export function dotStep(e: Eq, sel: string | null): MoveResult {
+  const M = target(e, sel, isDot);
+  if (!M || M.k !== 'mul') return { error: 'A dot product needs two vectors side by side, worked out.' };
+  const [a, b] = M.factors.filter(f => f.k === 'vec') as { items: Node[] }[];
+  if (a.items.length !== b.items.length) return { error: `These vectors have ${a.items.length} and ${b.items.length} entries, so they can't be dotted.` };
+  const others = M.factors.filter(f => f.k !== 'vec').map(fresh);
+  const dot = plus(...a.items.map((x, i) => times(fresh(x), fresh(b.items[i]))));
+  const next = others.length ? times(...others, dot) : dot;
+  return checked(e, { eq: replace(e, M.id, next), label: 'dot product', hints: newHints(), factor: one, select: null, rule: 'dot product' });
+}
+
+/** C + m with two or more letters: where every partial is 0, ∇f = 0 */
+export function gradientZero(e: Eq): Eq | { error: string } {
+  const b = bodyOf(e);
+  if (!b) return { error: 'Critical points are for a function: type an expression in x and y.' };
+  const vs = calcVars(e);
+  return eq(grad(fresh(b), vs), vec(vs.map(() => num(0))));
+}
+
+/** C + k: f's extremes on the constraint g = c are where ∇f = λ∇g */
+export function lagrange(f: Eq, constraint: Eq): Eq | { error: string } {
+  const b = bodyOf(f);
+  if (!b) return { error: 'Lagrange needs a function to make biggest or smallest: an expression in x and y.' };
+  if (relOf(constraint) !== '=' || hasCalc(constraint)) return { error: 'The constraint is an equation like x + y = 4.' };
+  const g = symbols(constraint.rhs).length ? add([fresh(constraint.lhs), neg(fresh(constraint.rhs))]) : fresh(constraint.lhs);
+  const fv = calcVars(f), gv = symbols(g);
+  if (!gv.some(v => fv.includes(v))) return { error: 'The constraint shares no letters with the function.' };
+  const vs = varOrder([...new Set([...fv, ...gv])].filter(v => v !== 'λ'));
+  return eq(grad(fresh(b), vs), mul([sym('λ'), grad(g, [...vs])]));
+}
+
+/** entry i of a worked-out vector expression; a plain 0 is the zero vector */
+function entry(n: Node, i: number): Node | null {
+  switch (n.k) {
+    case 'vec': return n.items[i] ? fresh(n.items[i]) : null;
+    case 'num': return n.v === 0 ? num(0) : null;
+    case 'neg': { const a = entry(n.arg, i); return a && times(num(-1), a); }
+    case 'mul': {
+      const v = n.factors.filter(isVector);
+      if (v.length !== 1) return null;
+      const a = entry(v[0], i);
+      return a && times(...n.factors.filter(f => f !== v[0]).map(fresh), a);
+    }
+    case 'frac': { const a = isVector(n.den) ? null : entry(n.num, i); return a && frac(a, fresh(n.den)); }
+    case 'add': { const ts = n.terms.map(t => entry(t, i)); return ts.every(Boolean) ? plus(...(ts as Node[])) : null; }
+    default: return null;
+  }
+}
+
+/** a vector equation as one equation per entry: the first is a step (⇒), the rest new equations */
+export function components(e: Eq): { first: MoveResult; rest: Eq[] } {
+  const none = (error: string) => ({ first: { error }, rest: [] });
+  if (relOf(e) !== '=' || !(isVector(e.lhs) || isVector(e.rhs))) return none('Splitting into components needs a vector equation, like ⟨2x, 2y⟩ = ⟨0, 0⟩.');
+  if (hasCalc(e)) return none('Work out the gradients first (C + n, or e).');
+  const env: Env = {};
+  symbols(e).forEach((v, i) => (env[v] = 1.3 + 0.4 * i));
+  const dim = (vectorValue(isVector(e.lhs) ? e.lhs : e.rhs, env) ?? []).length;
+  const eqs: Eq[] = [];
+  for (let i = 0; i < dim; i++) {
+    const l = entry(e.lhs, i), r = entry(e.rhs, i);
+    if (!l || !r) return none('I can only split vectors written out entry by entry.');
+    eqs.push(eq(l, r));
+  }
+  if (!eqs.length) return none('This vector has no entries.');
+  const value = (n: Node, en: Env) => (isVector(n) ? vectorValue(n, en) : n.k === 'num' && n.v === 0 ? Array(dim).fill(0) : null);
+  const first = checked(e, {
+    eq: eqs[0], label: 'split into components', hints: newHints(), factor: one, select: null, rule: 'components', implies: true,
+    // every entry, not just the first: the others become equations of their own
+    check: en => { const L = value(e.lhs, en), R = value(e.rhs, en); return eqs.map((q, i) => [evaluate(q, en), L && R ? L[i] - R[i] : NaN]); },
+  });
+  return { first, rest: eqs.slice(1) };
 }

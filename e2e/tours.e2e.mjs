@@ -55,6 +55,11 @@ const PLAYS = {
   definite: [calc('i'), calc('p'), async h => { for (let i = 0; i < 4 && (await h.text()) !== '8'; i++) { await h.key('s'); await h.wait(250); } }, keys('e')],
   usub: [calc('u'), calc('i'), keys('e'), keys('e')],
   parts: [calc('b'), calc('i'), keys('e')],
+  partials: [calc('d'), calc('d'), keys('e')],
+  gradient: [calc('n'), keys('e'), keys('e')],
+  maxmin2: [calc('m'), keys('e'), both(later(keys('e')), keys('3'), keys('e'))],
+  lagrange: [async h => { await h.key('n'); await h.type('x + y = 4'); await h.key('Enter'); }, both(keys('1'), calc('k')), keys('e')],
+  double: [calc('i'), calc('p'), keys('e')],
   series: [calc('g'), async h => { for (let i = 0; i < 4 && (await h.text()) !== '15/2'; i++) { await h.key('s'); await h.wait(250); } }, calc('r'), calc('t')],
 };
 

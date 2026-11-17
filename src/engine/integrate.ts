@@ -105,7 +105,7 @@ const holdsCalc = (n: Node) => { let f = false; walk(n, m => { if (m !== n && CA
 function target<K extends 'int' | 'at' | 'sum'>(e: Eq, sel: string | null, k: K): Extract<Node, { k: K }> | null {
   const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
   let t = path ? [...path].reverse().find(n => n.k === k) : undefined;
-  if (!t) walk(e, n => { if (!t && n.k === k && !holdsCalc(n.k === 'int' || n.k === 'at' || n.k === 'sum' ? n.arg : n)) t = n; });
+  if (!t) walk(e, n => { if (!t && n.k === k && !holdsCalc(n)) t = n; });
   if (!t) walk(e, n => { if (!t && n.k === k) t = n; });
   return (t as Extract<Node, { k: K }>) ?? null;
 }
@@ -114,7 +114,7 @@ function target<K extends 'int' | 'at' | 'sum'>(e: Eq, sel: string | null, k: K)
 export function intStep(e: Eq, sel: string | null): MoveResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
-  if (holdsCalc(T.arg)) return { error: 'Work out what is inside the integral first.' };
+  if (holdsCalc(T)) return { error: 'Work out what is inside the integral first.' };
   const v = T.v, def = !!(T.lo && T.hi);
   const wrap = (F: Node): Node => (def ? at(v, F, fresh(T.lo!), fresh(T.hi!)) : F);
   const piece = (w: Node): Node => { const q = quick(w, v); return q ? wrap(q.F) : int(v, fresh(w), T.lo && fresh(T.lo), T.hi && fresh(T.hi)); };

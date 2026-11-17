@@ -4,13 +4,15 @@
 // surface stay the same at every step: visual proof that no move broke anything.
 // Desmos-style handling: drag to pan (or turn, in 3D), scroll to zoom at the cursor,
 // double-click to reset, hover a curve or a point to read its coordinates.
-import { Eq, Node, evaluate, symbols, relOf, isIneq, holds } from '../engine/ast';
+import { Eq, Node, evaluate, symbols, relOf, isIneq, holds, walk } from '../engine/ast';
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
 type View = { cx: number; cy: number; span: number };
 type Quad = { p: [number, number, number][]; n: number[] };
+
+const hasVector = (eq: Eq) => { let f = false; walk(eq, n => { if (n.k === 'vec' || n.k === 'grad') f = true; }); return f; };
 
 export class Graph {
   private ctx: CanvasRenderingContext2D;
@@ -155,14 +157,15 @@ export class Graph {
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     c.clearRect(0, 0, W, H);
     const vars = symbols(eq);
-    if (vars.length === 3) return this.render3d(eq, vars);
+    if (vars.length === 3 && !hasVector(eq)) return this.render3d(eq, vars);
     this.last = null;
     const s = this.scale();
     const X = (x: number) => W / 2 + (x - this.view.cx) * s, Y = (y: number) => H / 2 - (y - this.view.cy) * s;
     const ux = (px: number) => this.toUnits(px, 0)[0], uy = (py: number) => this.toUnits(0, py)[1];
-    if (vars.length === 0 || vars.length > 3) {
+    const vector = hasVector(eq);
+    if (vars.length === 0 || vars.length > 3 || vector) {
       this.grid(X, Y, ux, uy, 'x', 'y');
-      this.note.textContent = vars.length === 0 ? 'No variables to graph.' : `${vars.length} variables. The graph shows up to three.`;
+      this.note.textContent = vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? 'No variables to graph.' : `${vars.length} variables. The graph shows up to three.`;
       return;
     }
     c.globalAlpha = this.fade;
