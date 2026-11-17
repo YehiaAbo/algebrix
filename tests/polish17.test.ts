@@ -7,7 +7,7 @@ import { toText } from '../src/engine/print';
 import { Eq, walk } from '../src/engine/ast';
 import { isErr, MoveOk, neverZero } from '../src/engine/moves';
 import { simplify, newHints } from '../src/engine/simplify';
-import { isolate, tidy } from '../src/engine/techniques';
+import { isolate, tidy, splitCases } from '../src/engine/techniques';
 import { finishCalc, plugIn } from '../src/engine/calcmoves';
 import { formsFor } from '../src/engine/forms';
 import { absorbConstant, renameConstant, shareExponential, generalSolution, odeKind, separate } from '../src/engine/ode';
@@ -120,5 +120,37 @@ describe('small readings', () => {
   it('nothing that cannot be 0 is noted as ≠ 0', () => {
     for (const s of ['e^(2x)', 'x^2 + 1', '3e^x', '2^x', '(x^2+1)^2']) expect(neverZero(parseExpr(s)), s).toBe(true);
     for (const s of ['x', 'x^2', 'x - 1', 'sin(x)', 'x^2 - 1', 'sqrt(x)']) expect(neverZero(parseExpr(s)), s).toBe(false);
+  });
+});
+
+describe('algebra walk', () => {
+  it.each([
+    ['ln(x) + ln(x - 2) = ln(3)', 'ln a + ln b = ln(ab)'], ['ln(x + 1) - ln(x) = 1', 'ln a − ln b = ln(a/b)'], ['log(x) + log(x - 3) = 1', 'log a + log b = log(ab)'],
+  ])('%s starts by combining the logs', (src, label) => {
+    const r = isolate(P(src), 'x');
+    expect(Array.isArray(r) && r[0].label).toBe(label);
+  });
+  it('every bottom clears at once, numbers too', () => {
+    const r = isolate(P('1/x + 1/(x+1) = 5/6'), 'x');
+    expect(Array.isArray(r) && r[0].label).toBe('× 6x(x + 1) to clear fractions');
+    const q = isolate(P('x/2 + 3/x = 2'), 'x');
+    expect(Array.isArray(q) && q[0].label).toBe('× 2x to clear fractions');
+    expect((q as { stuck?: string }).stuck).toMatch(/no real solutions/);
+  });
+  it('|A| = |B| is two cases, A = B or A = −B', () => {
+    expect(isolate(P('|x - 1| = |2x|'), 'x')).toEqual([]);
+    const c = splitCases(P('|x - 1| = |2x|'), 'x')!;
+    expect(toText(c.first.eq)).toBe('x − 1 = 2x');
+    expect(c.rest.map(e => toText(e))).toEqual(['x − 1 = −2x']);
+  });
+  it('a whole number reads first in an answer: 1 + √2', () => {
+    const c = splitCases(P('|x - 1| = sqrt(2)'), 'x')!;
+    for (const e of [c.first.eq, ...c.rest]) { const r = isolate(e, 'x') as MoveOk[]; expect(toText(r[r.length - 1].eq)).toMatch(/^x = 1 [+−] sqrt\(2\)$/); }
+  });
+  it('2x² = 1 takes the root and rationalizes: √2/2', () => {
+    const r = isolate(P('2x^2 = 1'), 'x');
+    expect(Array.isArray(r) && r.map(s => s.label)).not.toContain('complete the square');
+    expect(S('sqrt(1/2)')).toBe('sqrt(2)/2');
+    expect(S('sqrt(3/2)')).toBe('sqrt(6)/2');
   });
 });

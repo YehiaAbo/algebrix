@@ -229,6 +229,29 @@ export function leadPositive<T extends Node>(n: T): T {
   return (i < 0 ? m : { ...m, terms: [m.terms[i], ...m.terms.filter((_, j) => j !== i)] }) as T;
 }
 
+/** a sum with two or more logs of the letter: ln A + ln B − ln D = ln(AB/D), with A, B, D > 0 */
+function combineLogs(n: Node, v: string): { n: Node; label: string; conditions: string[] } | null {
+  if (n.k !== 'add') return null;
+  const lnOf = (t: Node): { arg: Node; sign: 1 | -1; name: string } | null => {
+    const m = t.k === 'neg' ? t.arg : t, sign = t.k === 'neg' ? -1 : 1;
+    return m.k === 'fn' && (m.name === 'ln' || m.name === 'log') && has(m.arg, v) ? { arg: m.arg, sign, name: m.name } : null;
+  };
+  const ls = n.terms.map(lnOf);
+  const found = ls.filter(Boolean) as { arg: Node; sign: 1 | -1; name: string }[];
+  if (found.length < 2 || new Set(found.map(f => f.name)).size > 1) return null;
+  const top = found.filter(f => f.sign > 0).map(f => fresh(f.arg)), bottom = found.filter(f => f.sign < 0).map(f => fresh(f.arg));
+  const prod = (fs: Node[]) => (fs.length === 1 ? fs[0] : mul(fs));
+  const inner = bottom.length ? frac(top.length ? prod(top) : num(1), prod(bottom)) : prod(top);
+  const one = fn(found[0].name as 'ln', inner);
+  const rest = n.terms.filter((_, i) => !ls[i]);
+  const name = found[0].name;
+  return {
+    n: rest.length ? add([one, ...rest]) : one,
+    label: bottom.length ? `${name} a − ${name} b = ${name}(a/b)` : `${name} a + ${name} b = ${name}(ab)`,
+    conditions: found.map(f => `${t(f.arg)} > 0`),
+  };
+}
+
 /* ---------- isolate a variable: a short chain of moves ---------- */
 /** Multiply both sides by the LCD of the number denominators, then expand. */
 export function clearFractions(e: Eq, v?: string): MoveOk | null {
@@ -255,18 +278,28 @@ export function clearLetterFractions(e: Eq, v: string): MoveOk | null {
   walk(e, n => { if (n.k === 'frac' && has(n.den, v) && !dens.some(d => key(d) === key(n.den))) dens.push(n.den); });
   if (!dens.length) return null;
   dens.sort((a, b) => toText(a).length - toText(b).length);
-  const D = dens.length === 1 ? fresh(dens[0]) : mul(dens.map(fresh));
+  // number bottoms too (1/x + 1/(x + 1) = 5/6 clears with 6x(x + 1)), so nothing is left over
+  let L = 1;
+  walk(e, n => { if (n.k === 'frac' && n.den.k === 'num' && Number.isInteger(n.den.v) && n.den.v > 1) L = (L * n.den.v) / gcd(L, n.den.v); });
+  if (L > 1e6) return null;
+  const lead = (k: number) => (k === 1 ? [] : [num(k)]);
+  const D = mul([...lead(L), ...dens.map(fresh)]);
+  const shown = dens.length === 1 && L === 1 ? fresh(dens[0]) : D;
   const h = newHints();
   // each term's own bottom cancels against its copy in D before anything is multiplied out
   const others = (i: number) => dens.filter((_, j) => j !== i).map(fresh);
   const over = (t: Node): Node => {
     if (t.k === 'neg') return negate(over(t.arg));
-    if (t.k === 'frac') { const i = dens.findIndex(d => key(d) === key(t.den)); if (i >= 0) return mul([...others(i), fresh(t.num)]); }
+    if (t.k === 'frac') {
+      const i = dens.findIndex(d => key(d) === key(t.den));
+      if (i >= 0) return mul([...lead(L), ...others(i), fresh(t.num)]);
+      if (t.den.k === 'num' && L % t.den.v === 0) return mul([...lead(L / t.den.v), ...dens.map(fresh), fresh(t.num)]);
+    }
     if (t.k === 'mul') {
       const fi = t.factors.findIndex(f => f.k === 'frac' && dens.some(d => key(d) === key(f.den)));
       if (fi >= 0) {
         const f = t.factors[fi] as Extract<Node, { k: 'frac' }>, i = dens.findIndex(d => key(d) === key(f.den));
-        return mul([...others(i), ...t.factors.filter((_, j) => j !== fi).map(fresh), fresh(f.num)]);
+        return mul([...lead(L), ...others(i), ...t.factors.filter((_, j) => j !== fi).map(fresh), fresh(f.num)]);
       }
     }
     return mul([fresh(D), fresh(t)]);
@@ -277,7 +310,7 @@ export function clearLetterFractions(e: Eq, v: string): MoveOk | null {
   walk(next, n => { if (n.k === 'frac' && has(n.den, v)) still = true; });
   if (still) return null;
   const r = checked(e, {
-    eq: next, label: `× ${toText(D)} to clear fractions`, hints: h, factor: env => evaluate(D, env), select: null,
+    eq: next, label: `× ${toText(shown)} to clear fractions`, hints: h, factor: env => evaluate(D, env), select: null,
     conditions: dens.map(d => `${toText(d)} ≠ 0`),
   });
   return isErr(r) ? null : r;
@@ -394,6 +427,9 @@ function noNiceFactors(cur: Eq, v: string, c: Rat[]): string {
 
 export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
   if (!has(e, v)) return { error: `There is no ${v} in this equation.` };
+  // |A| = |B| is two cases as it stands: A = B or A = −B
+  const bars = (n: Node) => n.k === 'fn' && n.name === 'abs';
+  if (relOf(e) === '=' && bars(e.lhs) && bars(e.rhs)) return [];
   const steps: MoveOk[] = [];
   let cur = e;
   const take = (r: MoveOk) => { steps.push(r); cur = r.eq; };
@@ -411,16 +447,16 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     tidyUp();
     return true;
   };
-  const stuck = (why: string) => (steps.length ? steps : { error: why });
+  // stuck after some steps: keep them, and say why, for whoever plays them
+  const stuck = (why: string) => (steps.length ? Object.assign(steps, { stuck: why }) : { error: why });
   tidyUp();
   // a tidy that changes nothing you can see doesn't start the list either
   if (steps.length === 1 && toText(steps[0].eq) === toText(e)) { steps.length = 0; }
   if (!has(cur, v)) return { error: `${v} cancels out completely, so there is nothing to solve for.` };
-  const cf = clearFractions(cur, v);
-  if (cf) take(cf);
-  // a letter in a bottom (that isn't just 3/x = 6, which one × does anyway): clear them all at once
+  // a letter in a bottom: clear every bottom at once (x/2 + 3/x = 2 is × 2x); else just the numbers
   const cl = clearLetterFractions(cur, v);
   if (cl) take(cl);
+  else { const cf = clearFractions(cur, v); if (cf) take(cf); }
   const seen = new Set<string>();
   for (let i = 0; i < 24; i++) {
     if (splitCases(cur, v)) return steps; // the caller splits into cases
@@ -433,7 +469,10 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     const poly = polyOf(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()));
     const lone = hl !== hr ? cur[hl ? 'lhs' : 'rhs'] : null;
     const peelable = !!lone && !!inverseOf(lone) && lone.k !== 'frac';
-    if (poly && poly.v === v && poly.c.length === 3 && !peelable) {
+    // a x² + c = 0 with no x term and no nice roots (2x² = 1): isolate x² and take the root instead
+    const k = poly && poly.c.length === 3 && poly.c[1].p === 0 ? -(poly.c[0].p / poly.c[0].q) / (poly.c[2].p / poly.c[2].q) : NaN;
+    const rootOnly = k > 0 && !(Number.isInteger(Math.sqrt(k)) || Number.isInteger(Math.sqrt(1 / k)) || Number.isInteger(Math.sqrt(k * 4)) || Number.isInteger(Math.sqrt(k * 9)));
+    if (poly && poly.v === v && poly.c.length === 3 && !peelable && !rootOnly) {
       const q = quadratic(cur, v);
       if (!q) return stuck(`This quadratic has no real solutions.`);
       q.forEach(take);
@@ -473,8 +512,17 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     }
     const s: 'lhs' | 'rhs' = hl ? 'lhs' : 'rhs';
     const side = cur[s];
+    // ln x + ln(x − 2) = ln 3: two logs of the letter make one, ln(x(x − 2)), and then e undoes it
+    const logs = combineLogs(side, v);
+    if (logs && push({ eq: replace(cur, side.id, logs.n) as Eq, label: logs.label, hints: newHints(), factor: one, select: null, conditions: logs.conditions })) continue;
     if (side.k === 'sym' && side.name === v) {
       if (s === 'rhs') push(swapSides(cur, null));
+      // x = √2 + 1 reads 1 + √2: the whole number first, as the root is added to it
+      const ans = cur.rhs;
+      if (steps.length && ans.k === 'add' && !symbols(ans).length) {
+        const i = ans.terms.findIndex(t => (t.k === 'num' || (t.k === 'frac' && t.num.k === 'num' && t.den.k === 'num')));
+        if (i > 0) { cur = eq(cur.lhs, { ...ans, terms: [ans.terms[i], ...ans.terms.filter((_, j) => j !== i)] }); steps[steps.length - 1] = { ...steps[steps.length - 1], eq: cur }; }
+      }
       return steps.length ? steps : { error: `Already solved for ${v}.` };
     }
     let ok = false;
@@ -528,6 +576,16 @@ export interface Cases { first: MoveOk; rest: Eq[]; why: string }
 export function splitCases(e: Eq, v?: string): Cases | null {
   if (e.rel && e.rel !== '=') return null; // |x| < 3 is an "and", not two cases: use the sign chart
   const sides = [['lhs', e.lhs, e.rhs], ['rhs', e.rhs, e.lhs]] as const;
+  // |A| = |B|: A = B, or A = −B
+  if (e.lhs.k === 'fn' && e.lhs.name === 'abs' && e.rhs.k === 'fn' && e.rhs.name === 'abs') {
+    const X = e.lhs.arg, Y = e.rhs.arg;
+    const A = eq(X, Y), other = eq(fresh(X), negate(fresh(Y)));
+    const c = checked(e, {
+      eq: A, label: `|${t(X)}| = |${t(Y)}|: the insides are equal or opposite`, hints: newHints(), factor: one, select: null,
+      check: env => [[evaluate(A, env) * evaluate(other, env), evaluate(e.lhs, env) ** 2 - evaluate(e.rhs, env) ** 2]],
+    });
+    return isErr(c) ? null : { first: c, rest: [other], why: 'two cases' };
+  }
   for (const [, S, B] of sides) {
     if (S.k === 'fn' && S.name === 'abs' && (!v || has(S, v)) && !(v && has(B, v))) {
       if (B.k === 'num' && B.v < 0) return null;

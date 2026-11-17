@@ -40,8 +40,11 @@ export const tests = {
 
   async 'a root that fails the original is marked, never shown as solved'({ load, key, until, p, assert }) {
     await load('sqrt(x + 3) = x - 3');
-    await key('e'); await until(s => s.eq === 'x = 1' || s.eq === 'x = 6', 'solved, in cases', 12000);
-    await until(s => s.eq === 'x = 1', 'x = 1 is the current case');
+    await key('e'); await until(s => s.eq === 'x = 6', 'it lands on the case that works', 12000);
+    const only = await p.evaluate(() => document.getElementById('answer').textContent);
+    assert(only.includes('the only answer') && only.includes('x = 1 fails'), `says which one fails: ${only}`);
+    await p.keyboard.press('Alt+ArrowRight');
+    await until(s => s.eq === 'x = 1', 'x = 1 is the other case');
     const look = await p.evaluate(() => ({ stage: document.getElementById('stage').classList.contains('extraneous'), ans: document.getElementById('answer').textContent, vars: document.getElementById('vars').textContent }));
     assert(look.stage && look.ans.includes('not a solution') && look.vars.includes('not a solution'), `marked: ${JSON.stringify(look)}`);
   },

@@ -159,7 +159,7 @@ export class App {
     ans.classList.toggle('bad', wrong);
     ans.classList.toggle('all', !text && !proved && !!all);
     if (!text && !proved && all) {
-      ans.innerHTML = `${(all.match(/<b>/g) ?? []).length > 2 ? 'all the answers' : 'both answers'}: ${all}`;
+      ans.innerHTML = all.startsWith('the only') ? all : `${(all.match(/<b>/g) ?? []).length > 2 ? 'all the answers' : 'both answers'}: ${all}`;
       ans.style.top = `${Math.round(oy + lay.asc + lay.desc + 22)}px`;
     } else if (text || proved) {
       ans.textContent = proved ? '∎ proved' : text!;
@@ -202,6 +202,9 @@ export class App {
     const order = at0.every(Number.isFinite) ? sides.map((n, i) => i).sort((a, b) => at0[a] - at0[b]) : sides.map((n, i) => i);
     const uniq = [...new Set(order.map(i => toText(sides[i])))];
     if (!uniq.length) return null;
+    // the one that works, here: say what the others were
+    const out = kin.filter(({ s }) => s.bad).map(({ e }) => toText(e.lhs.k === 'sym' ? e.rhs : e.lhs));
+    if (uniq.length === 1 && !me.bad && out.length) return `the only answer: <b>${v} = ${supHtml(escapeHtml(uniq[0]))}</b> (${out.map(o => `${v} = ${supHtml(escapeHtml(o))}`).join(', ')} fails the original)`;
     if (uniq.length === 1) return me.bad ? `<b>${v} = ${supHtml(escapeHtml(uniq[0]))}</b>` : null;
     return uniq.map(a => `<b>${v} = ${supHtml(escapeHtml(a))}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
   }

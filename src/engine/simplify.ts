@@ -110,6 +110,8 @@ function rule(n: Node, h: Hints): Node | null {
       }
       // √(a/b²) = √a / b
       if (a.k === 'frac' && a.den.k === 'num' && a.den.v > 1 && Number.isInteger(Math.sqrt(a.den.v))) return frac(sqrt(a.num, n.id), num(Math.sqrt(a.den.v), a.den.id));
+      // √(a/b) with numbers = √(ab)/b, no root left on the bottom: √(1/2) = √2/2
+      if (a.k === 'frac' && a.den.k === 'num' && a.den.v > 1 && Number.isInteger(a.den.v) && a.num.k === 'num' && a.num.v > 0 && Number.isInteger(a.num.v)) return frac(sqrt(num(a.num.v * a.den.v, a.num.id), n.id), num(a.den.v, a.den.id));
       // √(b²) = |b|
       if (a.k === 'pow' && a.exp.k === 'num' && a.exp.v === 2) { h.absorbs.set(a.exp.id, a.base.id); return fn('abs', a.base, n.id); }
       return null;

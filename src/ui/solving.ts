@@ -1,6 +1,6 @@
 // Solving: isolate a variable, split into cases, check answers, domains, inverses, substitution.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, relOf, isIneq, DEFS, add, key, holds } from '../engine/ast';
+import { find, symbols, relOf, isIneq, DEFS, add, key, holds, Eq } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
 import { inverseFunction } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
@@ -34,16 +34,18 @@ export function solveFor(this: App, v: string) {
   }
   const r = isolate(this.eq, v);
   if (!Array.isArray(r)) { this.refuse(r.error); return; }
-  if (!r.length) { this.refuse(`Already solved for ${v}.`); return; }
+  // nothing to isolate yet, like |2x − 1| = 5: straight to the cases
+  if (!r.length) { if (solvedFor(this.eq) === v) this.refuse(`Already solved for ${v}.`); else this.afterSolve(v); return; }
   r.forEach(s => { s.select = null; s.focus = undefined; });
-  this.play(r, () => this.afterSolve(v));
+  const why = (r as { stuck?: string }).stuck;
+  this.play(r, () => this.afterSolve(v, why));
 }
 
 /** a C the person typed is theirs, not a constant of integration to rename */
 const ownC = (app: App) => symbols(app.slot?.origin ?? app.steps[0].eq).includes('C');
 
 /** after isolating: split into cases and solve each one, or say where it got stuck */
-export function afterSolve(this: App, v: string) {
+export function afterSolve(this: App, v: string, why?: string) {
   // solving means a finished answer: take what simplifies at the end
   if (solvedFor(this.eq) === v) {
     // 2C is just C; an exponential bottom over a sum reads better shared out: e^x/3 + Ce^(−2x)
@@ -67,11 +69,13 @@ export function afterSolve(this: App, v: string) {
   // the letter cancelled: what's left is a plain fact, true or false
   const always = !symbols(this.eq).length && relOf(this.eq) !== 'expr' ? holds(this.eq, {}) : null;
   if (always !== null) {
-    this.say(always ? `${v} cancelled out, and ${toText(this.eq)} is always true: every ${v} works.` : `${v} cancelled out, and ${toText(this.eq)} is never true: no ${v} works, so there is no solution.`, !always);
+    // one case of several: this case is empty, the others may not be
+    const aCase = !!this.slot?.origin && this.slots.length > 1;
+    this.say(always ? `${v} cancelled out, and ${toText(this.eq)} is always true: every ${v} works.` : aCase ? `${v} cancelled out, and ${toText(this.eq)} is never true, so this case has no solution. The other case is on the shelf (Alt + →).` : `${v} cancelled out, and ${toText(this.eq)} is never true: no ${v} works, so there is no solution.`, !always);
     return;
   }
   const no = impossible(this.eq, v);
-  this.say(no ?? `Got as far as I could isolating ${v}. Try a form (hold Tab) or a function (hold f).`, true);
+  this.say(no ?? why ?? `Got as far as I could isolating ${v}. Try a form (hold Tab) or a function (hold f).`, true);
 }
 
 /** split this equation into cases; the others become new equations. With v, solve every case too. */
@@ -84,6 +88,19 @@ export function split(this: App, v?: string, cases?: Cases) {
   // each case reads from its plus term: y = √(C − x²)
   c.first.eq = leadPositive(c.first.eq);
   c.rest = c.rest.map(e => leadPositive(e));
+  // land on a case that works: an extraneous root (from squaring, or outside a log) waits on the shelf
+  if (v) {
+    const works = (e: Eq) => {
+      const r = isolate(e, v), end = Array.isArray(r) && r.length ? r[r.length - 1].eq : e;
+      const w = solvedFor(end);
+      if (w !== v || relOf(origin) !== '=' || symbols(origin).some(s => s !== v)) return true;
+      const val = evaluate(end.lhs.k === 'sym' && end.lhs.name === v ? end.rhs : end.lhs, {});
+      const L = evaluate(origin.lhs, { [v]: val }), R = evaluate(origin.rhs, { [v]: val });
+      return Number.isFinite(L) && Number.isFinite(R) && Math.abs(L - R) <= 1e-7 * (1 + Math.abs(L) + Math.abs(R));
+    };
+    const good = c.rest.findIndex(works);
+    if (good >= 0 && !works(c.first.eq)) { const e0 = c.first.eq; c.first.eq = c.rest[good]; c.rest[good] = e0; }
+  }
   this.apply(c.first, 1.1);
   c.rest.forEach((e, j) => {
     const slot: Slot = { steps: [{ eq: e, label: `case ${j + 2}`, conditions: [...this.step.conditions] }], at: 0, sel: null, origin };
