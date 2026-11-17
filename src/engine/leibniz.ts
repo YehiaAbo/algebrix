@@ -2,7 +2,7 @@
 // letters of their own, so once they are in, every ordinary move (× dx, ÷ y) works on them and
 // is checked as usual. Only the bridges need care: y′ and dy/dx are the same number when
 // dy = y′·dx, so those steps are checked with dy put to exactly that.
-import { Node, Eq, Env, sym, frac, mul, eq, find, replace, walk, symbols, evaluate, primed, isDiff, relOf, int } from './ast';
+import { Node, Eq, Env, sym, num, frac, pow, mul, eq, find, replace, walk, symbols, evaluate, primed, isDiff, isLeibniz2, relOf, int } from './ast';
 import { simplify, newHints } from './simplify';
 import { checked, MoveOk, MoveResult } from './moves';
 import { splitXY } from './ode';
@@ -20,8 +20,9 @@ export function letters(e: Eq): { y: string; x: string } | null {
   let y: string | null = null, x: string | null = null;
   walk(e, n => {
     if (y) return;
-    if (isLeibniz(n)) { y = (n.num as { name: string }).name.slice(1); x = (n.den as { name: string }).name.slice(1); }
-    else if (n.k === 'sym' && /^[a-zA-Zα-ω]′$/.test(n.name)) y = n.name.slice(0, -1);
+    if (isLeibniz2(n) && n.k === 'frac' && n.num.k === 'sym' && n.den.k === 'pow' && n.den.base.k === 'sym') { y = n.num.name.slice(2); x = n.den.base.name.slice(1); }
+    else if (isLeibniz(n)) { y = (n.num as { name: string }).name.slice(1); x = (n.den as { name: string }).name.slice(1); }
+    else if (n.k === 'sym' && /^[a-zA-Zα-ω][′″]$/.test(n.name)) y = n.name.slice(0, -1);
   });
   const ds = symbols(e).filter(isDiff).map(d => d.slice(1));
   if (!y && ds.length >= 2) {
@@ -36,12 +37,21 @@ export function letters(e: Eq): { y: string; x: string } | null {
 
 export const hasDifferentials = (e: Eq) => symbols(e).some(isDiff);
 
+/** the variable, when the equation names it (dy/dt, d²x/dt², dt): else the methods read y′ in x */
+export function slopeVar(e: Eq): string | undefined {
+  let named = hasDifferentials(e);
+  walk(e, n => { if (isLeibniz2(n)) named = true; });
+  return named ? letters(e)?.x : undefined;
+}
+
 /** checked with dy = y′·dx: the one fact that ties the three ways of writing a slope together */
 function bridge(before: Eq, next: Eq, y: string, x: string, factor: (env: Env) => number = one): MoveOk['check'] {
-  const yp = primed(y), dy = 'd' + y, dx = 'd' + x;
+  const yp = primed(y), dy = 'd' + y, dx = 'd' + x, ypp = y + '″', d2y = 'd²' + y;
   return env => {
     const at = { ...env };
     if (yp in at && dx in at) at[dy] = at[yp] * at[dx];
+    // and d²y/dx² is y″ when d²y = y″·dx²
+    if (ypp in at && dx in at) at[d2y] = at[ypp] * at[dx] * at[dx];
     return [[evaluate(next, at), factor(at) * evaluate(before, at)]];
   };
 }
@@ -50,16 +60,21 @@ function bridge(before: Eq, next: Eq, y: string, x: string, factor: (env: Env) =
 export function toLeibniz(e: Eq, id: string): MoveResult {
   const n = find(e, id);
   const L = letters(e);
-  if (!n || n.k !== 'sym' || !/^[a-zA-Zα-ω]′$/.test(n.name) || !L) return { error: 'Aim at a y′ to write it as dy/dx.' };
-  const y = n.name.slice(0, -1);
-  const d = frac(sym('d' + y), sym('d' + L.x));
+  if (!n || n.k !== 'sym' || !/^[a-zA-Zα-ω][′″]$/.test(n.name) || !L) return { error: 'Aim at a y′ to write it as dy/dx.' };
+  const y = n.name.slice(0, -1), second = n.name.endsWith('″');
+  const d = second ? frac(sym('d²' + y), pow(sym('d' + L.x), num(2))) : frac(sym('d' + y), sym('d' + L.x));
   const next = replace(e, id, d) as Eq;
-  return checked(e, { eq: next, label: `as d${y}/d${L.x}`, hints: newHints(), factor: one, select: d.id, rule: 'Leibniz notation', check: bridge(e, next, y, L.x) });
+  return checked(e, { eq: next, label: second ? `as d²${y}/d${L.x}²` : `as d${y}/d${L.x}`, hints: newHints(), factor: one, select: d.id, rule: 'Leibniz notation', check: bridge(e, next, y, L.x) });
 }
 
 /** dy/dx (aimed) → y′ */
 export function toPrime(e: Eq, id: string): MoveResult {
   const n = find(e, id);
+  if (n && isLeibniz2(n) && n.k === 'frac' && n.num.k === 'sym' && n.den.k === 'pow' && n.den.base.k === 'sym') {
+    const y = n.num.name.slice(2), x = n.den.base.name.slice(1), p = sym(y + '″');
+    const next = replace(e, id, p) as Eq;
+    return checked(e, { eq: next, label: `as ${y}″`, hints: newHints(), factor: one, select: p.id, rule: 'Leibniz notation', check: bridge(e, next, y, x) });
+  }
   if (!n || !isLeibniz(n)) return { error: 'Aim at a dy/dx to write it as y′.' };
   const y = (n.num as { name: string }).name.slice(1), x = (n.den as { name: string }).name.slice(1);
   const p = sym(primed(y));
@@ -119,7 +134,10 @@ export function integrateDifferentials(e: Eq): MoveResult {
 /** the same equation written with y′ only, for the methods and the graph: dy/dx → y′, dy → y′, dx → 1 */
 export function asPrime(e: Eq): Eq {
   const L = letters(e);
-  if (!L || (!hasDifferentials(e))) return e;
+  if (!L) return e;
+  // d²y/dx² → y″ first, so its dx isn't read as a loose differential
+  walk(e, n => { if (isLeibniz2(n) && n.k === 'frac' && n.num.k === 'sym') e = replace(e, n.id, sym(n.num.name.slice(2) + '″')) as Eq; });
+  if (!hasDifferentials(e)) return e;
   const yp = primed(L.y), dy = 'd' + L.y, dx = 'd' + L.x;
   const swap = (n: Node): Node => {
     if (isLeibniz(n) && (n.num as { name: string }).name === dy && (n.den as { name: string }).name === dx) return sym(yp);

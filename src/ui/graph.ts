@@ -220,7 +220,7 @@ export class Graph {
     tick();
   }
 
-  private is3d() { return !!this.eq && plotVars(this.eq).length === 3 && !odeVars(plotVars(this.eq)); }
+  private is3d() { return !!this.eq && plotVars(this.eq).length === 3 && !odeVars(plotVars(this.eq)) && !plotVars(this.eq).some(v => v.endsWith('″')); }
   private scale() { return this.W / (2 * this.view.span); }
   private toUnits(px: number, py: number): [number, number] {
     const s = this.scale();
@@ -247,7 +247,9 @@ export class Graph {
     if (family) eq = withConst(eq, vars.length === 2 ? 1 : 0);
     const ode = odeVars(vars);
     if (ode) return this.renderSlopes(eq, ode);
-    if (vars.length === 3 && !hasVector(eq)) return this.render3d(eq, vars);
+    // y″ with y′ and y is three letters, but not a surface: it is solved, not plotted
+    const second = vars.some(v => v.endsWith('″'));
+    if (vars.length === 3 && !hasVector(eq) && !second) return this.render3d(eq, vars);
     this.last = null;
     const s = this.scale();
     const X = (x: number) => W / 2 + (x - this.view.cx) * s, Y = (y: number) => H / 2 - (y - this.view.cy) * s;
@@ -260,7 +262,7 @@ export class Graph {
       c.globalAlpha = 1;
       return;
     }
-    if (vars.length === 0 || vars.length > 3 || vector) {
+    if (vars.length === 0 || vars.length > 3 || vector || second) {
       this.grid(X, Y, ux, uy, 'x', 'y');
       this.note.textContent = vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? (relOf(eq) !== 'expr' && holds(eq, {}) !== null ? `No letters left: ${toText(eq)} is ${holds(eq, {}) ? 'always' : 'never'} true.` : 'No letters, so nothing to graph.') : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
       return;

@@ -1,6 +1,6 @@
 // Linear text form. `ascii` is what the input bar shows when you edit;
 // the pretty form is for labels like "÷ 7" and conditions like "x ≠ 0".
-import { Node, FN_TEXT, isDiff } from './ast';
+import { Node, FN_TEXT, isDiff, isDiff2, isLeibniz2 } from './ast';
 import { isNeg, absOf } from './terms';
 
 export function toText(n: Node, ascii = false): string {
@@ -8,7 +8,7 @@ export function toText(n: Node, ascii = false): string {
   const p = (m: Node, wrap: boolean) => (wrap ? `(${toText(m, ascii)})` : toText(m, ascii));
   switch (n.k) {
     case 'num': return n.v < 0 ? minus + Math.abs(n.v) : String(n.v);
-    case 'sym': return n.name;
+    case 'sym': return ascii && isDiff2(n.name) ? 'd^2' + n.name.slice(2) : n.name;
     case 'eq': {
       const rel = n.rel ?? '=';
       if (rel === 'expr') return toText(n.lhs, ascii);
@@ -29,7 +29,7 @@ export function toText(n: Node, ascii = false): string {
       let out = '';
       n.factors.forEach((f, i) => {
         if (i === 0 && f.k === 'num' && Math.abs(f.v) === 1 && n.factors.length > 1 && n.factors[1].k !== 'num' && n.factors[1].k !== 'frac') { if (f.v < 0) out += minus; return; }
-        const leib = f.k === 'frac' && f.num.k === 'sym' && isDiff(f.num.name) && f.den.k === 'sym' && isDiff(f.den.name);
+        const leib = (f.k === 'frac' && f.num.k === 'sym' && isDiff(f.num.name) && f.den.k === 'sym' && isDiff(f.den.name)) || isLeibniz2(f);
         const wrap = f.k === 'add' || (f.k === 'frac' && !leib) || (i > 0 && isNeg(f));
         const s = p(f, wrap);
         // a number written after anything needs a dot: x·3 (x3 would read as x₃), 2·3!
@@ -48,6 +48,7 @@ export function toText(n: Node, ascii = false): string {
     case 'frac': {
       const simple = (m: Node): boolean => m.k === 'num' && m.v >= 0 || m.k === 'sym' || m.k === 'pow' || m.k === 'sqrt' || m.k === 'fn' || (m.k === 'mul' && !isNeg(m) && m.factors.every(f => f.k !== 'add' && f.k !== 'frac'));
       if (isNeg(n.num) && n.num.k !== 'add') return minus + toText({ ...n, num: absOf(n.num) }, ascii);
+      if (isLeibniz2(n)) return `${toText(n.num, ascii)}/${toText(n.den, ascii)}`;
       return `${p(n.num, !simple(n.num))}/${p(n.den, !(n.den.k === 'num' && n.den.v >= 0 || n.den.k === 'sym' || n.den.k === 'fn' || n.den.k === 'sqrt'))}`;
     }
     case 'pow': return `${p(n.base, (n.base.k !== 'num' && n.base.k !== 'sym' && n.base.k !== 'fn' || isNeg(n.base)) && !/^(?:[a-zA-Zα-ωπ]|\d+)$/.test(toText(n.base, ascii)))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;

@@ -64,6 +64,9 @@ function tokenize(src: string): Tok[] {
     if (c === '⟨' || c === '⟩' || c === ',') { out.push({ t: 'op', v: c }); i++; continue; }
     // □: a hole the live preview puts where something is still to come
     if (c === '□') { out.push({ t: 'id', v: '□' }); i++; continue; }
+    // d²y/dx² (or d^2y/dx^2, \frac{d^2y}{dx^2}): the second derivative, before d² could read as d squared
+    const leib2 = prevLetter ? null : /^(?:d(?:\^\{?2\}?|²) ?([a-zA-Z]) ?\/ ?d([a-zA-Z])(?:\^\{?2\}?|²)|\\frac\{d(?:\^\{?2\}?|²) ?([a-zA-Z])\}\{d([a-zA-Z])(?:\^\{?2\}?|²)\})(?![a-zA-Z0-9])/.exec(rest);
+    if (leib2) { out.push({ t: 'id', v: `leib2:${leib2[1] ?? leib2[3]}:${leib2[2] ?? leib2[4]}` }); i += leib2[0].length; continue; }
     const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
     // dy/dx stays dy/dx (a fraction of two differentials); the methods read it as y′
     if (leib) { out.push({ t: 'id', v: `leib:${leib[1] ?? leib[3]}:${leib[2] ?? leib[4]}` }); i += leib[0].length; continue; }
@@ -258,6 +261,7 @@ class Parser {
     this.i++;
     if (t.t === 'num') return number(t.v);
     if (t.t === 'id') {
+      if (t.v.startsWith('leib2:')) { const [, y, x] = t.v.split(':'); return frac(sym('d²' + y), pow(sym('d' + x), num(2))); }
       if (t.v.startsWith('leib:')) { const [, y, x] = t.v.split(':'); return frac(sym('d' + y), sym('d' + x)); }
       if (FUNC_NAMES.includes(t.v.replace(/[′″‴]+$/, '')) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
       return sym(t.v);

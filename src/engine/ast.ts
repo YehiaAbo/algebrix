@@ -77,6 +77,11 @@ export const sum = (v: string, lo: Node, hi: Node, arg: Node, id = newId(), prod
 export const primed = (name: string) => name + '′';
 /** a differential: dx, dy, dt (a letter of its own, d + one letter; written with an upright d) */
 export const isDiff = (name: string) => /^d[a-zA-Zα-ω]$/.test(name);
+/** d²y: the top of a second derivative d²y/dx² */
+export const isDiff2 = (name: string) => /^d²[a-zA-Zα-ω]$/.test(name);
+/** d²y/dx²: the second derivative as a fraction, d²y over (dx)² */
+export const isLeibniz2 = (n: Node): boolean =>
+  n.k === 'frac' && n.num.k === 'sym' && isDiff2(n.num.name) && n.den.k === 'pow' && n.den.base.k === 'sym' && isDiff(n.den.base.name) && n.den.exp.k === 'num' && n.den.exp.v === 2;
 /** names that read as function calls when followed by "(" */
 export const FUNC_NAMES = ['f', 'g', 'h'];
 /** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */

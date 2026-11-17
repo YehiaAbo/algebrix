@@ -4,16 +4,18 @@ import { describe, expect, it } from 'vitest';
 import '../src/engine/calculus';
 import { parseEquation, parseExpr } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
-import { Eq } from '../src/engine/ast';
-import { isErr, MoveOk } from '../src/engine/moves';
+import { Eq, walk } from '../src/engine/ast';
+import { isErr, MoveOk, neverZero } from '../src/engine/moves';
 import { simplify, newHints } from '../src/engine/simplify';
 import { isolate, tidy } from '../src/engine/techniques';
 import { finishCalc, plugIn } from '../src/engine/calcmoves';
 import { formsFor } from '../src/engine/forms';
-import { absorbConstant, renameConstant, shareExponential } from '../src/engine/ode';
+import { absorbConstant, renameConstant, shareExponential, generalSolution, odeKind, separate } from '../src/engine/ode';
+import { asPrime, slopeVar, toLeibniz, toPrime } from '../src/engine/leibniz';
 
 const P = (s: string) => parseEquation(s, true);
 const S = (s: string) => toText(simplify(parseExpr(s), newHints()));
+const idOf = (e: Eq, test: (n: { k: string; name?: string }) => boolean) => { let id = ''; walk(e, n => { if (!id && test(n as never)) id = n.id; }); return id; };
 const ok = (r: unknown) => { if (isErr(r as never)) throw new Error((r as { error: string }).error); return r as MoveOk; };
 const solved = (s: string) => { const r = isolate(P(s), 'x'); if (!Array.isArray(r)) throw new Error(r.error); return toText(r[r.length - 1].eq); };
 /** what e ends on: every piece of calculus worked out, then simplified, as the app does */
@@ -80,5 +82,43 @@ describe('one plain constant of integration', () => {
   });
   it('an exponential bottom is shared out over the top', () => {
     expect(toText(ok(shareExponential(P('y = (e^(3x)/3 + C)/e^(2x)'))).eq)).toBe('y = e^x/3 + Ce^(−2x)');
+  });
+});
+
+describe('the second derivative in Leibniz notation', () => {
+  it.each([
+    ['d^2y/dx^2 + y = 0', 'd²y/dx^2 + y = 0'], ['d²y/dx² = -y', 'd²y/dx^2 = −y'], ['\\frac{d^2y}{dx^2} = 4y', 'd²y/dx^2 = 4y'],
+    ['d^2y/dx^2 - 3 dy/dx + 2y = 0', 'd²y/dx^2 − 3 dy/dx + 2y = 0'], ['d^2x/dt^2 = -x', 'd²x/dt^2 = −x'],
+  ])('%s reads as %s, and reads back the same', (src, want) => {
+    const e = P(src);
+    expect(toText(e)).toBe(want);
+    expect(toText(P(toText(e, true)))).toBe(want);
+    expect(toText(P(toText(e)))).toBe(want);
+  });
+  it('the methods read it as y″, in the variable it names', () => {
+    expect(toText(asPrime(P('d^2y/dx^2 - 3 dy/dx + 2y = 0')))).toBe('y″ − 3y′ + 2y = 0');
+    expect(slopeVar(P('d^2x/dt^2 = -4x'))).toBe('t');
+    expect(slopeVar(P("x'' = -4x"))).toBeUndefined();
+    expect(toText(generalSolution(asPrime(P('d^2x/dt^2 = -4x')), 't') as Eq)).toBe('x = C_1 cos(2t) + C_2 sin(2t)');
+  });
+  it('aimed y″ is d²y/dx², and back', () => {
+    const e = P("y'' + y = 0");
+    const yy = idOf(e, n => n.k === 'sym' && n.name === 'y″');
+    const l = ok(toLeibniz(e, yy));
+    expect(toText(l.eq)).toBe('d²y/dx^2 + y = 0');
+    expect(toText(ok(toPrime(l.eq, idOf(l.eq, n => n.k === 'frac'))).eq)).toBe('y″ + y = 0');
+  });
+});
+
+describe('small readings', () => {
+  it('y′ = −ky: k is a constant, x the variable, and −kx reads constant first', () => {
+    expect(odeKind(P("y' = -k y"))).toBe('separable');
+    const s = ok(separate(P("y' = -k y")));
+    expect(toText(s.eq)).toBe('∫ 1/y dy = ∫ (−k) dx');
+    expect(finishCalc(s.eq).steps.map(x => toText(x.eq)).pop()).toBe('ln(|y|) = −kx + C');
+  });
+  it('nothing that cannot be 0 is noted as ≠ 0', () => {
+    for (const s of ['e^(2x)', 'x^2 + 1', '3e^x', '2^x', '(x^2+1)^2']) expect(neverZero(parseExpr(s)), s).toBe(true);
+    for (const s of ['x', 'x^2', 'x - 1', 'sin(x)', 'x^2 - 1', 'sqrt(x)']) expect(neverZero(parseExpr(s)), s).toBe(false);
   });
 });

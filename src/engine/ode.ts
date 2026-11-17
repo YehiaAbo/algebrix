@@ -47,13 +47,15 @@ function gather(n: Node): Node {
 }
 
 /** the unknown function's letter: the one that has a prime */
-function unknown(e: Eq): { y: string; x: string; order: number } | null {
+/** the function and its variable; v is the variable when the equation said it (dy/dt) */
+function unknown(e: Eq, v?: string): { y: string; x: string; order: number } | null {
   const vs = symbols(e);
   const second = vs.find(v => v.endsWith('″'));
   const first = vs.find(v => v.endsWith('′') && !v.endsWith('′′'));
   const y = second ? second.slice(0, -1) : first ? first.slice(0, -1) : null;
   if (!y) return null;
-  const x = vs.find(v => v !== y && !/[′″]$/.test(v) && !/^C(_\d)?$/.test(v)) ?? 'x';
+  // x or t when it is there; any other letter (y′ = −ky) is a constant, and the variable is x
+  const x = v ?? (['x', 't'].find(w => w !== y && vs.includes(w)) ?? (y === 'x' ? 't' : 'x'));
   return { y, x, order: second ? 2 : 1 };
 }
 
@@ -93,20 +95,20 @@ export function splitXY(R: Node, x: string, y: string): { g: Node; h: Node } | n
 export type OdeKind = 'separable' | 'linear' | 'second';
 
 /** which method fits */
-export function odeKind(e: Eq): OdeKind | null {
-  const u = unknown(e);
+export function odeKind(e: Eq, v?: string): OdeKind | null {
+  const u = unknown(e, v);
   if (!u || relOf(e) !== '=') return null;
   if (u.order === 2) return 'error' in coefficients(e, u.y) ? null : 'second';
   const R = slopeForm(e, u.y);
   if (R && splitXY(R, u.x, u.y)) return 'separable';
-  return 'error' in linearForm(e) ? null : 'linear';
+  return 'error' in linearForm(e, v) ? null : 'linear';
 }
 
 /* ---------- separable ---------- */
 
 /** y′ = g(x)h(y) ⇒ ∫ 1/h(y) dy = ∫ g(x) dx */
-export function separate(e: Eq): MoveResult {
-  const u = unknown(e);
+export function separate(e: Eq, v?: string): MoveResult {
+  const u = unknown(e, v);
   if (!u || u.order !== 1) return { error: 'Separating needs a first-order equation with y′ in it.' };
   const R = slopeForm(e, u.y);
   if (!R) return { error: `Get ${u.y}′ on its own first (e solves for it).` };
@@ -126,8 +128,8 @@ export function separate(e: Eq): MoveResult {
 /* ---------- linear first order ---------- */
 
 /** a·y′ + b·y + c = 0, with a, b, c in x only */
-function linearForm(e: Eq): { y: string; x: string; a: Node; P: Node; Q: Node } | { error: string } {
-  const u = unknown(e);
+function linearForm(e: Eq, v?: string): { y: string; x: string; a: Node; P: Node; Q: Node } | { error: string } {
+  const u = unknown(e, v);
   if (!u || u.order !== 1) return { error: 'Not a first-order equation.' };
   const F = add([e.lhs, neg(e.rhs)]), yp = primed(u.y);
   // F is a·y′ + b·y + c when it is linear: read a, b, c off by putting in 0s and 1s
@@ -165,8 +167,8 @@ function integratingFactor(P: Node, x: string): Node | { error: string } {
 }
 
 /** the integrating factor method, as steps: (standard form), × μ, (μy)′ = μQ, μy = ∫ μQ dx */
-export function linearSteps(e: Eq): MoveOk[] | { error: string } {
-  const f = linearForm(e);
+export function linearSteps(e: Eq, v?: string): MoveOk[] | { error: string } {
+  const f = linearForm(e, v);
   if ('error' in f) return f;
   const { y, x, a, P, Q } = f, yp = primed(y);
   const out: MoveOk[] = [];
@@ -306,8 +308,8 @@ function particular(a: number, b: number, c: number, g: Node, x: string): Node |
 const numNode = (x: number): Node => ratNode(x) ?? num(+x.toPrecision(12));
 
 /** C + r: a r² + b r + c = 0 */
-export function characteristic(e: Eq): Eq | { error: string } {
-  const u = unknown(e);
+export function characteristic(e: Eq, v?: string): Eq | { error: string } {
+  const u = unknown(e, v);
   if (!u || u.order !== 2) return { error: 'The characteristic equation is for y″ + b y′ + c y = 0.' };
   const k = coefficients(e, u.y);
   if ('error' in k) return k;
@@ -318,8 +320,8 @@ export function characteristic(e: Eq): Eq | { error: string } {
 const expOf = (k: Node, x: string): Node => pow(sym('e'), times(k, sym(x)));
 
 /** C + g: the general solution from the roots, checked by putting it back into the equation */
-export function generalSolution(e: Eq): Eq | { error: string } {
-  const u = unknown(e);
+export function generalSolution(e: Eq, v?: string): Eq | { error: string } {
+  const u = unknown(e, v);
   if (!u || u.order !== 2) return { error: 'The general solution here is for y″ + b y′ + c y = g(x).' };
   const k = coefficients(e, u.y);
   if ('error' in k) return k;

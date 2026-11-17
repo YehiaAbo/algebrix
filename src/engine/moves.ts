@@ -116,7 +116,7 @@ export function divideBoth(e: Eq, sel: string | null): MoveResult {
   const theirs = o.k === 'frac' ? { ...o, den: o.den.k === 'mul' ? { ...o.den, factors: [...o.den.factors, divisor] } : mul([o.den, divisor]) } : frac(o, divisor);
   return {
     eq: withSides(e, s, mine, theirs), label: `÷ ${t(divisor)}`, focus: divisor.id, select: divisor.id,
-    conditions: hasSymbols(divisor) ? [`${t(divisor)} ≠ 0`] : [], hints: newHints(),
+    conditions: hasSymbols(divisor) && !neverZero(divisor) ? [`${t(divisor)} ≠ 0`] : [], hints: newHints(),
     factor: env => 1 / evaluate(divisor, env),
   };
 }
@@ -137,7 +137,7 @@ export function multiplyBoth(e: Eq, sel: string | null): MoveResult {
   const theirs = o.k === 'mul' ? { ...o, factors: [m, ...o.factors] } : mul([m, o]);
   return {
     eq: withSides(e, s, mine, theirs), label: `× ${t(m)}`, focus: m.id, select: m.id,
-    conditions: hasSymbols(m) ? [`${t(m)} ≠ 0`] : [], hints: newHints(),
+    conditions: hasSymbols(m) && !neverZero(m) ? [`${t(m)} ≠ 0`] : [], hints: newHints(),
     factor: env => evaluate(m, env),
   };
 }
@@ -219,7 +219,7 @@ export function applyBoth(e: Eq, text: string, others: Eq[] = []): MoveResult {
   const isZero = !hasSymbols(x) && Math.abs(evaluate(x, {})) < 1e-12;
   if ((op === '*' || op === '/') && isZero) return { error: op === '/' ? 'Dividing by 0 is undefined.' : 'Multiplying by 0 erases the equation.' };
   const c = cloneFresh(x); c.from = undefined;
-  const cond = hasSymbols(x) && (op === '*' || op === '/') ? [`${t(x)} ≠ 0`] : [];
+  const cond = hasSymbols(x) && !neverZero(x) && (op === '*' || op === '/') ? [`${t(x)} ≠ 0`] : [];
   let L: Node, R: Node, factor: (env: Env) => number = one;
   if (op === '+' || op === '-') {
     L = appendTerms(e.lhs, [op === '-' ? negate(x) : x]);
@@ -402,11 +402,25 @@ export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): MoveRe
 }
 
 /** Is this equation solved for some variable? Returns that variable. */
+/** can't be 0 whatever the letters are: e^(2x), x² + 1, 3e^x. Saying "≠ 0" about these is noise. */
+export function neverZero(n: Node): boolean {
+  const nonneg = (m: Node): boolean => (m.k === 'num' && m.v >= 0) || (m.k === 'pow' && ((m.exp.k === 'num' && m.exp.v % 2 === 0) || neverZero(m))) || m.k === 'sqrt' || (m.k === 'fn' && m.name === 'abs') || (m.k === 'mul' && m.factors.every(nonneg)) || (m.k === 'add' && m.terms.every(nonneg));
+  switch (n.k) {
+    case 'num': return n.v !== 0;
+    case 'neg': return neverZero(n.arg);
+    case 'pow': return (n.base.k === 'sym' && n.base.name === 'e') || (n.base.k === 'num' && n.base.v > 0) || (n.exp.k === 'num' && n.exp.v > 0 && neverZero(n.base));
+    case 'mul': return n.factors.every(neverZero);
+    case 'frac': return neverZero(n.num);
+    case 'add': return n.terms.every(nonneg) && n.terms.some(t => t.k === 'num' && t.v > 0);
+    default: return false;
+  }
+}
+
 export function solvedFor(e: Eq): string | null {
   // an expression (a limit that came out as e) isn't solved for anything
   if (e.rel === 'expr' || e.rel === 'def') return null;
   for (const [a, b] of [[e.lhs, e.rhs], [e.rhs, e.lhs]] as const) {
-    if (a.k === 'sym' && !isDiff(a.name) && a.name !== 'e' && a.name !== 'π' && !symbols(b).includes(a.name)) return a.name;
+    if (a.k === 'sym' && !isDiff(a.name) && !a.name.startsWith('d²') && a.name !== 'e' && a.name !== 'π' && !symbols(b).includes(a.name)) return a.name;
   }
   return null;
 }

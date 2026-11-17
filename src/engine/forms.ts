@@ -1,6 +1,6 @@
 // Equivalent forms of the aimed expression (or the whole equation), for the
 // forms strip. Every candidate goes through the same numeric check as a move.
-import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate } from './ast';
+import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate, isLeibniz2 } from './ast';
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, combineFractions, standardOrder, hasExpandable } from './rewrite';
@@ -15,7 +15,7 @@ const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
   'factored': 'f', 'split into terms': 't', 'highest power first': 'o', 'log rules': 'l', 'as powers': 'p', 'as roots': 'r',
   'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
-  'as dy/dx': 'y', 'as y′': 'y', 'as differentials': 'k',
+  'as dy/dx': 'y', 'as y′': 'y', 'as d²y/dx²': 'y', 'as y″': 'y', 'as differentials': 'k',
 };
 
 const one = () => 1;
@@ -47,8 +47,8 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     out.push({ ...r, name, chord: CHORDS[name] });
   };
   const target = sel && sel !== 'eq' ? find(e, sel) : null;
-  if (target?.k === 'sym' && /^[a-zA-Zα-ω]′$/.test(target.name)) slope('as dy/dx', toLeibniz(e, target.id));
-  if (target && isLeibniz(target)) slope('as y′', toPrime(e, target.id));
+  if (target?.k === 'sym' && /^[a-zA-Zα-ω][′″]$/.test(target.name)) slope(target.name.endsWith('″') ? 'as d²y/dx²' : 'as dy/dx', toLeibniz(e, target.id));
+  if (target && (isLeibniz(target) || isLeibniz2(target))) slope(isLeibniz2(target) ? 'as y″' : 'as y′', toPrime(e, target.id));
   if (!target || (target.k === 'sym' && target.name.endsWith('′')) || isLeibniz(target)) slope('as differentials', toDifferentials(e));
   if (!target) {
     let h = newHints();

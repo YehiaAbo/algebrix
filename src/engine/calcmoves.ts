@@ -35,7 +35,8 @@ export function times(...fs: Node[]): Node {
   // simple pieces (letters, powers of letters) read best in front: 2x·cos(x²)
   const simple = (n: Node) => n.k === 'sym' || (n.k === 'pow' && n.base.k === 'sym');
   const letter = (n: Node) => (n.k === 'sym' ? n.name : n.k === 'pow' && n.base.k === 'sym' ? n.base.name : '');
-  const rank = (n: Node) => { const i = ['x', 'y', 'z'].indexOf(letter(n)); return i < 0 ? 9 : i; };
+  // and a constant's letter before the variables, as written: kx, ax², not xk
+  const rank = (n: Node) => { const l = letter(n), i = ['x', 'y', 'z', 't'].indexOf(l); return i >= 0 ? i : /^[a-df-zA-Zα-ω]$/.test(l) ? -1 : 9; };
   const sorted = [...rest.filter(simple).sort((a, b) => rank(a) - rank(b)), ...rest.filter(f => !simple(f))];
   const body = (c: number): Node => {
     if (!sorted.length) return num(c);

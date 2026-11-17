@@ -134,4 +134,13 @@ export const tests = {
     await key('e');
     await until(s => s.eq === 'y = Ce^(x^2/2)', 'solved as one family', 12000);
   },
+  async "d²x/dt² typed is the second derivative: y″ zooms to it, and it solves in t"({ load, key, aim, until, p }) {
+    await load("y'' + y = 0");
+    await aim('y″');
+    await p.keyboard.down('Tab'); await p.waitForTimeout(200); await key('y'); await p.keyboard.up('Tab');
+    await until(s => s.eq === 'd²y/dx^2 + y = 0', 'as d²y/dx²');
+    await load('d^2x/dt^2 = -4x');
+    await key('e');
+    await until(s => s.eq === 'x = C_1 cos(2t) + C_2 sin(2t)', 'solved in t', 12000);
+  },
 };

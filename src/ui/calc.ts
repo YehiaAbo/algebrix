@@ -5,7 +5,7 @@ import { parseExpr } from '../engine/parse';
 import { odeKind, separate, linearSteps, characteristic, generalSolution } from '../engine/ode';
 import { isErr, MoveOk } from '../engine/moves';
 import { formsFor } from '../engine/forms';
-import { asPrime, hasDifferentials, integrateDifferentials, toDifferentials, letters } from '../engine/leibniz';
+import { asPrime, hasDifferentials, integrateDifferentials, toDifferentials, letters, slopeVar } from '../engine/leibniz';
 import { tidy } from '../engine/techniques';
 import { derivStep, plugIn, lhopital, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
 import { intStep, uSub, byParts, plugBounds, geometric, ratioTest, taylor, writeOut } from '../engine/integrate';
@@ -39,7 +39,7 @@ export function calcTechniques(this: App): Tech[] {
   const field = rel === 'expr' && eq.lhs.k === 'vec' && !hasCalc(eq);
   const fresh = isFn && !hasCalc(eq) && !!v && !multi && !field;
   // dy/dx and dy = … dx are read as y′ for choosing a method
-  const ode = hasCalc(eq) ? null : odeKind(asPrime(eq));
+  const ode = hasCalc(eq) ? null : odeKind(asPrime(eq), slopeVar(eq));
 
   // Derivatives
   if (has(eq, 'deriv')) {
@@ -109,12 +109,12 @@ export function calcTechniques(this: App): Tech[] {
     add('Differential equations', { lead: true, key: 'i', label: 'integrate both sides', ok: !isErr(r), run: () => this.apply(integrateDifferentials(this.eq), 1.1) });
   }
   if (ode && ode !== 'second') {
-    add('Differential equations', { lead: true, key: 's', label: 'separate the variables', ok: ode === 'separable', run: () => this.apply(separate(asPrime(this.eq)), 1.1) });
-    add('Differential equations', { lead: true, key: 'f', label: 'integrating factor', ok: Array.isArray(linearSteps(asPrime(eq))), run: () => this.integratingFactor() });
+    add('Differential equations', { lead: true, key: 's', label: 'separate the variables', ok: ode === 'separable', run: () => this.apply(separate(asPrime(this.eq), slopeVar(this.eq)), 1.1) });
+    add('Differential equations', { lead: true, key: 'f', label: 'integrating factor', ok: Array.isArray(linearSteps(asPrime(eq), slopeVar(eq))), run: () => this.integratingFactor() });
     if (!hasDifferentials(eq)) add('Differential equations', { key: 'k', label: 'as differentials: dy = … dx', ok: !isErr(toDifferentials(eq)), run: () => this.apply(toDifferentials(this.eq), 1.1) });
   } else if (ode === 'second') {
-    add('Differential equations', { lead: true, key: 'r', label: 'characteristic equation', ok: true, run: () => this.addWork(characteristic(asPrime(this.eq)), 'characteristic equation: try y = e^(rx)') });
-    add('Differential equations', { key: 'g', label: 'general solution', ok: true, run: () => this.addWork(generalSolution(asPrime(this.eq)), 'general solution, checked in the equation') });
+    add('Differential equations', { lead: true, key: 'r', label: 'characteristic equation', ok: true, run: () => this.addWork(characteristic(asPrime(this.eq), slopeVar(this.eq)), 'characteristic equation: try y = e^(rx)') });
+    add('Differential equations', { key: 'g', label: 'general solution', ok: true, run: () => this.addWork(generalSolution(asPrime(this.eq), slopeVar(this.eq)), 'general solution, checked in the equation') });
   }
 
   // Vector fields
@@ -160,7 +160,7 @@ export function substituteU(this: App) {
 
 /** C + f: the integrating factor method, every step played */
 export function integratingFactor(this: App) {
-  const s = linearSteps(asPrime(this.eq));
+  const s = linearSteps(asPrime(this.eq), slopeVar(this.eq));
   if (!Array.isArray(s)) return this.refuse(s.error);
   this.play(s, () => this.say('Now integrate the right side: C + i, or e to finish and solve for the function.'));
 }
@@ -169,10 +169,10 @@ export function integratingFactor(this: App) {
 export function solveOde(this: App) {
   // already in differentials and separated: integrate both sides, then finish
   if (hasDifferentials(this.eq)) { const r = integrateDifferentials(this.eq); if (!isErr(r)) return this.play([r], () => this.finishCalculus()); }
-  const k = odeKind(asPrime(this.eq));
-  if (k === 'second') return this.addWork(generalSolution(asPrime(this.eq)), 'general solution (with a particular solution when the right side isn’t 0), checked in the equation');
-  if (k === 'separable') { const r = separate(asPrime(this.eq)); if (isErr(r)) return this.refuse(r.error); return this.play([r], () => this.finishCalculus()); }
-  const s = linearSteps(asPrime(this.eq));
+  const k = odeKind(asPrime(this.eq), slopeVar(this.eq));
+  if (k === 'second') return this.addWork(generalSolution(asPrime(this.eq), slopeVar(this.eq)), 'general solution (with a particular solution when the right side isn’t 0), checked in the equation');
+  if (k === 'separable') { const r = separate(asPrime(this.eq), slopeVar(this.eq)); if (isErr(r)) return this.refuse(r.error); return this.play([r], () => this.finishCalculus()); }
+  const s = linearSteps(asPrime(this.eq), slopeVar(this.eq));
   if (!Array.isArray(s)) return this.refuse(s.error);
   this.play(s, () => this.finishCalculus());
 }
