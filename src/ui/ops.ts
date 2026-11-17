@@ -2,7 +2,9 @@
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { Node, find, findPath } from '../engine/ast';
 import { toText } from '../engine/print';
-import { applyBothChecked, isErr, MoveResult } from '../engine/moves';
+import { applyBothChecked, isErr, MoveResult, checked } from '../engine/moves';
+import { wrapBoth, Wrap } from '../engine/techniques';
+import { parseExpr } from '../engine/parse';
 import { absOf, coefOf } from '../engine/terms';
 import { $, OP_SHOW } from './shared';
 import type { App } from './app';
@@ -44,16 +46,33 @@ export function openOp(this: App, op: string) {
 export function opResult(this: App): MoveResult {
   const v = $<HTMLInputElement>('op-input').value.trim();
   if (v.length <= 1) return { error: 'Type what to apply, like 7 or 3x.' };
+  const w = wrapOf(v);
+  if (w) return 'error' in w ? w : checked(this.eq, wrapBoth(this.eq, w.f, w.arg));
   return applyBothChecked(this.eq, v, this.slots.map((_, j) => this.eqOf(j)));
+}
+
+const WORDS: Record<string, Wrap> = { sqrt: 'sqrt', '√': 'sqrt', cbrt: 'cbrt', '∛': 'cbrt', ln: 'ln', log: 'log', exp: 'exp', 'e^': 'exp', sin: 'sin', cos: 'cos', tan: 'tan', asin: 'asin', acos: 'acos', atan: 'atan', arcsin: 'asin', arccos: 'acos', arctan: 'atan', '1/': 'recip', flip: 'recip' };
+
+/** = ^2, = sqrt, = ln: a power or a function on both sides, typed the way the + − × ÷ ones are */
+function wrapOf(v: string): { f: Wrap; arg?: ReturnType<typeof parseExpr> } | { error: string } | null {
+  const t = v.replace(/^[+]\s*(?=[\^a-z√∛]|1\/$)/, '').replace(/\s+/g, '');
+  const pw = /^(?:\^|\*\*)(.+)$/.exec(t);
+  if (pw) {
+    let arg;
+    try { arg = parseExpr(pw[1]); } catch (e) { return { error: (e as Error).message }; }
+    const k = arg.k === 'num' ? arg.v : arg.k === 'frac' && arg.num.k === 'num' && arg.num.v === 1 && arg.den.k === 'num' ? 1 / arg.den.v : NaN;
+    return k === 2 ? { f: 'square' } : k === 3 ? { f: 'cube' } : k === 1 / 2 ? { f: 'sqrt' } : k === 1 / 3 ? { f: 'cbrt' } : { f: 'power', arg };
+  }
+  return WORDS[t] ? { f: WORDS[t] } : null;
 }
 
 export function onOpType(this: App) {
   const r = this.opResult();
   const v = $<HTMLInputElement>('op-input').value.trim();
   const op = ({ '−': '-', '×': '*', '·': '*', '÷': '/' } as Record<string, string>)[v[0]] ?? v[0];
-  $('op-sym').textContent = OP_SHOW[op] ? `${OP_SHOW[op]} both sides` : 'both sides';
+  $('op-sym').textContent = !isErr(r) && wrapOf(v) ? r.label : OP_SHOW[op] ? `${OP_SHOW[op]} both sides` : 'both sides';
   $('op').classList.toggle('bad', isErr(r) && v.length > 1);
-  $('op-note').textContent = isErr(r) ? (v.length > 1 ? r.error : 'start with + − × ÷') : r.conditions?.length ? `needs ${r.conditions.join(', ')}` : 'Enter to apply';
+  $('op-note').textContent = isErr(r) ? (v.length > 1 ? r.error : 'start with + − × ÷, or ^2, sqrt, ln') : r.conditions?.length ? `needs ${r.conditions.join(', ')}` : 'Enter to apply';
   this.peek = isErr(r) ? null : r.eq;
   this.renderMain({ quick: true });
 }

@@ -108,4 +108,12 @@ export const tests = {
     const ans = await p.evaluate(() => document.getElementById('answer').textContent);
     assert(ans.includes('2kπ') && !ans.includes('∪'), `one period: ${ans}`);
   },
+  async 'the both-sides box squares, roots and logs too'({ load, key, type, until }) {
+    await load('sqrt(x) = 3');
+    await key('='); await type('^2'); await key('Enter');
+    await until(s => s.eq === '(sqrt(x))^2 = 3^2', 'squared both sides');
+    await load('e^x = 3');
+    await key('='); await type('ln'); await key('Enter');
+    await until(s => s.eq === 'ln(e^x) = ln(3)', 'ln both sides');
+  },
 };

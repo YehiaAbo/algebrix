@@ -7,7 +7,7 @@ import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms'
 import { simplify, newHints, nonneg as isNonneg } from './simplify';
 import { expandAll, hasExpandable, findExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
 import { toText } from './print';
-import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked } from './moves';
+import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked, neverZero } from './moves';
 import { factorFully } from './polytools';
 
 const t = (n: Node) => toText(n);
@@ -105,7 +105,7 @@ export function wrapBoth(e: Eq, f: Wrap, arg: Node = num(2)): MoveResult {
   if (f === 'square' || (f === 'power' && even(k)) || f === 'sin' || f === 'cos' || f === 'tan') conditions.push('this can add solutions: check answers');
   if (f === 'sqrt' || f === 'cbrt' || (f === 'root' && !(Number.isInteger(k) && k % 2 === 1)) || (f === 'power' && !Number.isInteger(k))) sides.filter(s => !nonNeg(s) && hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≥ 0`));
   if (f === 'ln' || f === 'log' || f === 'logb') sides.filter(s => !positive(s)).forEach(s => conditions.push(`${t(s)} > 0`));
-  if (f === 'recip' || (f === 'power' && k < 0)) sides.filter(s => hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≠ 0`));
+  if (f === 'recip' || (f === 'power' && k < 0)) sides.filter(s => hasSymbols(s) && !neverZero(s)).forEach(s => conditions.push(`${t(s)} ≠ 0`));
   if (f === 'asin' || f === 'acos') sides.filter(s => hasSymbols(s)).forEach(s => conditions.push(`−1 ≤ ${t(s)} ≤ 1`));
   const g = NUMERIC[f];
   const label = LABELS[f] ?? ({ power: `power ${a} both sides`, root: `${a}th root both sides`, powb: `${a} to both sides`, logb: `log base ${a} both sides` } as Record<string, string>)[f] ?? `${FN_LABEL[f] ?? f} both sides`;
