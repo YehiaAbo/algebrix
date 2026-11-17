@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -211,6 +211,19 @@ function mulRule(fs: Node[], id: string, h: Hints): Node | null {
     if (c.v === 1) return mulOf(fs.filter(f => f !== c), id);
     if (fs[0] !== c) return mul([c, ...fs.filter(f => f !== c)], id);
   }
+  // eˣ·eˣ → e²ˣ, xⁿ·x → xⁿ⁺¹: a letter power with the same base adds its exponents
+  // (but eˣ·eʸ stays apart, as separating variables needs it)
+  const oneLetter = (a: Node, b: Node) => new Set([...symbols(a), ...symbols(b)].filter(n => n !== 'e' && n !== 'π')).size <= 1;
+  for (let i = 0; i < fs.length; i++) {
+    const a = fs[i];
+    if (a.k !== 'pow' || a.exp.k === 'num') continue;
+    const j = fs.findIndex((b, k) => k !== i && b.k !== 'num' && (b.k === 'pow' ? key(b.base) === key(a.base) && oneLetter(a.exp, b.exp) : key(b) === key(a.base)));
+    if (j < 0) continue;
+    const b = fs[j];
+    h.absorbs.set(b.id, a.id);
+    const merged = pow(a.base, add([a.exp, b.k === 'pow' ? b.exp : num(1)]), a.id);
+    return mulOf(fs.flatMap((f, k) => (k === i ? [merged] : k === j ? [] : [f])), id);
+  }
   // x·x → x², x·x² → x³
   const baseOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' ? f.base : f);
   const expOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' ? f.exp.v : 1);
@@ -224,7 +237,7 @@ function mulRule(fs: Node[], id: string, h: Hints): Node | null {
     const total = group.reduce((s, f) => s + expOf(f), 0);
     group.slice(1).forEach(f => h.absorbs.set(f.id, baseOf(first).id));
     const merged = total === 1 ? baseOf(first)
-      : first.k === 'pow' ? pow(first.base, num(total, (first.exp as Node).id), first.id)
+      : first.k === 'pow' && first.exp.k === 'num' ? pow(first.base, num(total, first.exp.id), first.id)
       : pow(first, num(total));
     const out: Node[] = [];
     fs.forEach(f => {

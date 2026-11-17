@@ -5,6 +5,13 @@ import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { isolate } from '../src/engine/techniques';
 import { formsFor } from '../src/engine/forms';
+import '../src/engine/calculus';
+import { parseExpr } from '../src/engine/parse';
+import { simplify, newHints } from '../src/engine/simplify';
+import { evaluate } from '../src/engine/ast';
+import { finishCalc } from '../src/engine/calcmoves';
+import { separate } from '../src/engine/ode';
+import { isErr } from '../src/engine/moves';
 
 const P = (s: string) => parseEquation(s, true);
 const steps = (s: string, v = 'x') => { const r = isolate(P(s), v); if (!Array.isArray(r)) throw new Error(r.error); return r.map(m => m.label); };
@@ -64,5 +71,40 @@ describe('Tab on a lone expression', () => {
   });
   it('reads sin x cos x as half of sin 2x', () => {
     expect(toText(form('sin(x)cos(x)', 'trig: double angle')!.eq)).toBe('sin(2x)/2');
+  });
+});
+
+describe('powers with the same base', () => {
+  const S = (s: string) => toText(simplify(parseExpr(s), newHints()));
+  it('adds the exponents (eˣ·eˣ was once e², which only the safety net caught)', () => {
+    expect(S('e^x e^x')).toBe('e^(2x)');
+    expect(S('e^x e^(-x)')).toBe('1');
+    expect(S('e^x e^(2x) e')).toBe('e^(3x + 1)');
+    expect(S('x^n x')).toBe('x^(n + 1)');
+    for (const s of ['e^x e^x', 'e^x(1 + e^x) - e^x e^x', '2^x 2^x']) {
+      const n = parseExpr(s);
+      expect(evaluate(simplify(n, newHints()), { x: -0.7 })).toBeCloseTo(evaluate(n, { x: -0.7 }), 9);
+    }
+  });
+  it('keeps eˣ·eʸ apart, as separating needs it', () => {
+    expect(S('e^x e^y')).toBe('e^xe^y');
+  });
+});
+
+describe('calculus read-outs', () => {
+  const done = (s: string) => { const r = finishCalc(P(s)); return toText(r.steps[r.steps.length - 1].eq); };
+  it('integrates an exponential below by bringing it up', () => {
+    expect(done('int 1/e^y dy')).toBe('−e^(−y) + C');
+    expect(done('int 1/2^y dy')).toBe('−2^(−y)/ln(2) + C');
+    expect(done('int x/e^x dx')).toBe('−xe^(−x) − e^(−x) + C');
+  });
+  it('writes F/a with the sign in front and one bottom', () => {
+    expect(done('int 1/e^(2x) dx')).toBe('−e^(−2x)/2 + C');
+    expect(done('int 3^(2x) dx')).toBe('3^(2x)/(2 ln(3)) + C');
+    expect(done('int 1/(2-3x) dx')).toBe('−ln|2 − 3x|/3 + C');
+  });
+  it('separates e^(x + y) as eˣ·eʸ', () => {
+    expect(isErr(separate(P("y' = e^(x+y)")))).toBe(false);
+    expect(isErr(separate(P("y' = x e^(x-y)")))).toBe(false);
   });
 });

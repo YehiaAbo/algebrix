@@ -77,6 +77,11 @@ export function splitXY(R: Node, x: string, y: string): { g: Node; h: Node } | n
     if (n.k === 'mul') return n.factors.forEach(f => take(f, up));
     if (n.k === 'frac') { take(n.num, up); take(n.den, !up); return; }
     if (n.k === 'neg') { (up ? top : bottom).push(num(-1)); take(n.arg, up); return; }
+    // e^(x + y) is eˣ·eʸ
+    if (n.k === 'pow' && n.exp.k === 'add' && !dependsOn(n.base, x) && !dependsOn(n.base, y) && dependsOn(n.exp, x) && dependsOn(n.exp, y)) {
+      n.exp.terms.forEach(t => take(pow(cloneFresh(n.base), cloneFresh(t)), up));
+      return;
+    }
     (up ? top : bottom).push(n);
   };
   take(R, true);

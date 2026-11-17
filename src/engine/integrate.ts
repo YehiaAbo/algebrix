@@ -40,7 +40,9 @@ function slope(u: Node, v: string): number | null {
 }
 
 /** F/a for the reverse chain rule on a linear inside */
-const over = (F: Node, a: number): Node => (a === 1 ? F : a === -1 ? times(num(-1), F) : Number.isInteger(1 / a) ? times(num(1 / a), F) : frac(F, ratNode(a) ?? num(a)));
+// F/a, written the way you would: −e^(−2x)/2, not e^(−2x)/(−2); 3^(2x)/(2 ln 3), not a fraction over 2
+const over = (F: Node, a: number): Node => (a === 1 ? F : a < 0 ? times(num(-1), over(F, -a)) : Number.isInteger(1 / a) ? times(num(1 / a), F)
+  : F.k === 'frac' && Number.isInteger(a) ? frac(F.num, times(num(a), F.den)) : frac(F, ratNode(a) ?? num(a)));
 
 const exponent = (n: Node): number | null => {
   const x = n.k === 'num' ? n.v : n.k === 'frac' && n.num.k === 'num' && n.den.k === 'num' ? n.num.v / n.den.v : n.k === 'neg' && n.arg.k === 'num' ? -n.arg.v : null;
@@ -193,6 +195,12 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
     // a fraction of polynomials: divide out and split into simple fractions first, then each is a rule
     const { p, label } = rational(u)!;
     return checked(e, { eq: replace(e, T.id, int(v, p, T.lo && fresh(T.lo), T.hi && fresh(T.hi))), label, hints: newHints(), factor: one, select: null, rule: label });
+  }
+  else if (u.k === 'frac' && u.den.k === 'pow' && !dependsOn(u.den.base, v) && dependsOn(u.den.exp, v)) {
+    // 1/eˣ is e⁻ˣ, x/2ˣ is x·2⁻ˣ: up on top, it is a rule (or by parts)
+    const up = pow(fresh(u.den.base), neg(fresh(u.den.exp)));
+    const top = u.num.k === 'num' && u.num.v === 1 ? up : mul([fresh(u.num), up]);
+    return checked(e, { eq: replace(e, T.arg.id, top), label: '1/aᵘ = a⁻ᵘ', hints: newHints(), factor: one, select: null, rule: 'simplify' });
   }
   else return { error: 'No rule fits as it stands. Try u-substitution (C + u), by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions).' };
   return finish(e, T, next, label);

@@ -98,4 +98,8 @@ export const tests = {
     const bar = await p.evaluate(() => document.getElementById('hints').textContent);
     assert(bar.includes('is false'), `2 = 3 is judged: ${bar}`);
   },
+  async 'a quotient rule answer multiplies out the top only'({ load, key, until }) {
+    await load('d/dx (e^x/(1+e^x))');
+    await key('e'); await until(s => s.eq === 'e^x/((1 + e^x)^2)', 'the bottom stays squared', 12000);
+  },
 };

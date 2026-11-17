@@ -4,7 +4,10 @@ import { find, relOf, key, Eq, Node, symbols, walk, int, num, lim, cloneFresh, e
 import { toText } from '../engine/print';
 import { parseExpr } from '../engine/parse';
 import { odeKind, separate, linearSteps, characteristic, generalSolution } from '../engine/ode';
-import { isErr, MoveOk } from '../engine/moves';
+import { isErr, MoveOk, checked } from '../engine/moves';
+import { expandAll } from '../engine/rewrite';
+import { simplify, newHints } from '../engine/simplify';
+import { frac } from '../engine/ast';
 import { formsFor } from '../engine/forms';
 import { asPrime, hasDifferentials, integrateDifferentials, toDifferentials, letters, slopeVar } from '../engine/leibniz';
 import { tidy } from '../engine/techniques';
@@ -220,7 +223,21 @@ export function finishCalculus(this: App) {
     if (rel === 'expr' || rel === 'def') {
       // the tidiest of simplified and expanded: 1/(x + 1)², not 1/(x² + 2x + 1); never a longer expansion
       const len = (e: Eq) => toText(e).length;
-      const f = formsFor(this.eq, null).filter(x => x.name === 'simplified' || x.name === 'expanded').sort((a, b) => len(a.eq) - len(b.eq))[0];
+      const cands: MoveOk[] = formsFor(this.eq, null).filter(x => x.name === 'simplified' || x.name === 'expanded');
+      // a quotient rule's answer: multiply out the top only, so e^x/(1 + e^x)² keeps its bottom
+      const side = rel === 'def' ? 'rhs' : 'lhs', L = this.eq[side];
+      if (L.k === 'frac') {
+        const h = newHints();
+        let T = simplify(frac(expandAll(L.num, h), L.den, L.id), h);
+        // −x² + 1 on top reads 1 − x²
+        if (T.k === 'frac' && T.num.k === 'add' && T.num.terms[0].k === 'neg') {
+          const ts = T.num.terms, i = ts.findIndex(t => t.k === 'num' && t.v > 0);
+          if (i > 0) T = { ...T, num: { ...T.num, terms: [ts[i], ...ts.filter((_, j) => j !== i)] } };
+        }
+        const top = checked(this.eq, { eq: side === 'lhs' ? mkEq(T, this.eq.rhs, this.eq.rel) : mkEq(this.eq.lhs, T, this.eq.rel), label: 'simplified', hints: h, factor: () => 1, select: null });
+        if (!isErr(top) && key(top.eq) !== key(this.eq)) cands.push(top);
+      }
+      const f = cands.sort((a, b) => len(a.eq) - len(b.eq))[0] as (MoveOk & { name?: string }) | undefined;
       if (f && !(f.name === 'expanded' && len(f.eq) > len(this.eq))) return this.apply(f, 1.15);
       const t = tidy(this.eq);
       if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2);
