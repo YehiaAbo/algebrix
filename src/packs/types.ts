@@ -8,6 +8,9 @@ export interface Synth {
   tone(freq: number, dur: number, vol: number, type?: OscillatorType, glide?: number, delay?: number): void;
   /** a filtered click or hiss: length (s), volume, centre frequency (Hz), filter sharpness, delay (s) */
   noise(dur: number, vol: number, freq: number, q?: number, delay?: number): void;
+  /** a sound rendered once from samples and cached by key: render gets the sample rate and
+   *  returns the samples (−1..1); played at a volume and a rate (1 = as rendered), after a delay */
+  sample(key: string, render: (sampleRate: number) => Float32Array, vol: number, rate?: number, delay?: number): void;
 }
 
 /** every moment the app makes a sound for */

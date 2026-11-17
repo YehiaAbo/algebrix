@@ -43,7 +43,22 @@ const synth: Synth = {
     src.connect(f).connect(g).connect(out!);
     src.start(t);
   },
+  sample(name, render, vol, rate = 1, delay = 0) {
+    const c = ctx();
+    let buf = rendered.get(name);
+    if (!buf) {
+      const d = render(c.sampleRate);
+      buf = c.createBuffer(1, d.length, c.sampleRate);
+      buf.getChannelData(0).set(d);
+      rendered.set(name, buf);
+    }
+    const src = c.createBufferSource(), g = c.createGain();
+    src.buffer = buf; src.playbackRate.value = rate; g.gain.value = vol;
+    src.connect(g).connect(out!);
+    src.start(c.currentTime + delay);
+  },
 };
+const rendered = new Map<string, AudioBuffer>();
 
 let active: Sounds = soundPack(prefs.sounds).make(synth);
 onPrefs((p, k) => {

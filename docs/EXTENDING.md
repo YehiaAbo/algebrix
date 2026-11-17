@@ -33,8 +33,13 @@ export const chalk: SoundPack = {
 ```
 
 Add `chalk` to `SOUND_PACKS` in `src/packs/index.ts`. It appears under Settings → Sounds.
-`tone` and `noise` are already connected to the volume and mute settings. If you want
-recorded samples instead of synthesis, keep the same `Sounds` shape and play them inside each function.
+`tone`, `noise` and `sample` are already connected to the volume and mute settings.
+`sample(key, render, vol, rate)` plays samples you compute yourself: `render` gets the sample
+rate and returns a `Float32Array`, rendered once and cached by `key`. The Bricks pack
+(`src/packs/sounds/bricks.ts`) builds every sound this way, by modal synthesis (a struck
+brick as a few damped plate modes), with several variants per sound so no two clicks match;
+`WAV_OUT=dir npx vitest run tests/bricks.test.ts` writes them out to listen to.
+Recorded samples work the same way: decode them once and return their samples from `render`.
 
 ## A look
 
