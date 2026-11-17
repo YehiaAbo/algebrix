@@ -59,6 +59,8 @@ function rule(n: Node, h: Hints): Node | null {
         const v = base.v ** -exp.v;
         if (safe(v)) return frac(num(1), num(v, base.id), n.id);
       }
+      // (1/b)ⁿ = 1/bⁿ: sec² typed as (1/cos x)² is 1/cos² x
+      if (base.k === 'frac' && base.num.k === 'num' && base.num.v === 1 && exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 1) return frac(base.num, pow(base.den, exp), n.id);
       // integer roots of numbers: 8^(1/3) → 2
       if (base.k === 'num' && base.v > 0 && exp.k === 'frac' && exp.num.k === 'num' && exp.num.v === 1 && exp.den.k === 'num' && exp.den.v > 1) {
         const r = Math.round(base.v ** (1 / exp.den.v));
@@ -309,6 +311,15 @@ function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
       h.absorbs.set(nf[j].id, df[i].id);
       nf.splice(j, 1); df.splice(i, 1); cancelled = true;
     }
+  }
+  // a thing over its own root: x/√x = √x
+  for (let i = df.length - 1; i >= 0; i--) {
+    const r = df[i];
+    if (r.k !== 'sqrt') continue;
+    const j = nf.findIndex(f => key(f) === key(r.arg));
+    if (j < 0) continue;
+    h.absorbs.set(nf[j].id, r.id);
+    nf[j] = r; df.splice(i, 1); cancelled = true;
   }
   // powers of the same thing: x³/x² = x, x/x³ = 1/x²
   const baseOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? f.base : f);

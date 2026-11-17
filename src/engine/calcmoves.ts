@@ -7,7 +7,7 @@ import { dependsOn, derivative } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
-import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode } from './integrate';
+import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries } from './integrate';
 import { toText } from './print';
 import { distributeNode } from './rewrite';
 
@@ -331,6 +331,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
   const steps: MoveOk[] = [];
   const active = { ...subs };
   let cur = e;
+  // by parts on a side that is one integral: if that integral comes back (eˣ sin x), solve for it
+  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string } | null = null, parts = 0;
   for (let i = 0; i < 60; i++) {
     const t = nextCalc(cur);
     let r: MoveResult;
@@ -347,15 +349,27 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       if (isErr(r)) { const h = expLog(cur, t.id); if (!isErr(h)) r = h; }
       if (isErr(r)) { const h = asQuotient(cur, t.id); if (!isErr(h)) r = h; }
     } else if (t.k === 'at') r = plugBounds(cur, t.id);
-    else if (t.k === 'sum') r = typeof finiteTerms(t) === 'string' ? geometric(cur, t.id) : writeOut(cur, t.id);
+    else if (t.k === 'sum') {
+      r = typeof finiteTerms(t) === 'string' ? geometric(cur, t.id) : writeOut(cur, t.id);
+      if (isErr(r) && /^Not geometric/.test(r.error)) { const q = pSeries(cur, t.id); if (!isErr(q) || q.error !== 'Not a p-series.') r = q; }
+    }
     else if (t.k === 'grad') r = gradStep(cur, t.id);
     else if (t.k === 'mul') r = dotStep(cur, t.id);
     else {
-      r = intStep(cur, t.id);
+      const back = origin && t.k === 'int' ? cameBack(cur, origin.side, origin.f, origin.v, t) : null;
+      r = back ?? intStep(cur, t.id);
       if (isErr(r)) {
         const s = uSub(cur, t.id);
         if (!isErr(s.move) && s.u && s.g) { r = s.move; if (s.side) active[s.u] = s.g; }
-        else { const b = byParts(cur, t.id); if (!isErr(b)) r = b; else { const x = expandInside(cur, t); if (x) r = x; } }
+        else {
+          const b = byParts(cur, t.id);
+          if (!isErr(b)) {
+            if (++parts > 4) return { steps, stuck: 'By parts keeps going without the integral getting simpler. Try another u (aim at it, then C + b).' };
+            const side = cur.lhs.id === t.id ? 'lhs' : cur.rhs.id === t.id ? 'rhs' : null;
+            if (!origin && side && t.k === 'int' && !t.lo) origin = { side, f: t.arg, v: t.v };
+            r = b;
+          } else { const x = expandInside(cur, t); if (x) r = x; }
+        }
       }
     }
     if (isErr(r)) return { steps, stuck: r.error };
@@ -366,6 +380,26 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     if (t?.k === 'at' || t?.k === 'int' || (t?.k === 'deriv' && inLim(cur))) { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
   }
   return { steps };
+}
+
+/** ∫ eˣ sin x by parts twice gives eˣ sin x − eˣ cos x − ∫ eˣ sin x: the integral I came back.
+ *  The side was I all along, so I = A + kI, and I = A/(1 − k) */
+function cameBack(e: Eq, side: 'lhs' | 'rhs', f: Node, v: string, t: Node): MoveResult | null {
+  if (t.k !== 'int' || t.lo || t.v !== v || !findPath(e[side], t.id)) return null;
+  const xs = [0.37, 0.91, 1.53];
+  const ratios = xs.map(x => evaluate(t.arg, { [v]: x }) / evaluate(f, { [v]: x }));
+  if (!ratios.every(r => Number.isFinite(r) && Math.abs(r - ratios[0]) < 1e-9 * (1 + Math.abs(r)))) return null;
+  const S = e[side], A = replace(S, t.id, num(0)), B = replace(S, t.id, num(1));
+  const ks = xs.map(x => evaluate(B, { [v]: x }) - evaluate(A, { [v]: x }));
+  if (!ks.every(k => Math.abs(k - ks[0]) < 1e-9 * (1 + Math.abs(k)))) return null;
+  const k = ks[0] * ratios[0];
+  if (Math.abs(1 - k) < 1e-9) return null;
+  const h = newHints();
+  const I = simplify(frac(A, ratNode(1 - k) ?? num(1 - k)), h);
+  const next = side === 'lhs' ? eq(plus(I, sym('C')), e.rhs, e.rel) : eq(e.lhs, plus(I, sym('C')), e.rel);
+  const m = ratNode(Math.abs(k)), mt = !m ? `${+Math.abs(k).toPrecision(4)}I` : m.k === 'num' ? `${m.v === 1 ? '' : m.v}I` : m.k === 'frac' && m.num.k === 'num' && m.den.k === 'num' ? `${m.num.v === 1 ? '' : m.num.v}I/${m.den.v}` : 'kI';
+  const r = checked(e, { eq: next, label: `the integral came back: I = … ${k > 0 ? '+' : '−'} ${mt}, so solve for I`, hints: h, factor: one, select: null, rule: 'solve for the integral' });
+  return isErr(r) ? null : r;
 }
 
 /** a limit whose inside has no derivatives left to take */

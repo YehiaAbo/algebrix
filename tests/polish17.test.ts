@@ -23,8 +23,9 @@ function finish(s: string): string {
   const { steps, stuck } = finishCalc(P(s));
   if (stuck) throw new Error(stuck);
   let e: Eq = steps[steps.length - 1].eq;
-  const f = formsFor(e, null).find(x => x.name === 'simplified' || x.name === 'expanded');
-  if (f) e = f.eq;
+  const len = (q: Eq) => toText(q).length;
+  const f = formsFor(e, null).filter(x => x.name === 'simplified' || x.name === 'expanded').sort((a, b) => len(a.eq) - len(b.eq))[0];
+  if (f && !(f.name === 'expanded' && len(f.eq) > len(e))) e = f.eq;
   else { const t = tidy(e); if (t) e = t.eq; }
   return toText(e);
 }
@@ -170,4 +171,30 @@ describe('every solution of a trig equation', () => {
     ['sin(x) = 1', 'x = π/2 + 2kπ'],
     ['cos(3x - 1) = 0', 'x = (π/2 + 1)/3 + 2kπ/3 or x = (−π/2 + 1)/3 + 2kπ/3'],
   ])('%s: %s', (src, want) => expect(every(src)).toBe(`every solution: ${want}, for any whole number k`));
+});
+
+describe('derivatives finish the way a textbook writes them', () => {
+  it.each([
+    ['d/dx (x/(x+1))', '1/((x + 1)^2)'], ['d/dx (x sqrt(x))', '3 sqrt(x)/2'], ['d/dx x^x', 'x^x(ln(x) + 1)'],
+    ['d/dx (x^2 + 1)^3', '6x(x^2 + 1)^2'], ['d/dx sqrt(x^2+1)', 'x/sqrt(x^2 + 1)'],
+  ])('%s = %s', (src, want) => expect(finish(src)).toBe(want));
+  it('x/√x is √x', () => expect(S('x/sqrt(x)')).toBe('sqrt(x)'));
+});
+
+describe('Calc 2 walk', () => {
+  it.each([
+    ['int e^x sin(x) dx', '(e^x sin(x) − e^x cos(x))/2 + C'],
+    ['int e^x cos(x) dx', '(e^x cos(x) + e^x sin(x))/2 + C'],
+    ['int tan(x) dx', '−ln|cos(x)| + C'], ['int sec(x)^2 dx', 'tan(x) + C'],
+    ['int 1/(1 + 4x^2) dx', 'tan⁻¹(2x)/2 + C'], ['int 1/sqrt(1 - 4x^2) dx', 'sin⁻¹(2x)/2 + C'], ['int 1/(9 + x^2) dx', 'tan⁻¹(x/3)/3 + C'],
+    ['sum_(n=1)^inf 1/n^2', 'π^2/6'], ['sum_(n=1)^inf 3/n^2', 'π^2/2'], ['sum_(n=1)^inf 1/n^4', 'π^4/90'],
+  ])('%s = %s', (src, want) => expect(finish(src)).toBe(want));
+  it('when by parts brings the integral back, it is solved for, not looped', () => {
+    const { steps } = finishCalc(P('int e^(2x) sin(x) dx'));
+    expect(steps.length).toBeLessThan(8);
+    expect(steps[steps.length - 1].label).toBe('the integral came back: I = … − I/4, so solve for I');
+  });
+  it.each([
+    ['sum_(n=1)^inf 1/n', /harmonic series\): it diverges/], ['sum_(n=1)^inf 1/sqrt(n)', /p = 1\/2 ≤ 1: it diverges/], ['sum_(n=1)^inf 1/n^3', /converges \(to about 1\.20206\)/],
+  ])('%s says whether it converges', (src, msg) => expect(finishCalc(P(src)).stuck).toMatch(msg));
 });

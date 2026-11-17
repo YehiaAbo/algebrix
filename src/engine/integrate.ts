@@ -47,16 +47,24 @@ const exponent = (n: Node): number | null => {
   return x;
 };
 
-/** k ± x² (s = +1 or −1 for the sign of x²), in any order: k when it is, else null */
-function quadK(n: Node, v: string, s: 1 | -1): number | null {
+/** k ± m x² (s = +1 or −1 for the sign of x²), in any order: k and m when it is, else null */
+function quadK(n: Node, v: string, s: 1 | -1): { k: number; m: number } | null {
   const at = (x: number) => evaluate(n, { [v]: x });
-  const k = at(0);
-  if (!(k > 0) || !Number.isFinite(k)) return null;
-  for (const x of [0.5, 1.3, -2.1]) if (Math.abs(at(x) - (k + s * x * x)) > 1e-9 * (1 + Math.abs(k))) return null;
-  return k;
+  const k = at(0), m = s * (at(1) - k);
+  if (!(k > 0) || !(m > 0) || !Number.isFinite(k) || !Number.isFinite(m)) return null;
+  for (const x of [0.5, 1.3, -2.1]) if (Math.abs(at(x) - (k + s * m * x * x)) > 1e-9 * (1 + Math.abs(k))) return null;
+  return { k, m };
 }
-/** √k, as a whole number when it is one */
-const rootNode = (k: number) => (Number.isInteger(Math.sqrt(k)) ? num(Math.sqrt(k)) : sqrtN(num(k)));
+/** √q as an exact node: 2, 1/2, √3, √2/2 */
+const rootOf = (q: number): Node => tidy(sqrtN(ratNode(q) ?? num(q)));
+/** ∫ 1/(k + m x²) = tan⁻¹(x√(m/k))/√(km), ∫ 1/√(k − m x²) = sin⁻¹(x√(m/k))/√m */
+function arcRule(kind: 'atan' | 'asin', k: number, m: number, V: () => Node, v: string): { F: Node; label: string } {
+  const inner = m === k ? V() : times(rootOf(m / k), V());
+  const outer = kind === 'atan' ? k * m : m;
+  const F = outer === 1 ? fn(kind, inner) : frac(fn(kind, inner), rootOf(outer));
+  const shown = (c: number) => (Number.isInteger(c) ? String(c) : toText(ratNode(c) ?? num(c)));
+  return { F: tidy(F), label: kind === 'atan' ? `∫ 1/(${shown(k)} + ${m === 1 ? '' : shown(m)}${v}²) = tan⁻¹` : `∫ 1/√(${shown(k)} − ${m === 1 ? '' : shown(m)}${v}²) = sin⁻¹` };
+}
 
 /** the antiderivatives you'd just write down: xⁿ, 1/x, eˣ, sin, cos, sec², 1/(1+x²)…, with a
  *  linear inside (reverse chain), constant multiples and sums of them */
@@ -107,12 +115,12 @@ function quick(u: Node, v: string): { F: Node; label: string } | null {
     const c = isNum(u.num, 1) ? [] : [fresh(u.num)];
     const d = u.den;
     let q: { F: Node; label: string } | null = null;
-    if (d.k === 'pow' && !dependsOn(d.exp, v)) { const n = exponent(d.exp); if (n !== null) q = powerOf(d.base, -n); }
+    if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'cos' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(fn('tan', fresh(d.base.arg)), a), label: '∫ sec² = tan' }; }
+    else if (d.k === 'pow' && !dependsOn(d.exp, v)) { const n = exponent(d.exp); if (n !== null) q = powerOf(d.base, -n); }
     // k − x² under a root, k + x² below, in any order: sin⁻¹ and tan⁻¹ (scaled when k isn't 1)
-    else if (d.k === 'sqrt' && quadK(d.arg, v, -1) !== null) { const k = quadK(d.arg, v, -1)!, r = Math.sqrt(k); q = { F: fn('asin', r === 1 ? V() : frac(V(), rootNode(k))), label: `∫ 1/√(${k} − ${v}²) = sin⁻¹` }; }
+    else if (d.k === 'sqrt' && quadK(d.arg, v, -1)) { const { k, m } = quadK(d.arg, v, -1)!; q = arcRule('asin', k, m, V, v); }
     else if (d.k === 'sqrt') q = powerOf(d.arg, -0.5);
-    else if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'cos' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(fn('tan', fresh(d.base.arg)), a), label: '∫ sec² = tan' }; }
-    else if (quadK(d, v, 1) !== null) { const k = quadK(d, v, 1)!, r = Math.sqrt(k); q = { F: r === 1 ? fn('atan', V()) : times(frac(num(1), rootNode(k)), fn('atan', frac(V(), rootNode(k)))), label: `∫ 1/(${k} + ${v}²) = tan⁻¹` }; }
+    else if (quadK(d, v, 1)) { const { k, m } = quadK(d, v, 1)!; q = arcRule('atan', k, m, V, v); }
     else q = powerOf(d, -1);
     return q && { F: times(...c, q.F), label: q.label };
   }
@@ -126,6 +134,12 @@ function quick(u: Node, v: string): { F: Node; label: string } | null {
     const a = slope(u.arg, v);
     if (a === null) return null;
     return u.name === 'sin' ? { F: over(times(num(-1), fn('cos', fresh(u.arg))), a), label: '∫ sin = −cos' } : { F: over(fn('sin', fresh(u.arg)), a), label: '∫ cos = sin' };
+  }
+  // tan = sin/cos, and the top is minus the bottom's slope
+  if (u.k === 'fn' && u.name === 'tan') {
+    const a = slope(u.arg, v);
+    if (a === null) return null;
+    return { F: over(times(num(-1), fn('ln', fn('abs', fn('cos', fresh(u.arg))))), a), label: '∫ tan = −ln|cos|' };
   }
   return null;
 }
@@ -171,6 +185,10 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
     next = times(...consts.map(fresh), piece(vars.length === 1 ? vars[0] : mul(vars)));
     label = 'constant multiple';
   } else if (u.k === 'frac' && !dependsOn(u.den, v)) { next = frac(piece(u.num), fresh(u.den)); label = 'constant multiple'; }
+  else if (key(tidy(u)) !== key(u) && quick(tidy(u), v)) {
+    // (1/cos x)²: tidied, it is a rule (1/cos² x)
+    return checked(e, { eq: replace(e, T.arg.id, tidy(u)), label: 'simplify the inside', hints: newHints(), factor: one, select: null, rule: 'simplify' });
+  }
   else if (u.k === 'frac' && rational(u)) {
     // a fraction of polynomials: divide out and split into simple fractions first, then each is a rule
     const { p, label } = rational(u)!;
@@ -337,6 +355,26 @@ export function geometric(e: Eq, sel: string | null): MoveResult {
     check: symbols(r).length ? env2 => (Math.abs(evaluate(r, env2)) < 0.9 ? [[evaluate(replace(e, S.id, next), env2), evaluate(e, env2)]] : [[NaN, NaN]]) : undefined,
   });
 }
+
+/** Σ c/nᵖ from n = 1 to ∞: π²/6 and π⁴/90 by name; else whether it converges (p > 1) or not */
+export function pSeries(e: Eq, sel: string | null): MoveResult {
+  const S = target(e, sel, 'sum') as Sum | null;
+  if (!S || S.prod) return { error: 'No sum here.' };
+  if (evaluate(S.hi, {}) !== Infinity || !isNum(S.lo, 1)) return { error: 'A p-series runs from 1 to ∞.' };
+  // c/nᵖ: the term at n and 2n differ by 2ᵖ whatever n is
+  const at = (n: number) => evaluate(S.arg, { [S.v]: n });
+  const p = Math.log2(at(3) / at(6)), c = at(1);
+  if (!Number.isFinite(p) || !Number.isFinite(c) || c === 0 || symbols(S.arg).some(w => w !== S.v)) return { error: 'Not a p-series.' };
+  for (const n of [2, 5, 7]) if (Math.abs(at(n) - c / n ** p) > 1e-9 * Math.abs(c)) return { error: 'Not a p-series.' };
+  const P = Math.round(p * 1e9) / 1e9, pt = ratNode(P) ? toText(ratNode(P)!) : String(+P.toPrecision(4));
+  if (P <= 1) return { error: `A p-series with p = ${pt} ≤ 1${P === 1 ? ' (the harmonic series)' : ''}: it diverges.` };
+  const known: Record<number, Node> = { 2: frac(pow(sym('π'), num(2)), num(6)), 4: frac(pow(sym('π'), num(4)), num(90)) };
+  if (!known[P]) return { error: `A p-series with p = ${pt} > 1, so it converges (to about ${+(c * zeta(P)).toPrecision(6)}), but has no simple closed form.` };
+  const next = tidy(times(ratNode(c) ?? num(c), known[P]));
+  return checked(e, { eq: replace(e, S.id, next), label: `p-series, p = ${pt}: ${P === 2 ? 'Σ 1/n² = π²/6' : 'Σ 1/n⁴ = π⁴/90'}`, hints: newHints(), factor: one, select: null, rule: 'p-series' });
+}
+/** ζ(p) by summing, with the tail as an integral */
+function zeta(p: number) { let s = 0; const N = 2000; for (let n = 1; n < N; n++) s += n ** -p; return s + N ** (1 - p) / (p - 1) + 0.5 * N ** -p; }
 
 /** a Σ or ∏ with whole-number bounds and at most 12 terms: how many, or why not */
 export function finiteTerms(S: Sum): number[] | string {

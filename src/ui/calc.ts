@@ -1,6 +1,7 @@
 // The calculus hub (C): derivatives a rule at a time, limits, both sides, critical points.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { find, relOf, key, Eq, Node, symbols, walk, int, num, lim, cloneFresh, eq as mkEq, grad, fieldOp } from '../engine/ast';
+import { toText } from '../engine/print';
 import { parseExpr } from '../engine/parse';
 import { odeKind, separate, linearSteps, characteristic, generalSolution } from '../engine/ode';
 import { isErr, MoveOk } from '../engine/moves';
@@ -217,8 +218,10 @@ export function finishCalculus(this: App) {
     if (!isErr(components(this.eq).first)) return this.splitComponents();
     const rel = relOf(this.eq);
     if (rel === 'expr' || rel === 'def') {
-      const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');
-      if (f) return this.apply(f, 1.15);
+      // the tidiest of simplified and expanded: 1/(x + 1)², not 1/(x² + 2x + 1); never a longer expansion
+      const len = (e: Eq) => toText(e).length;
+      const f = formsFor(this.eq, null).filter(x => x.name === 'simplified' || x.name === 'expanded').sort((a, b) => len(a.eq) - len(b.eq))[0];
+      if (f && !(f.name === 'expanded' && len(f.eq) > len(this.eq))) return this.apply(f, 1.15);
       const t = tidy(this.eq);
       if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2);
       return;
