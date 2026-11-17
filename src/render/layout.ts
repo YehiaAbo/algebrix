@@ -294,7 +294,12 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const word = text('lim', s, `lm${n.id}`, me, false, from && `lm${from}`);
       const ss = Math.max(s * 0.6, c.base * 0.36);
       const side = n.side ? [text(n.side === '+' ? '⁺' : '⁻', ss, `ls${n.id}`, me, false)] : [];
-      const sub = row([text(n.v, ss, `lv${n.id}`, me, true, from && `lv${from}`), 0.04 * ss, text('→', ss, `la${n.id}`, me, false, from && `la${from}`), 0.04 * ss, L(n.to, ss, me, c), ...side]);
+      // two letters: (x, y) → (0, 0)
+      const two = n.v.includes(',') && n.to.k === 'vec' ? n.to.items : null;
+      const point = two ? row([text('(', ss, `lp${n.id}`, me, false), ...two.flatMap((t, i) => i ? [text(',', ss, `lc${n.id}${i}`, me, false), 0.12 * ss, L(t, ss, me, c)] : [L(t, ss, me, c)]), text(')', ss, `lq${n.id}`, me, false)]) : null;
+      const [va, vb] = n.v.split(',');
+      const vars = two ? row([text('(', ss, `lo${n.id}`, me, false), text(va, ss, `lv${n.id}`, me, true, from && `lv${from}`), text(',', ss, `lk${n.id}`, me, false), 0.12 * ss, text(vb, ss, `lw${n.id}`, me, true), text(')', ss, `lz${n.id}`, me, false)]) : null;
+      const sub = row([vars ?? text(n.v, ss, `lv${n.id}`, me, true, from && `lv${from}`), 0.04 * ss, text('→', ss, `la${n.id}`, me, false, from && `la${from}`), 0.04 * ss, point ?? L(n.to, ss, me, c), ...side]);
       const w = Math.max(word.w, sub.w);
       const drop = word.desc + 0.08 * s + sub.asc;
       const op: Box = { w, asc: word.asc, desc: drop + sub.desc, gs: [...shift(word, (w - word.w) / 2, 0), ...shift(sub, (w - sub.w) / 2, drop)] };

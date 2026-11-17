@@ -3,7 +3,7 @@
 // derivative. Every step goes through the same numeric check as an algebra move: the kernel
 // in calculus.ts says what a derivative or limit is worth.
 import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
-import { dependsOn, derivative } from './calculus';
+import { dependsOn, derivative, limit2 } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
@@ -219,10 +219,42 @@ function sampleEnv(n: Node): Env {
 
 const fmt = (x: number) => (x === Infinity ? '∞' : x === -Infinity ? '−∞' : Number.isInteger(x) ? String(x) : String(+x.toPrecision(4)));
 
+/** a limit as (x, y) → (a, b): put the point in where that works; else every path and every small
+ *  circle nearing one value; else name two paths that disagree, and there is no limit */
+export function limit2Step(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L || !L.v.includes(',') || L.to.k !== 'vec') return { error: 'No two-letter limit here.' };
+  if (hasDeriv(L.arg)) return { error: 'Work out the derivatives inside first (C + d).' };
+  const [vx, vy] = L.v.split(','), [A, B] = L.to.items;
+  const pt = `(${vx}, ${vy}) = (${toText(A)}, ${toText(B)})`;
+  const r = limit2(L);
+  const snapped = Number.isFinite(r.value) ? ratNode(Math.round(r.value * 1e9) / 1e9) : null;
+  const sub = (n: Node): Node => {
+    if (n.k === 'sym' && n.name === vx) return fresh(A);
+    if (n.k === 'sym' && n.name === vy) return fresh(B);
+    const ks = children(n);
+    return ks.length ? withChildren(n, ks.map(sub)) : n;
+  };
+  const body = sub(L.arg), at = evaluate(body, {});
+  if (Number.isFinite(r.value) && Number.isFinite(at) && Math.abs(at - r.value) <= 1e-9 * (1 + Math.abs(at))) {
+    const h = newHints();
+    return checked(e, { eq: replace(e, L.id, simplify(body, h)), label: `plug in ${pt}`, hints: h, factor: one, select: null, rule: 'continuous: plug in' });
+  }
+  if (snapped) {
+    return checked(e, { eq: replace(e, L.id, snapped), label: `every path, and every small circle round (${toText(A)}, ${toText(B)}), nears ${toText(snapped)}`, hints: newHints(), factor: one, select: null, rule: 'squeeze' });
+  }
+  const v = (x: number) => (x === Infinity ? '∞' : x === -Infinity ? '−∞' : toText(ratNode(Math.round(x * 1e9) / 1e9) ?? num(+x.toPrecision(4))));
+  if (r.value === Infinity || r.value === -Infinity) return { eq: e, label: `it grows without bound`, hints: newHints(), factor: one, select: null, answer: `the limit is ${v(r.value)}: it grows without bound along every path` };
+  const p1 = r.paths[0], p2 = r.paths.find(p => !(Number.isFinite(p.value) && Number.isFinite(p1.value) && Math.abs(p.value - p1.value) <= 1e-6 * (1 + Math.abs(p1.value))) && Number.isFinite(p.value));
+  if (Number.isFinite(p1.value) && p2) return { eq: e, label: 'two paths disagree', hints: newHints(), factor: one, select: null, answer: `no limit: along ${p1.name} it nears ${v(p1.value)}, but along ${p2.name} it nears ${v(p2.value)}` };
+  return { error: `No single value: the paths toward (${toText(A)}, ${toText(B)}) don't settle. Try polar form, x = r cos θ, y = r sin θ.` };
+}
+
 /** C + p: put the value in. Only where the function is continuous: the check makes sure. */
 export function plugIn(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
+  if (L.v.includes(',')) return limit2Step(e, sel);
   if (hasDeriv(L.arg)) return { error: 'Work out the derivatives inside first (C + d).' };
   const env = sampleEnv(L);
   const a = evaluate(L.to, env);
@@ -264,6 +296,7 @@ function oneSided(L: Lim, env: Env, a: number): string | null {
 export function lhopital(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
+  if (L.v.includes(',')) return { error: "L'Hôpital is for one letter. With two, try paths (C + p), or polar form." };
   const f = L.arg;
   if (f.k !== 'frac') return { error: "L'Hôpital needs a fraction. Make it one first (Tab + c)." };
   const env = sampleEnv(L);
@@ -343,6 +376,11 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       r = backSub(cur, u, active[u]);
       delete active[u];
     } else if (t.k === 'deriv') r = derivStep(cur, t.id);
+    else if (t.k === 'lim' && t.v.includes(',')) {
+      // two letters: a plug-in, a squeeze, or two paths that disagree (which ends it)
+      r = limit2Step(cur, t.id);
+      if (!isErr(r) && r.answer) { steps.push(r); return { steps }; }
+    }
     else if (t.k === 'lim') {
       r = plugIn(cur, t.id);
       if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }

@@ -143,4 +143,10 @@ export const tests = {
     await key('e');
     await until(s => s.eq === 'x = C_1 cos(2t) + C_2 sin(2t)', 'solved in t', 12000);
   },
+  async 'a limit in two letters names two paths that disagree'({ load, key, p, assert, wait }) {
+    await load('lim_{(x,y)→(0,0)} xy/(x^2+y^2)');
+    await key('e'); await wait(1500);
+    const ans = await p.evaluate(() => document.getElementById('answer').textContent);
+    assert(ans.includes('no limit') && ans.includes('y = x'), `two paths: ${ans}`);
+  },
 };

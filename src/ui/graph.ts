@@ -264,7 +264,9 @@ export class Graph {
     }
     if (vars.length === 0 || vars.length > 3 || vector || second) {
       this.grid(X, Y, ux, uy, 'x', 'y');
-      this.note.textContent = vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? (relOf(eq) !== 'expr' && holds(eq, {}) !== null ? `No letters left: ${toText(eq)} is ${holds(eq, {}) ? 'always' : 'never'} true.` : 'No letters, so nothing to graph.') : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
+      let lim2 = false;
+      walk(eq, n => { if (n.k === 'lim' && n.v.includes(',')) lim2 = true; });
+      this.note.textContent = lim2 ? 'A limit in two letters: e tries lines and curves through the point, and small circles round it. Different values along two paths mean there is no limit.' : vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? (relOf(eq) !== 'expr' && holds(eq, {}) !== null ? `No letters left: ${toText(eq)} is ${holds(eq, {}) ? 'always' : 'never'} true.` : 'No letters, so nothing to graph.') : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
       return;
     }
     c.globalAlpha = this.fade;

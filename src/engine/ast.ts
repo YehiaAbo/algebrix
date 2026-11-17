@@ -278,7 +278,7 @@ export function symbols(n: Node): string[] {
   const s = new Set<string>();
   const visit = (m: Node, bound: Set<string>) => {
     if (m.k === 'sym') { if (!(m.name in CONSTS) && !bound.has(m.name)) s.add(m.name); return; }
-    if (m.k === 'lim') { visit(m.to, bound); visit(m.arg, new Set([...bound, m.v])); return; }
+    if (m.k === 'lim') { visit(m.to, bound); visit(m.arg, new Set([...bound, ...m.v.split(',')])); return; }
     if ((m.k === 'int' && m.lo && m.hi) || m.k === 'at' || m.k === 'sum') { children(m).forEach(c => visit(c, c === m.arg ? new Set([...bound, m.v]) : bound)); return; }
     if (m.k === 'deriv' && m.dep) { const inner = new Set<string>(); walk(m.arg, q => { if (q.k === 'sym') inner.add(q.name); }); m.dep.forEach(w => { if (inner.has(w) && !bound.has(w)) s.add(primed(w)); }); }
     children(m).forEach(c => visit(c, bound));

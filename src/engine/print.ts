@@ -65,7 +65,9 @@ export function toText(n: Node, ascii = false): string {
     case 'sum': return `${n.prod ? (ascii ? 'prod' : '∏') : ascii ? 'sum' : 'Σ'}_{${n.v}=${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')}`;
     case 'lim': {
       const side = n.side ? (ascii ? n.side : n.side === '+' ? '⁺' : '⁻') : '';
-      return `lim_{${n.v}${ascii ? '->' : '→'}${toText(n.to, ascii)}${side}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg' || n.arg.k === 'lim')}`;
+      // two letters at once: lim_{(x,y)→(0,0)}
+      const at = n.v.includes(',') && n.to.k === 'vec' ? `(${n.v})${ascii ? '->' : '→'}(${n.to.items.map(t => toText(t, ascii)).join(',')})` : `${n.v}${ascii ? '->' : '→'}${toText(n.to, ascii)}`;
+      return `lim_{${at}${side}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg' || n.arg.k === 'lim')}`;
     }
     case 'fn': if (n.name === 'fact') return `${p(n.arg, !(n.arg.k === 'num' && n.arg.v >= 0 || n.arg.k === 'sym'))}!`;
       if (n.name === 'abs') return `|${toText(n.arg, ascii)}|`;

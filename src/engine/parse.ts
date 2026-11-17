@@ -30,6 +30,9 @@ function plain(src: string): string {
     .replace(/[½⅓⅔¼¾⅕⅙⅛]/g, m => `(${VULGAR[m]})`)
     .replace(/∛/g, 'cbrt').replace(/∜/g, '\\sqrt[4]')
     .replace(/\*\*/g, '^').replace(/[–—]/g, '-').replace(/∗/g, '*')
+    // <1, 2, 3> is the vector ⟨1, 2, 3⟩ (a comma inside, so never a less-than), as is \langle … \rangle
+    .replace(/\\langle\s*/g, '⟨').replace(/\s*\\rangle/g, '⟩')
+    .replace(/<([^<>=]*,[^<>=]*)>/g, '⟨$1⟩')
     .replace(/=</g, '≤').replace(/=>/g, '≥');
 }
 
@@ -346,6 +349,20 @@ class Parser {
 
   /** lim x→a f, lim_{x→a} f, lim_(x→0+) f: the variable, where it goes, from which side, then f */
   limit(): Node {
+    // (x, y) → (a, b): two letters at once, in or out of braces
+    const pair = (j: number) => this.toks[j]?.v === '(' && this.toks[j + 1]?.t === 'id' && this.toks[j + 2]?.v === ',' && this.toks[j + 3]?.t === 'id' && this.toks[j + 4]?.v === ')';
+    const brace = this.isOp('{') ? '{' : null;
+    if (pair(this.i + (brace ? 1 : 0))) {
+      if (brace) this.i++;
+      const vs = [this.toks[this.i + 1].v, this.toks[this.i + 3].v];
+      this.i += 5;
+      this.eat('→');
+      const to = this.atom();
+      if (to.k !== 'vec' || to.items.length !== 2) throw new ParseError('Write where (x, y) goes as a point, like (0, 0).');
+      if (brace) this.eat('}');
+      if (!this.peek()) throw new ParseError('Unfinished: what is the limit of?');
+      return lim(vs.join(','), to, this.term());
+    }
     const open = this.isOp('{') || this.isOp('(') ? this.peek()!.v : null;
     if (open) this.i++;
     const v = this.peek();

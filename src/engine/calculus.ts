@@ -175,6 +175,7 @@ function oneSide(f: (x: number) => number, a: number, s: 1 | -1): number {
 }
 
 function limit(n: Lim, env: Env): number {
+  if (n.v.includes(',')) { const r = limit2(n, env); return r.paths.length ? r.value : NaN; }
   const a = evaluate(n.to, env);
   if (Number.isNaN(a)) return NaN;
   const f = (x: number) => evaluate(n.arg, { ...env, [n.v]: x });
@@ -184,6 +185,44 @@ function limit(n: Lim, env: Env): number {
   if (l === r) return l;
   return Math.abs(l - r) <= 1e-7 * (1 + Math.abs(l)) ? (l + r) / 2 : NaN;
 }
+
+/** a limit in two letters, toward (a, b): along lines and parabolas through the point, and round
+ *  shrinking circles. value is the limit when every path agrees and the circles squeeze to it;
+ *  otherwise NaN, with two paths that disagree (as text) when there are such */
+export function limit2(n: Lim, env: Env = {}): { value: number; paths: { name: string; value: number }[] } {
+  const [vx, vy] = n.v.split(','), to = n.to.k === 'vec' ? n.to.items : [];
+  const a = evaluate(to[0], env), b = evaluate(to[1], env);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return { value: NaN, paths: [] };
+  const f = (x: number, y: number) => evaluate(n.arg, { ...env, [vx]: x, [vy]: y });
+  // the paths, named as you'd write them: y = 0, y = x, y = x², x = y² (shifted to (a, b))
+  const u = a ? `(${vx} − ${fmtN(a)})` : vx, w = b ? `(${vy} − ${fmtN(b)})` : vy;
+  const ul = a ? `${vx} − ${fmtN(a)}` : vx, wl = b ? `${vy} − ${fmtN(b)}` : vy;
+  const lines: [string, (t: number) => number][] = [
+    [`${vy} = ${fmtN(b)}`, t => f(a + t, b)],
+    [`${vx} = ${fmtN(a)}`, t => f(a, b + t)],
+    [`${wl} = ${ul}`, t => f(a + t, b + t)],
+    [`${wl} = −${u}`, t => f(a + t, b - t)],
+    [`${wl} = 2${u}`, t => f(a + t, b + 2 * t)],
+    [`${wl} = ${u}²`, t => f(a + t, b + t * t)],
+    [`${ul} = ${w}²`, t => f(a + t * t, b + t)],
+  ];
+  const paths: { name: string; value: number }[] = [];
+  for (const [name, g] of lines) {
+    const l = oneSide(g, 0, -1), r = oneSide(g, 0, 1);
+    const v = l === r || Math.abs(l - r) <= 1e-7 * (1 + Math.abs(l)) ? r : NaN;
+    paths.push({ name, value: v });
+  }
+  const first = paths[0].value;
+  const agree = paths.every(p => Number.isFinite(p.value) ? Math.abs(p.value - first) <= 1e-6 * (1 + Math.abs(first)) : p.value === first);
+  if (!agree) return { value: NaN, paths };
+  if (!Number.isFinite(first)) return { value: first, paths };
+  // the circles: on |(x, y) − (a, b)| = r, the worst gap to the value has to shrink with r
+  const gap = (r: number) => { let m = 0; for (let k = 0; k < 64; k++) { const th = (2 * Math.PI * (k + 0.37)) / 64, v = f(a + r * Math.cos(th), b + r * Math.sin(th)); m = Math.max(m, Number.isFinite(v) ? Math.abs(v - first) : Infinity); } return m; };
+  const g1 = gap(1e-2), g2 = gap(1e-4), g3 = gap(1e-6);
+  const squeezed = g3 <= 1e-4 * (1 + Math.abs(first)) && g3 <= g2 + 1e-12 && g2 <= g1 + 1e-12;
+  return { value: squeezed ? first : NaN, paths };
+}
+const fmtN = (x: number) => (Number.isInteger(x) ? (x < 0 ? `−${-x}` : String(x)) : String(+x.toPrecision(4)));
 
 /* ---------- integrals: double-exponential quadrature ---------- */
 

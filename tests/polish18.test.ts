@@ -9,7 +9,7 @@ import '../src/engine/calculus';
 import { parseExpr } from '../src/engine/parse';
 import { simplify, newHints } from '../src/engine/simplify';
 import { evaluate } from '../src/engine/ast';
-import { finishCalc } from '../src/engine/calcmoves';
+import { finishCalc, lhopital } from '../src/engine/calcmoves';
 import { separate } from '../src/engine/ode';
 import { isErr } from '../src/engine/moves';
 import { solveInequality } from '../src/engine/inequality';
@@ -165,5 +165,35 @@ describe('odd roots in solving', () => {
   it('cube-roots a negative side', () => {
     expect(last('x^3 = -8')).toBe('x = −2');
     expect(last('(x-1)^3 = -1')).toBe('x = 0');
+  });
+});
+
+describe('limits in two letters', () => {
+  const run = (s: string) => { const r = finishCalc(P(s)); const m = r.steps[r.steps.length - 1]; return m.answer ?? toText(m.eq); };
+  it('reads (x, y) → (a, b) and prints it back', () => {
+    expect(toText(P('lim (x,y)->(0,0) (x^2 + y^2)'))).toBe('lim_{(x,y)→(0,0)} (x^2 + y^2)');
+    expect(toText(P('lim_{(x,y)→(1,2)} x y'))).toBe('lim_{(x,y)→(1,2)} xy');
+  });
+  it('plugs in where it is continuous', () => {
+    expect(run('lim_{(x,y)→(1,2)} x y')).toBe('2');
+    expect(run('lim (x,y)->(0,0) e^(x+y)')).toBe('1');
+  });
+  it('squeezes when every path and circle agree', () => {
+    expect(run('lim (x,y)->(0,0) x^2 y/(x^2+y^2)')).toBe('0');
+    expect(run('lim (x,y)->(0,0) sin(x^2+y^2)/(x^2+y^2)')).toBe('1');
+  });
+  it('names two paths that disagree', () => {
+    expect(run('lim (x,y)->(0,0) xy/(x^2+y^2)')).toBe('no limit: along y = 0 it nears 0, but along y = x it nears 1/2');
+    expect(run('lim (x,y)->(0,0) x y^2/(x^2+y^4)')).toContain('along x = y² it nears 1/2');
+  });
+  it("won't take L'Hôpital", () => {
+    expect(isErr(lhopital(P('lim (x,y)->(0,0) xy/(x^2+y^2)'), null))).toBe(true);
+  });
+});
+
+describe('vectors typed with < >', () => {
+  it('reads <1, 2> as ⟨1, 2⟩ but x < 3 as less-than', () => {
+    expect(toText(P('div <x, y, z>'))).toBe('∇·⟨x, y, z⟩');
+    expect(toText(P('x < 3'))).toBe('x < 3');
   });
 });
