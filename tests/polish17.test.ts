@@ -7,7 +7,7 @@ import { toText } from '../src/engine/print';
 import { Eq, walk } from '../src/engine/ast';
 import { isErr, MoveOk, neverZero } from '../src/engine/moves';
 import { simplify, newHints } from '../src/engine/simplify';
-import { isolate, tidy, splitCases } from '../src/engine/techniques';
+import { isolate, tidy, splitCases, everyTrigSolution } from '../src/engine/techniques';
 import { finishCalc, plugIn } from '../src/engine/calcmoves';
 import { formsFor } from '../src/engine/forms';
 import { absorbConstant, renameConstant, shareExponential, generalSolution, odeKind, separate } from '../src/engine/ode';
@@ -153,4 +153,21 @@ describe('algebra walk', () => {
     expect(S('sqrt(1/2)')).toBe('sqrt(2)/2');
     expect(S('sqrt(3/2)')).toBe('sqrt(6)/2');
   });
+});
+
+describe('every solution of a trig equation', () => {
+  const every = (src: string) => {
+    const r = isolate(P(src), 'x') as MoveOk[];
+    const peeled = r.find(s => /⁻¹ both sides$/.test(s.label))!;
+    return everyTrigSolution(peeled.eq, r[r.length - 1].eq, 'x');
+  };
+  it.each([
+    ['sin(x) = 1/2', 'x = π/6 + 2kπ or x = 5π/6 + 2kπ'],
+    ['cos(x) = 1/2', 'x = π/3 + 2kπ or x = −π/3 + 2kπ'],
+    ['tan(x) = 1', 'x = π/4 + kπ'],
+    ['sin(2x) = 1/2', 'x = π/12 + kπ or x = 5π/12 + kπ'],
+    ['cos(x) = 1', 'x = 2kπ'],
+    ['sin(x) = 1', 'x = π/2 + 2kπ'],
+    ['cos(3x - 1) = 0', 'x = (π/2 + 1)/3 + 2kπ/3 or x = (−π/2 + 1)/3 + 2kπ/3'],
+  ])('%s: %s', (src, want) => expect(every(src)).toBe(`every solution: ${want}, for any whole number k`));
 });

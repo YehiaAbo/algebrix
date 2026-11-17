@@ -10,7 +10,7 @@ import { isErr, solvedFor, checked, MoveOk, MoveResult } from '../engine/moves';
 import { newHints } from '../engine/simplify';
 import { absorbConstant, shareExponential, renameConstant } from '../engine/ode';
 import { negate } from '../engine/terms';
-import { isolate, substitute, splitCases, tidy, Cases, impossible, leadPositive } from '../engine/techniques';
+import { isolate, substitute, splitCases, tidy, Cases, impossible, leadPositive, everyTrigSolution } from '../engine/techniques';
 import { evaluate } from '../engine/ast';
 import { sound } from './sound';
 import { ms } from './prefs';
@@ -57,6 +57,10 @@ export function afterSolve(this: App, v: string, why?: string) {
     take(shareExponential(cur));
     take(tidy(cur), 'simplify');
     take(checked(cur, { eq: leadPositive(cur), label: 'simplify', hints: newHints(), factor: () => 1, select: null }));
+    // sin x = 1/2: π/6 is one solution; say all of them
+    const peeled = this.steps.find(st => /^(sin|cos|tan)⁻¹ both sides$/.test(st.label));
+    const every = peeled ? everyTrigSolution(peeled.eq, cur, v) : null;
+    if (every) { if (steps.length) steps[steps.length - 1].answer = every; else steps.push({ eq: cur, label: 'every solution', hints: newHints(), factor: () => 1, select: null, answer: every }); }
     if (steps.length) this.play(steps);
     return;
   }

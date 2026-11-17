@@ -49,6 +49,14 @@ export const tests = {
     assert(look.stage && look.ans.includes('not a solution') && look.vars.includes('not a solution'), `marked: ${JSON.stringify(look)}`);
   },
 
+  async 'a trig equation gives every solution, not only the first'({ load, key, until, p, assert }) {
+    await load('sin(x) = 1/2');
+    await key('e'); await until(s => s.eq === 'x = π/6', 'solved', 12000);
+    await p.waitForFunction(() => document.getElementById('answer').textContent.includes('every solution'), null, { timeout: 5000 }).catch(() => {});
+    const ans = await p.evaluate(() => document.getElementById('answer').textContent);
+    assert(ans.includes('5π/6 + 2kπ'), `every solution: ${ans}`);
+  },
+
   async 'splitting into cases puts the other one on the shelf straight away'({ load, hold, until, p, assert }) {
     await load('(x - 1)(x + 4) = 0');
     await hold('Tab', 'a');

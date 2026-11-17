@@ -779,3 +779,33 @@ export function eliminate(e: Eq, other: Eq, j: number, v?: string): MoveResult {
   }
   return { error: shared.length ? `Equation ${j} can't cancel ${vars.join(', ')} here: it needs to appear linearly in both.` : `Equation ${j} shares no variable with this one.` };
 }
+
+/* ---------- every solution of a trig equation ---------- */
+
+/** sin x = 1/2 has more than π/6: from the step that took sin⁻¹ (peeled: L = sin⁻¹ B, L linear
+ *  in v) and the answer v = A, every solution as text: x = π/6 + 2kπ or x = 5π/6 + 2kπ */
+export function everyTrigSolution(peeled: Eq, answer: Eq, v: string): string | null {
+  const [L, R] = peeled.rhs.k === 'fn' && /^a(sin|cos|tan)$/.test(peeled.rhs.name) ? [peeled.lhs, peeled.rhs] : [peeled.rhs, peeled.lhs];
+  if (R.k !== 'fn' || !/^a(sin|cos|tan)$/.test(R.name) || solvedFor(answer) !== v) return null;
+  const P = polyOf(L);
+  if (!P || P.v !== v || P.c.length !== 2) return null;
+  const m = P.c[1].p / P.c[1].q;
+  const A = answer.lhs.k === 'sym' && answer.lhs.name === v ? answer.rhs : answer.lhs;
+  if (symbols(A).some(s => s !== 'π')) return null;
+  const name = R.name.slice(1), a = evaluate(A, {});
+  const period = (name === 'tan' ? Math.PI : 2 * Math.PI) / Math.abs(m);
+  // the second family: L = π − sin⁻¹ B, or L = −cos⁻¹ B, then v = (L − c)/m, multiplied out
+  const h = newHints();
+  const ratN = (r: Rat): Node => (r.q === 1 ? num(r.p) : frac(num(r.p), num(r.q)));
+  const L2 = name === 'sin' ? add([sym('π'), negate(fresh(R))]) : name === 'cos' ? negate(fresh(R)) : null;
+  const second = L2 && simplify(expandAll(simplify(frac(add([L2, ratN(rmul(rat(-1), P.c[0]))]), ratN(P.c[1])), h), h), h);
+  const same = (x: number, y: number) => { const d = ((x - y) / period) % 1; return Math.abs(d) < 1e-9 || Math.abs(Math.abs(d) - 1) < 1e-9; };
+  // kπ, 2kπ, 2kπ/3: the period as a whole number k times it
+  const r = period / Math.PI, q = [1, 2, 3, 4, 5, 6, 8, 12].find(d => Math.abs(Math.round(r * d) - r * d) < 1e-9);
+  if (!q) return null;
+  const p = Math.round(r * q), step = `${p === 1 ? '' : p}kπ${q === 1 ? '' : `/${q}`}`;
+  const show = (n: Node) => { const s = toText(n); return s === '0' ? step : `${s} + ${step}`; };
+  const fams = [show(A)];
+  if (second && !same(evaluate(second, {}), a)) fams.push(show(second));
+  return `every solution: ${fams.map(f => `${v} = ${f}`).join(' or ')}, for any whole number k`;
+}
