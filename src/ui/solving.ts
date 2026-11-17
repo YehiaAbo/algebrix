@@ -7,6 +7,7 @@ import { polyOf } from '../engine/rewrite';
 import { setDomains, Domain } from '../engine/moves';
 import { toText } from '../engine/print';
 import { isErr, solvedFor } from '../engine/moves';
+import { absorbConstant } from '../engine/ode';
 import { negate } from '../engine/terms';
 import { isolate, substitute, splitCases, tidy, Cases, impossible } from '../engine/techniques';
 import { evaluate } from '../engine/ast';
@@ -41,6 +42,9 @@ export function solveFor(this: App, v: string) {
 export function afterSolve(this: App, v: string) {
   // solving means a finished answer: take what simplifies at the end
   if (solvedFor(this.eq) === v) { const t = tidy(this.eq); if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2); return; }
+  // |y| = e^(g + C) from a differential equation: one family y = C e^g, not two cases
+  const ab = absorbConstant(this.eq, v);
+  if (!isErr(ab)) { this.apply(ab, 1.15); return; }
   if (splitCases(this.eq, v)) { this.split(v); return; }
   // the letter cancelled: what's left is a plain fact, true or false
   const always = !symbols(this.eq).length && relOf(this.eq) !== 'expr' ? holds(this.eq, {}) : null;

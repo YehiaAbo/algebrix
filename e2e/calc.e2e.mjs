@@ -120,4 +120,18 @@ export const tests = {
     await until(s => s.eq === '∫_{0}^{π} sin(x) dx', 'the area between the bounds');
     await key('e'); await until(s => s.eq === '2', 'worked out', 10000);
   },
+  async "aimed at y′, Tab opens it up as dy/dx and into differentials, and it integrates to y = C e^(x²/2)"({ load, key, aim, until, p }) {
+    await load("y' = x y");
+    await aim('y′');
+    await p.keyboard.down('Tab'); await p.waitForTimeout(200); await key('y'); await p.keyboard.up('Tab');
+    await until(s => s.eq === 'dy/dx = xy', 'as dy/dx');
+    await p.keyboard.down('Tab'); await p.waitForTimeout(200); await key('k'); await p.keyboard.up('Tab');
+    await until(s => s.eq === 'dy = xy dx', 'as differentials');
+    await key('Slash'); await p.keyboard.type('y'); await key('Enter');
+    await until(s => s.eq.startsWith('dy/y = '), 'divided by y');
+    await p.keyboard.down('c'); await p.waitForTimeout(200); await key('i'); await p.keyboard.up('c');
+    await until(s => s.eq === '∫ 1/y dy = ∫ x dx', 'integrated both sides');
+    await key('e');
+    await until(s => s.eq === 'y = Ce^(x^2/2)', 'solved as one family', 12000);
+  },
 };

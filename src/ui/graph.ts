@@ -6,6 +6,8 @@
 // double-click to reset, hover a curve or a point to read its coordinates.
 import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num } from '../engine/ast';
 import { toText } from '../engine/print';
+import { asPrime } from '../engine/leibniz';
+import { supHtml, escapeHtml } from './shared';
 import { substitute } from '../engine/calculus';
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -195,6 +197,8 @@ export class Graph {
   }
 
   draw(eq: Eq, animate: boolean, others: Eq[] = this.others) {
+    // dy/dx and dy = … dx draw like y′: the same slope field
+    eq = asPrime(eq);
     const fresh = !this.eq || symbols(this.eq).join() !== symbols(eq).join();
     this.eq = eq;
     this.others = others;
@@ -790,8 +794,6 @@ function interesting(f: (x: number) => number, xs: number[], ys: number[]): { x:
 
 /** an expression as plain text for a note */
 function escapeText(n: Node) {
-  // every power raised, not just digits: x²eˣ, never x²e^x
-  const raise = (t: string): string => t.replace(/\^(?:\(((?:[^()]|\([^()]*\))*)\)|(−?\d+(?:\.\d+)?|[a-zA-Zα-ωπ]))/g, (_, g, a) => `<sup>${g ? raise(g) : a}</sup>`);
-  return raise(toText(n).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]!)));
+  return supHtml(escapeHtml(toText(n)));
 }
 

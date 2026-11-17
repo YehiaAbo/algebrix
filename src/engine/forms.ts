@@ -4,7 +4,8 @@ import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, 
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, combineFractions, standardOrder, hasExpandable } from './rewrite';
-import { verify, MoveOk, relAfter } from './moves';
+import { verify, MoveOk, MoveResult, relAfter, isErr } from './moves';
+import { isLeibniz, toLeibniz, toPrime, toDifferentials } from './leibniz';
 import { gcd } from './terms';
 import { longDivide, partialFractions, rationalize, trigForms, completeSquare, Range, factorFully } from './polytools';
 
@@ -14,6 +15,7 @@ const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
   'factored': 'f', 'split into terms': 't', 'highest power first': 'o', 'log rules': 'l', 'as powers': 'p', 'as roots': 'r',
   'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
+  'as dy/dx': 'y', 'as y′': 'y', 'as differentials': 'k',
 };
 
 const one = () => 1;
@@ -38,7 +40,16 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     out.push(f);
   };
 
+  // the slope's other spellings: y′ ↔ dy/dx, and dy = … dx (already checked with dy = y′·dx)
+  const slope = (name: string, r: MoveResult) => {
+    if (isErr(r) || seen.has(sides(r.eq))) return;
+    seen.add(sides(r.eq));
+    out.push({ ...r, name, chord: CHORDS[name] });
+  };
   const target = sel && sel !== 'eq' ? find(e, sel) : null;
+  if (target?.k === 'sym' && /^[a-zA-Zα-ω]′$/.test(target.name)) slope('as dy/dx', toLeibniz(e, target.id));
+  if (target && isLeibniz(target)) slope('as y′', toPrime(e, target.id));
+  if (!target || (target.k === 'sym' && target.name.endsWith('′')) || isLeibniz(target)) slope('as differentials', toDifferentials(e));
   if (!target) {
     let h = newHints();
     if (relOf(e) !== 'expr') push('everything on one side', eq(simplify(expandAll(add([e.lhs, negate(e.rhs)]), h), h), num(0)), h, one, null);

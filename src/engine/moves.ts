@@ -3,6 +3,7 @@
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
+  isDiff,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -403,7 +404,7 @@ export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): MoveRe
 /** Is this equation solved for some variable? Returns that variable. */
 export function solvedFor(e: Eq): string | null {
   for (const [a, b] of [[e.lhs, e.rhs], [e.rhs, e.lhs]] as const) {
-    if (a.k === 'sym' && !symbols(b).includes(a.name)) return a.name;
+    if (a.k === 'sym' && !isDiff(a.name) && !symbols(b).includes(a.name)) return a.name;
   }
   return null;
 }

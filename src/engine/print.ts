@@ -1,6 +1,6 @@
 // Linear text form. `ascii` is what the input bar shows when you edit;
 // the pretty form is for labels like "÷ 7" and conditions like "x ≠ 0".
-import { Node, FN_TEXT } from './ast';
+import { Node, FN_TEXT, isDiff } from './ast';
 import { isNeg, absOf } from './terms';
 
 export function toText(n: Node, ascii = false): string {
@@ -29,15 +29,19 @@ export function toText(n: Node, ascii = false): string {
       let out = '';
       n.factors.forEach((f, i) => {
         if (i === 0 && f.k === 'num' && Math.abs(f.v) === 1 && n.factors.length > 1 && n.factors[1].k !== 'num' && n.factors[1].k !== 'frac') { if (f.v < 0) out += minus; return; }
-        const wrap = f.k === 'add' || f.k === 'frac' || (i > 0 && isNeg(f));
+        const leib = f.k === 'frac' && f.num.k === 'sym' && isDiff(f.num.name) && f.den.k === 'sym' && isDiff(f.den.name);
+        const wrap = f.k === 'add' || (f.k === 'frac' && !leib) || (i > 0 && isNeg(f));
         const s = p(f, wrap);
         // a number written after anything needs a dot: x·3 (x3 would read as x₃), 2·3!
         // and so does anything next to |x|, whose bars could otherwise be read the other way
-        const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || /^[\d.|]/.test(s) || /\|$/.test(out));
+        const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || /^[\d.|]/.test(s) || /\|$/.test(out) || (/(?:^|[^a-zA-Zα-ω])d$/.test(out) && /^[a-zA-Zα-ω]/.test(s)));
         const fnLike = (f.k === 'fn' && f.name !== 'abs' && f.name !== 'fact') || f.k === 'deriv' || f.k === 'lim' || f.k === 'int' || f.k === 'sum' || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs');
         // after a subscripted name (a_n) a space keeps the next letter out of the subscript
         const afterSub = i > 0 && /_[a-zA-Z0-9]+$/.test(out) && /^[a-zA-Zα-ω]/.test(s);
-        out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && (fnLike || f.k === 'sqrt' || afterSub) ? ' ' : '') + s;
+        // x dx, dx dy: a differential keeps a space on each side (xdx would read as x·d·x)
+        const prevF = n.factors[i - 1];
+        const diff = i > 0 && ((f.k === 'sym' && isDiff(f.name)) || leib || (prevF?.k === 'sym' && isDiff(prevF.name))) && /^[a-zA-Zα-ω(√]/.test(s);
+        out += (needsDot ? (ascii ? '*' : '·') : i > 0 && out !== '' && out !== minus && (fnLike || f.k === 'sqrt' || afterSub || diff) ? ' ' : '') + s;
       });
       return out;
     }

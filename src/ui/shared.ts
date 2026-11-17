@@ -92,6 +92,11 @@ export function varHtml(v: string) {
   return u < 0 ? escapeHtml(v) : `${escapeHtml(v.slice(0, u))}<sub>${escapeHtml(v.slice(u + 1))}</sub>`;
 }
 
+/** powers raised in escaped text: x^2e^x → x<sup>2</sup>e<sup>x</sup>, e^(x^2/2) nested too */
+export function supHtml(t: string): string {
+  return t.replace(/\^(?:\(((?:[^()]|\([^()]*\))*)\)|(−?\d+(?:\.\d+)?|[a-zA-Zα-ωπ]))/g, (_, g, a) => `<sup>${g ? supHtml(g) : a}</sup>`);
+}
+
 export function escapeHtml(s: string) {
   return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 }

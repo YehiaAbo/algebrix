@@ -22,7 +22,7 @@ describe('typing calculus', () => {
     ['lim_{x->0+} ln(x)', 'lim_{x->0+} ln(x)'],
     ['\\lim_{x \\to \\infty} (1 + 1/x)^x', 'lim_{x->∞} (1 + 1/x)^x'],
     ["y' = 2x", 'y′ = 2x'],
-    ['dy/dx = 3', 'y′ = 3'],
+    ['dy/dx = 3', 'dy/dx = 3'],
   ])('%s', (src, text) => expect(toText(parseEquation(src, true), true).replace(' = 0', '')).toBe(text));
 
   it('a limit binds its variable; y′ is a variable of its own', () => {

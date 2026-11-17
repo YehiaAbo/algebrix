@@ -1,4 +1,4 @@
-import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate } from '../engine/ast';
+import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate, isDiff } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
 import { parseEquation, ParseError } from '../engine/parse';
@@ -19,12 +19,13 @@ import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
-import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml } from './shared';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, supHtml } from './shared';
 import * as nav from './nav';
 import { notationFor } from './notation';
 import * as sheet from './sheet';
 import { hasCalc } from '../engine/calcmoves';
 import { odeKind } from '../engine/ode';
+import { asPrime, hasDifferentials } from '../engine/leibniz';
 import { renderShelf, ShelfItem } from './shelf';
 import type { NavView } from './nav';
 import * as opsPart from './ops';
@@ -152,7 +153,7 @@ export class App {
     const wrong = !this.preview && !this.peek && !!this.slot?.bad && !!solvedFor(eq);
     host.classList.toggle('extraneous', wrong);
     const all = !this.preview && !this.peek ? this.allAnswers() : null;
-    const text = wrong ? `✗ not a solution: it fails the original equation${all ? ` (the answer is ${all.replace(/<\/?b>/g, '')})` : ''}` : !this.preview && !this.peek ? this.step?.answer : undefined;
+    const text = wrong ? `✗ not a solution: it fails the original equation${all ? ` (the answer is ${all.replace(/<sup>([^<]*)<\/sup>/g, '^$1').replace(/<[^>]+>/g, '')})` : ''}` : !this.preview && !this.peek ? this.step?.answer : undefined;
     const proved = !this.preview && !this.peek && relOf(eq) === '≟' && isProved(eq);
     ans.hidden = !text && !proved && !all;
     ans.classList.toggle('bad', wrong);
@@ -201,8 +202,8 @@ export class App {
     const order = at0.every(Number.isFinite) ? sides.map((n, i) => i).sort((a, b) => at0[a] - at0[b]) : sides.map((n, i) => i);
     const uniq = [...new Set(order.map(i => toText(sides[i])))];
     if (!uniq.length) return null;
-    if (uniq.length === 1) return me.bad ? `<b>${v} = ${uniq[0]}</b>` : null;
-    return uniq.map(a => `<b>${v} = ${a}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
+    if (uniq.length === 1) return me.bad ? `<b>${v} = ${supHtml(escapeHtml(uniq[0]))}</b>` : null;
+    return uniq.map(a => `<b>${v} = ${supHtml(escapeHtml(a))}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
   }
 
   /** the status tag an equation carries: its answer, ✓, ∎, or a warning */
@@ -356,7 +357,7 @@ export class App {
     if (!eq) return;
     const solved = this.mode === 'write' ? null : solvedFor(eq);
     // a hole, a constant of integration and y′ are not variables you choose
-    for (const v of symbols(eq).filter(v => v !== '□' && !/^C(_\d+)?$/.test(v) && !/[′″]$/.test(v))) {
+    for (const v of symbols(eq).filter(v => v !== '□' && !/^C(_\d+)?$/.test(v) && !/[′″]$/.test(v) && !isDiff(v))) {
       const li = document.createElement('li');
       const conds = (this.step?.conditions ?? []).filter(c => new RegExp(`(^|[^a-zα-ω])${v}([^a-zα-ω]|$)`).test(c));
       const dom = this.domains[v] ?? 'real';
@@ -735,7 +736,7 @@ export class App {
     // calculus to work out, or a u to put back
     if (hasCalc(this.eq) || Object.keys(this.substitutions()).some(u => symbols(this.eq).includes(u))) return this.finishCalculus();
     if (relOf(this.eq) === '=' && (isVector(this.eq.lhs) || isVector(this.eq.rhs))) return this.splitComponents();
-    if (odeKind(this.eq)) return this.solveOde();
+    if (odeKind(asPrime(this.eq)) || hasDifferentials(this.eq)) return this.solveOde();
     if (relOf(this.eq) === 'expr') {
       // nothing to solve in a lone expression: e tidies it as far as it goes instead
       const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');

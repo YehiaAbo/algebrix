@@ -1,7 +1,7 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
+import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
 import { negate, gcd, isNeg } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
@@ -44,6 +44,7 @@ function tokenize(src: string): Tok[] {
   let i = 0;
   // integrals still waiting for their dx
   let open = 0;
+  const noInt = !/int|∫|∬|∭/.test(s);
   while (i < s.length) {
     const c = s[i];
     if (/\s/.test(c)) { i++; continue; }
@@ -64,7 +65,11 @@ function tokenize(src: string): Tok[] {
     // □: a hole the live preview puts where something is still to come
     if (c === '□') { out.push({ t: 'id', v: '□' }); i++; continue; }
     const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
-    if (leib) { out.push({ t: 'id', v: primed(leib[1] ?? leib[3]) }); i += leib[0].length; continue; }
+    // dy/dx stays dy/dx (a fraction of two differentials); the methods read it as y′
+    if (leib) { out.push({ t: 'id', v: `leib:${leib[1] ?? leib[3]}:${leib[2] ?? leib[4]}` }); i += leib[0].length; continue; }
+    // dy = x y dx: outside an integral, d and one letter on its own is a differential
+    const diff = noInt && !prevLetter ? /^d([a-zA-Zα-ω])(?![a-zA-Zα-ω0-9(′'_])/.exec(rest) : null;
+    if (diff) { out.push({ t: 'id', v: 'd' + diff[1] }); i += 2; continue; }
     // integral signs stack, even typed together: intint, \int\int, ∫∫, iint, ∬, \iiint
     const stacking = /^(?:[∫∬∭\\])/.test(rest) || /(?:int|integral|∫|\^pi|\^[a-zA-Zα-ω])$/.test(s.slice(0, i));
     const big = prevLetter && !stacking ? null : /^(?:[∫∬∭]|\\i{0,2}int(?:(?![a-zA-Z])|(?=i{0,2}int))|integral(?:(?![a-zA-Z])|(?=i{0,2}int))|i{0,2}int(?:(?![a-zA-Z])|(?=i{0,2}int))|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z])|∏|Π|\\prod(?![a-zA-Z])|prod(?![a-zA-Z]))/.exec(rest);
@@ -253,6 +258,7 @@ class Parser {
     this.i++;
     if (t.t === 'num') return number(t.v);
     if (t.t === 'id') {
+      if (t.v.startsWith('leib:')) { const [, y, x] = t.v.split(':'); return frac(sym('d' + y), sym('d' + x)); }
       if (FUNC_NAMES.includes(t.v.replace(/[′″‴]+$/, '')) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
       return sym(t.v);
     }

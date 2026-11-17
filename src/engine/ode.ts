@@ -60,7 +60,7 @@ function unknown(e: Eq): { y: string; x: string; order: number } | null {
 const env0 = (vs: string[], i: number): Env => Object.fromEntries(vs.map((v, j) => [v, 0.37 + 0.61 * j + 0.29 * i]));
 
 /** y′ = R, written either way round */
-function slopeForm(e: Eq, y: string): Node | null {
+export function slopeForm(e: Eq, y: string): Node | null {
   const yp = primed(y);
   if (relOf(e) !== '=') return null;
   if (e.lhs.k === 'sym' && e.lhs.name === yp && !symbols(e.rhs).includes(yp)) return e.rhs;
@@ -69,7 +69,7 @@ function slopeForm(e: Eq, y: string): Node | null {
 }
 
 /** R = g(x)·h(y), or nothing */
-function splitXY(R: Node, x: string, y: string): { g: Node; h: Node } | null {
+export function splitXY(R: Node, x: string, y: string): { g: Node; h: Node } | null {
   const top: Node[] = [], bottom: Node[] = [];
   const take = (n: Node, up: boolean) => {
     if (n.k === 'mul') return n.factors.forEach(f => take(f, up));
@@ -354,4 +354,24 @@ export function generalSolution(e: Eq): Eq | { error: string } {
     if (!(Math.abs(res) <= 1e-7 * (1 + Math.abs(evaluate(d2, env)) + Math.abs(evaluate(sol, env))))) return { error: 'The solution did not check out, so I left it.' };
   }
   return eq(sym(u.y), sol);
+}
+
+/**
+ * |y| = e^(g + C) → y = C e^g: ±e^C is just another constant, so the two cases are one family.
+ * Checked with the new C put to ±e^(old C), the sign being y's.
+ */
+export function absorbConstant(e: Eq, y: string): MoveResult {
+  const [a, b] = e.lhs.k === 'fn' && e.lhs.name === 'abs' ? [e.lhs, e.rhs] : [e.rhs, e.lhs];
+  if (relOf(e) !== '=' || a.k !== 'fn' || a.name !== 'abs' || a.arg.k !== 'sym' || a.arg.name !== y) return { error: 'Needs |y| = e^(… + C).' };
+  if (b.k !== 'pow' || b.base.k !== 'sym' || b.base.name !== 'e') return { error: 'Needs |y| = e^(… + C).' };
+  const terms = b.exp.k === 'add' ? b.exp.terms : [b.exp];
+  const c = terms.find(t => t.k === 'sym' && /^C$/.test(t.name));
+  if (!c || symbols(b.exp).filter(v => v === 'C').length !== 1) return { error: 'Needs |y| = e^(… + C).' };
+  const rest = terms.filter(t => t !== c);
+  const g = rest.length ? S(add(rest.map(t => cloneFresh(t)))) : null;
+  const next = eq(sym(y), g ? mul([sym('C'), pow(sym('e'), g)]) : sym('C'));
+  return checked(e, {
+    eq: next, label: '±e^C is one constant: call it C', hints: newHints(), factor: one, select: null, rule: 'constant of integration', implies: true,
+    check: env => { const s = Math.sign(env[y]) || 1; return [[evaluate(next, { ...env, C: s * Math.exp(env.C) }), s * evaluate(e, env)]]; },
+  });
 }

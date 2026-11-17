@@ -75,6 +75,8 @@ export const at = (v: string, arg: Node, lo: Node, hi: Node, id = newId()): At =
 export const sum = (v: string, lo: Node, hi: Node, arg: Node, id = newId(), prod = false): Sum => (prod ? { k: 'sum', id, v, lo, hi, arg, prod } : { k: 'sum', id, v, lo, hi, arg });
 /** the name of a derivative: y → y′, f′ → f″ */
 export const primed = (name: string) => name + '′';
+/** a differential: dx, dy, dt (a letter of its own, d + one letter; written with an upright d) */
+export const isDiff = (name: string) => /^d[a-zA-Zα-ω]$/.test(name);
 /** names that read as function calls when followed by "(" */
 export const FUNC_NAMES = ['f', 'g', 'h'];
 /** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */

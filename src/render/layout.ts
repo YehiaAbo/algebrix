@@ -1,7 +1,7 @@
 // Math layout: turns a tree into positioned glyphs. Every glyph carries a stable
 // key derived from node ids, and the ids of all nodes that own it, so the stage
 // can animate glyphs between layouts and draw selection boxes.
-import { Node, FN_TEXT } from '../engine/ast';
+import { Node, FN_TEXT, isDiff } from '../engine/ast';
 import { isNeg, absOf, signKey } from '../engine/terms';
 
 export type GlyphKind = 'text' | 'sign' | 'eq' | 'bar' | 'paren' | 'rad' | 'int' | 'sum' | 'prod';
@@ -131,6 +131,8 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     }
     case 'sym': {
       const u = n.name.indexOf('_');
+      // a differential: an upright d, then the letter
+      if (isDiff(n.name)) return row([text('d', s, `sd${n.id}`, me, false, from && `sd${from}`), 0.02 * s, text(n.name.slice(1), s, `s${n.id}`, me, true, from && `s${from}`)]);
       if (u < 0) return text(n.name, s, `s${n.id}`, me, true, from && `s${from}`);
       // x_1: the name, then its subscript smaller and lower (digits upright)
       const base = text(n.name.slice(0, u), s, `s${n.id}`, me, true, from && `s${from}`);
@@ -181,9 +183,11 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
         if (wrap) b = parens(b, s, f.id, [...me, f.id], f.from);
         const prev = n.factors[i - 1];
         if (drawn > 0) {
+          // a thin space around a differential (x dx) and dy/dx, as in print
+          const diff = (m?: Node) => !!m && ((m.k === 'sym' && isDiff(m.name)) || (m.k === 'frac' && m.num.k === 'sym' && isDiff(m.num.name) && m.den.k === 'sym' && isDiff(m.den.name)));
           const dot = f.k === 'num' || (f.k === 'frac' && prev?.k === 'frac') || (f.k === 'pow' && f.base.k === 'num');
           if (dot) parts.push(0.1 * s, text('·', s, `d${f.id}`, me, false), 0.1 * s);
-          else parts.push(((f.k === 'fn' && f.name !== 'abs') || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs') ? 0.16 : wrap || prev?.k === 'add' ? 0.02 : 0.05) * s);
+          else parts.push(((f.k === 'fn' && f.name !== 'abs') || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs') || diff(f) || diff(prev) ? 0.16 : wrap || prev?.k === 'add' ? 0.02 : 0.05) * s);
         }
         parts.push(b);
         drawn++;
