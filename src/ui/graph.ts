@@ -140,21 +140,27 @@ export class Graph {
   private frame(eq: Eq) {
     const p = plotVars(eq).length === 0 ? calcPicture(eq) : null;
     if (!p) {
-      // one letter: make sure where the sides cross is in view (3x + 7 = 22 meets at y = 22)
+      // one letter: make sure where the sides cross is in view (3x + 7 = 22 meets at y = 22,
+      // 3x + 5 = 2x − 7 at x = −12): look near first, then further out, and frame the nearest
       const vs = plotVars(eq);
       if (vs.length === 1 && relOf(eq) === '=') {
         const v = vs[0], f = (x: number) => evaluate(eq.lhs, { [v]: x }) - evaluate(eq.rhs, { [v]: x });
-        for (let i = 0; i < 400; i++) {
-          const a = -10 + i / 20, b = a + 1 / 20;
-          if (!(f(a) * f(b) <= 0) || !Number.isFinite(f(a) + f(b))) continue;
-          const y = evaluate(eq.lhs, { [v]: (a + b) / 2 });
-          const halfH = 10 * (this.H || 1) / (this.W || 1);
-          if (Number.isFinite(y) && Math.abs(y) > 0.85 * halfH) {
-            this.framed = true;
-            this.animateView({ cx: 0, cy: y / 2, span: Math.max(10, (Math.abs(y) / 2 + 2) * (this.W || 1) / (this.H || 1)) });
-            return;
+        const ratio = (this.H || 1) / (this.W || 1);
+        for (const reach of [10, 100, 1000]) {
+          const step = reach / 200;
+          let best: number | null = null;
+          for (let a = -reach; a < reach; a += step) {
+            const fa = f(a), fb = f(a + step);
+            if (fa * fb <= 0 && Number.isFinite(fa + fb) && (best === null || Math.abs(a) < Math.abs(best))) best = a + step / 2;
           }
-          break;
+          if (best === null) continue;
+          const y = evaluate(eq.lhs, { [v]: best });
+          if (!Number.isFinite(y)) break;
+          // already comfortably in the usual view: leave it
+          if (Math.abs(best) < 8.5 && Math.abs(y) < 0.85 * 10 * ratio) break;
+          this.framed = true;
+          this.animateView({ cx: best / 2, cy: y / 2, span: Math.max(10, Math.abs(best) / 2 + 2, (Math.abs(y) / 2 + 2) / ratio) });
+          return;
         }
       }
       // back from a framed view to an ordinary graph: the usual view again
@@ -252,7 +258,7 @@ export class Graph {
     }
     if (vars.length === 0 || vars.length > 3 || vector) {
       this.grid(X, Y, ux, uy, 'x', 'y');
-      this.note.textContent = vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? 'No variables to graph.' : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
+      this.note.textContent = vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? (relOf(eq) !== 'expr' && holds(eq, {}) !== null ? `No letters left: ${toText(eq)} is ${holds(eq, {}) ? 'always' : 'never'} true.` : 'No letters, so nothing to graph.') : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
       return;
     }
     c.globalAlpha = this.fade;

@@ -1,6 +1,6 @@
 // Solving: isolate a variable, split into cases, check answers, domains, inverses, substitution.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, relOf, isIneq, DEFS, add, key } from '../engine/ast';
+import { find, symbols, relOf, isIneq, DEFS, add, key, holds } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
 import { inverseFunction } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
@@ -42,6 +42,12 @@ export function afterSolve(this: App, v: string) {
   // solving means a finished answer: take what simplifies at the end
   if (solvedFor(this.eq) === v) { const t = tidy(this.eq); if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2); return; }
   if (splitCases(this.eq, v)) { this.split(v); return; }
+  // the letter cancelled: what's left is a plain fact, true or false
+  const always = !symbols(this.eq).length && relOf(this.eq) !== 'expr' ? holds(this.eq, {}) : null;
+  if (always !== null) {
+    this.say(always ? `${v} cancelled out, and ${toText(this.eq)} is always true: every ${v} works.` : `${v} cancelled out, and ${toText(this.eq)} is never true: no ${v} works, so there is no solution.`, !always);
+    return;
+  }
   this.say(`Got as far as I could isolating ${v}. Try a form (hold Tab) or a function (hold f).`, true);
 }
 

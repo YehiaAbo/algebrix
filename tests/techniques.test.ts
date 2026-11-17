@@ -56,8 +56,17 @@ describe('isolate', () => {
     ['2^x = 8', 'x = 3'],
     ['sin(x) = 1/2', 'x = π/6'],
     ['x^(-1) = 2', 'x = 1/2'],
+    ['-2x = -4', 'x = 2'],
+    ['x^3 = 4x', 'x(x − 2)(x + 2) = 0'],
+    ['x^4 - 5x^2 + 4 = 0', '(x − 1)(x + 1)(x − 2)(x + 2) = 0'],
+    ['2x^3 = x^2', 'x^2(2x − 1) = 0'],
+    ['x^3 = 8', 'x = 2'],
   ])('%s ends at %s', (src, want) => expect(last(ok(isolate(parseEquation(src), 'x')))).toBe(want));
   it('stops when the variable cancels', () => expect(isErr(isolate(parseEquation('x - x + 1 = y'), 'x') as never)).toBe(true));
+  it('a cubic with no nice factors says where it crosses instead of going round', () => {
+    const r = isolate(parseEquation('x^3 = x + 1'), 'x') as { error: string };
+    expect(r.error).toMatch(/no nice factors.*x ≈ 1\.325/);
+  });
   it('no real solutions', () => expect(isErr(isolate(parseEquation('x^2 + 1 = 0'), 'x') as never)).toBe(true));
 });
 

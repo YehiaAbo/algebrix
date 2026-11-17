@@ -151,11 +151,16 @@ export class App {
     // an answer that came from a one-way step (squaring) and fails the original: never shown as solved
     const wrong = !this.preview && !this.peek && !!this.slot?.bad && !!solvedFor(eq);
     host.classList.toggle('extraneous', wrong);
-    const text = wrong ? '✗ not a solution: it fails the original equation' : !this.preview && !this.peek ? this.step?.answer : undefined;
+    const all = !this.preview && !this.peek ? this.allAnswers() : null;
+    const text = wrong ? `✗ not a solution: it fails the original equation${all ? ` (the answer is ${all.replace(/<\/?b>/g, '')})` : ''}` : !this.preview && !this.peek ? this.step?.answer : undefined;
     const proved = !this.preview && !this.peek && relOf(eq) === '≟' && isProved(eq);
-    ans.hidden = !text && !proved;
+    ans.hidden = !text && !proved && !all;
     ans.classList.toggle('bad', wrong);
-    if (text || proved) {
+    ans.classList.toggle('all', !text && !proved && !!all);
+    if (!text && !proved && all) {
+      ans.innerHTML = `${(all.match(/<b>/g) ?? []).length > 2 ? 'all the answers' : 'both answers'}: ${all}`;
+      ans.style.top = `${Math.round(oy + lay.asc + lay.desc + 22)}px`;
+    } else if (text || proved) {
       ans.textContent = proved ? '∎ proved' : text!;
       ans.style.top = `${Math.round(oy + lay.asc + lay.desc + 22)}px`;
     }
@@ -180,6 +185,21 @@ export class App {
     const edges = id && id !== 'eq' && !browsing ? this.growable(id) : { l: false, r: false };
     el.dataset.l = edges.l ? '1' : '';
     el.dataset.r = edges.r ? '1' : '';
+  }
+
+  /** when an equation was split into cases and every case is solved: the answers together
+   *  ("x = 2 or x = 3"), each in <b>, leaving out the ones that fail the original. Null otherwise */
+  allAnswers(): string | null {
+    const me = this.slot, v = solvedFor(this.eq);
+    if (!me?.origin || !v) return null;
+    const at = key(me.origin);
+    const kin = this.slots.map((s, i) => ({ s, e: this.eqOf(i) })).filter(({ s }) => s.origin && key(s.origin) === at);
+    if (kin.length < 2 || kin.some(({ e }) => solvedFor(e) !== v)) return null;
+    const good = kin.filter(({ s }) => !s.bad).map(({ e }) => toText(e.lhs.k === 'sym' ? e.rhs : e.lhs));
+    const uniq = [...new Set(good)];
+    if (!uniq.length) return null;
+    if (uniq.length === 1) return me.bad ? `<b>${v} = ${uniq[0]}</b>` : null;
+    return uniq.map(a => `<b>${v} = ${a}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
   }
 
   /** the status tag an equation carries: its answer, ✓, ∎, or a warning */
@@ -347,6 +367,7 @@ export class App {
     for (const c of this.step?.conditions ?? []) {
       const li = document.createElement('li');
       li.textContent = c;
+      li.classList.toggle('prose', /[a-z]{3,} [a-z]{2,}/.test(c));
       conds.append(li);
     }
     $('conds-empty').hidden = (this.step?.conditions.length ?? 0) > 0;

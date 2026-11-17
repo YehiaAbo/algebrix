@@ -3,11 +3,12 @@
 // in several steps, substitute one equation into another, split |X| = B.
 import { Node, Eq, find, children, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf } from './ast';
 import { parseExpr } from './parse';
-import { negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
+import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
 import { simplify, newHints } from './simplify';
-import { expandAll, hasExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
+import { expandAll, hasExpandable, findExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
 import { toText } from './print';
 import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked } from './moves';
+import { factorFully } from './polytools';
 
 const t = (n: Node) => toText(n);
 const one = () => 1;
@@ -234,6 +235,32 @@ export function clearFractions(e: Eq, v?: string): MoveOk | null {
 }
 
 /** Quadratic in v: everything to one side, then factor, else complete the square. */
+/** a cubic or higher (x³ = 4x): everything on one side, then factor, so it splits into cases.
+ *  Null when it doesn't factor into pieces with the letter in them */
+function factorAll(e: Eq, v: string): MoveOk[] | null {
+  const h = newHints();
+  let zero = simplify(expandAll(add([e.lhs, negate(fresh(e.rhs))]), h), h);
+  let P = polyOf(zero);
+  if (!P || P.v !== v || P.c.length < 4) return null;
+  let flip = 1;
+  if (P.c[P.c.length - 1].p < 0) { zero = simplify(expandAll(add([e.rhs, negate(fresh(e.lhs))]), h), h); P = polyOf(zero)!; flip = -1; }
+  zero = standardOrder(zero) ?? zero;
+  const hf = newHints();
+  const f = factorFully(zero, hf);
+  if (!f || f.k !== 'mul' || f.factors.filter(x => has(x, v)).length < 2) return null;
+  const out: MoveOk[] = [];
+  let cur = e;
+  if (!(e.rhs.k === 'num' && e.rhs.v === 0 && key(zero) === key(e.lhs))) {
+    const r = checked(cur, { eq: eq(zero, num(0)), label: 'everything on one side', hints: h, factor: () => flip, select: null });
+    if (isErr(r)) return null;
+    out.push(r); cur = r.eq;
+  }
+  const r = checked(cur, { eq: eq(factorFully(cur.lhs, newHints()) ?? f, cur.rhs), label: 'factor', hints: hf, factor: one, select: null });
+  if (isErr(r)) return null;
+  out.push(r);
+  return out;
+}
+
 function quadratic(e: Eq, v: string): MoveOk[] | null {
   const h = newHints();
   let zero = simplify(expandAll(add([e.lhs, negate(fresh(e.rhs))]), h), h);
@@ -269,22 +296,51 @@ function quadratic(e: Eq, v: string): MoveOk[] | null {
   return out;
 }
 
+/** the real roots of a polynomial (coefficients lowest first), found where it changes sign */
+function realRoots(c: Rat[]): number[] {
+  const f = (x: number) => c.reduceRight((acc, r) => acc * x + r.p / r.q, 0);
+  const out: number[] = [];
+  for (let x = -100, step = 0.01; x < 100; x += step) {
+    const a = f(x), b = f(x + step);
+    if (a === 0) { out.push(x); continue; }
+    if (a * b < 0) {
+      let lo = x, hi = x + step;
+      for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (f(lo) * f(m) <= 0) hi = m; else lo = m; }
+      out.push((lo + hi) / 2);
+    }
+  }
+  return out;
+}
+
+function noNiceFactors(cur: Eq, v: string, c: Rat[]): string {
+  const zero = toText(eq(simplify(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()), newHints()), num(0)));
+  const rs = realRoots(c).map(r => `${v} ≈ ${Number(r.toFixed(3))}`);
+  return `${zero} has no nice factors, so there is no exact step to take. ${rs.length ? `It crosses zero at ${rs.join(' and ')} (the graph shows it).` : 'It never crosses zero.'}`;
+}
+
 export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
   if (!has(e, v)) return { error: `There is no ${v} in this equation.` };
   const steps: MoveOk[] = [];
   let cur = e;
   const take = (r: MoveOk) => { steps.push(r); cur = r.eq; };
+  // a tidy you couldn't see isn't a step of its own: it folds into the move before it
+  const tidyUp = () => {
+    const td = tidy(cur);
+    if (!td) return;
+    if (steps.length && toText(td.eq) === toText(cur)) { steps[steps.length - 1] = { ...steps[steps.length - 1], eq: td.eq }; cur = td.eq; }
+    else take(td);
+  };
   const push = (r: MoveResult): boolean => {
     const c = checked(cur, r);
     if (isErr(c)) return false;
     take(c);
-    const td = tidy(cur);
-    if (td) take(td);
+    tidyUp();
     return true;
   };
   const stuck = (why: string) => (steps.length ? steps : { error: why });
-  const td0 = tidy(cur);
-  if (td0) take(td0);
+  tidyUp();
+  // a tidy that changes nothing you can see doesn't start the list either
+  if (steps.length === 1 && toText(steps[0].eq) === toText(e)) { steps.length = 0; }
   if (!has(cur, v)) return { error: `${v} cancels out completely, so there is nothing to solve for.` };
   const cf = clearFractions(cur, v);
   if (cf) take(cf);
@@ -304,6 +360,13 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
       q.forEach(take);
       continue;
     }
+    // x³ = 4x: never take a cube root of one side; factor, and it splits into cases
+    if (poly && poly.v === v && poly.c.length >= 4 && !peelable) {
+      const f = relOf(cur) === '=' ? factorAll(cur, v) : null;
+      if (f) { f.forEach(take); continue; }
+      // x³ = x + 1: a root of each side would only go round in circles, so say where it crosses
+      if (hl && hr) return stuck(noNiceFactors(cur, v, poly.c));
+    }
     if (hl && hr) {
       // undo an outer function first (√(x + 1) = x − 1 → square), else gather the v terms on the left
       const wrapped = (['lhs', 'rhs'] as const).find(k => inverseOf(cur[k]) && cur[k].k !== 'frac');
@@ -311,6 +374,9 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
         if (hasExpandable(cur)) push({ eq: eq(expandAll(cur.lhs, newHints()), expandAll(cur.rhs, newHints())), label: 'expand', hints: newHints(), factor: one, select: null });
         continue;
       }
+      // x + 1 = 3(x − 1): multiply out a side where the letter sits in brackets, then gather
+      const inBrackets = (['rhs', 'lhs'] as const).find(k => { const f = findExpandable(cur[k]); return !!f && has(f, v); });
+      if (inBrackets) { const h = newHints(); if (push({ eq: replace(cur, cur[inBrackets].id, expandAll(cur[inBrackets], h)) as Eq, label: 'expand', hints: h, factor: one, select: null })) continue; }
       const rt = cur.rhs.k === 'add' ? cur.rhs.terms : [cur.rhs];
       const term = rt.find(x => has(x, v))!;
       if (!push(moveAcross(cur, term.id))) return stuck(`Couldn't gather the ${v} terms.`);
@@ -338,7 +404,9 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
       const withV = side.factors.filter(x => has(x, v));
       const other = side.factors.find(x => !has(x, v) && !(x.k === 'num' && x.v === 1));
       const c = coefOf(side);
-      if (c && c.v < 0) ok = push({ eq: eq(negAll(cur.lhs), negAll(cur.rhs)), label: '× −1 both sides', hints: newHints(), factor: () => -1, select: null });
+      // −x = 7 flips the signs (so does −3x = 7y − 20, keeping the sum tidy);
+      // −2x = −4 divides by −2 in one go, as you would by hand
+      if (c && c.v < 0 && (c.v === -1 || cur[s === 'lhs' ? 'rhs' : 'lhs'].k === 'add')) ok = push({ eq: eq(negAll(cur.lhs), negAll(cur.rhs)), label: '× −1 both sides', hints: newHints(), factor: () => -1, select: null });
       else if (other) ok = push(divideBoth(cur, other.id));
       else if (withV.length > 1 && hasExpandable(side)) { const h = newHints(); ok = push({ eq: replace(cur, side.id, expandAll(side, h)), label: 'expand', hints: h, factor: one, select: null }); }
     } else if (side.k === 'neg') {

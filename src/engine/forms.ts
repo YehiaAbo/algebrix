@@ -3,10 +3,10 @@
 import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate } from './ast';
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
-import { distributeNode, expandAll, factorize, combineFractions, standardOrder, hasExpandable } from './rewrite';
+import { distributeNode, expandAll, combineFractions, standardOrder, hasExpandable } from './rewrite';
 import { verify, MoveOk, relAfter } from './moves';
 import { gcd } from './terms';
-import { longDivide, partialFractions, rationalize, trigForms, completeSquare, Range } from './polytools';
+import { longDivide, partialFractions, rationalize, trigForms, completeSquare, Range, factorFully } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
 
@@ -49,7 +49,7 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
       push(`clear fractions (× ${L})`, eq(clear(e.lhs), clear(e.rhs)), h, () => L, null);
     }
     h = newHints();
-    const fl = factorize(e.lhs, h), fr = factorize(e.rhs, h);
+    const fl = factorFully(e.lhs, h), fr = factorFully(e.rhs, h);
     if (fl || fr) push('factored', eq(fl ?? e.lhs, fr ?? e.rhs), h, one, null);
     h = newHints();
     const cl = combineFractions(e.lhs, h), cr = relOf(e) === 'expr' ? null : combineFractions(e.rhs, h);
@@ -76,7 +76,7 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     if (r) push(name, replace(e, target.id, r), h, one, r.id, range);
   };
   at('one fraction', h => combineFractions(target, h));
-  at('factored', h => factorize(target, h));
+  at('factored', h => factorFully(target, h));
   if (!out.some(f => f.name === 'factored')) {
     // aimed at a piece of a sum: offer factoring the nearest sum around it that factors
     const path = findPath(e, target.id) ?? [];
@@ -84,7 +84,7 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
       const n = path[i];
       if (n.k !== 'add' && n.k !== 'mul') continue;
       const h = newHints();
-      const r = factorize(n, h);
+      const r = factorFully(n, h);
       if (r) { push('factored', replace(e, n.id, r), h, one, r.id); break; }
     }
   }
