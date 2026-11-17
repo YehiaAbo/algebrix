@@ -104,7 +104,8 @@ function parens(b: Box, s: number, id: string, owners: string[], from?: string, 
   return row([l, 0.02 * s, b, 0.02 * s, r]);
 }
 
-interface Ctx { base: number }
+/** `bare`: false when a function's argument must keep its brackets, as in sin(x) x², which would read as sin(x·x²) */
+interface Ctx { base: number; bare?: boolean }
 
 const fracSize = (s: number, c: Ctx) => Math.max(s * (s >= c.base * 0.9 ? 0.8 : 0.78), c.base * 0.42);
 
@@ -173,7 +174,9 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
           if (f.v < 0) { parts.push(sign(true, s, `sg${n.id}`, me), 0.04 * s); }
           return;
         }
-        let b = L(f, s, me, c);
+        // sin x x² reads as sin(x·x²): a function with more factors after it keeps its brackets
+        const shut = (f.k === 'fn' || (f.k === 'pow' && f.base.k === 'fn')) && i < n.factors.length - 1;
+        let b = L(f, s, me, shut ? { base: c.base, bare: false } : c);
         const wrap = f.k === 'add' || (drawn > 0 && isNeg(f)) || (f.k === 'neg');
         if (wrap) b = parens(b, s, f.id, [...me, f.id], f.from);
         const prev = n.factors[i - 1];
@@ -289,8 +292,21 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       return row([op, 0.2 * s, wrap ? parens(a, s, n.id, me, from) : a]);
     }
     case 'pow': {
+      const fb = n.base;
+      if (fb.k === 'fn' && fb.name !== 'abs' && fb.name !== 'fact' && n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v > 0) {
+        // sin(x)² is written sin² x: the power sits on the name, never after the x where it would read as sin(x²)
+        const fme = [...me, fb.id], ffrom = fb.from;
+        const name = text(FN_TEXT[fb.name] ?? fb.name, s, `f${fb.id}`, fme, false, ffrom && `f${ffrom}`);
+        const es = Math.max(s * 0.62, c.base * 0.36);
+        const e = L(n.exp, es, me, { base: c.base });
+        const rise = Math.max(0.44 * s, name.asc - 0.5 * es * ASC);
+        const head: Box = { w: name.w + 0.03 * s + e.w, asc: Math.max(name.asc, rise + e.asc), desc: name.desc, gs: [...name.gs, ...shift({ ...e, gs: shift(e, 0, -rise) }, name.w + 0.03 * s, 0)] };
+        const a = L(fb.arg, s, fme, { base: c.base });
+        const simple = c.bare !== false && (fb.arg.k === 'sym' || (fb.arg.k === 'num' && fb.arg.v >= 0));
+        return simple ? row([head, 0.12 * s, a]) : row([head, 0.04 * s, parens(a, s, fb.id, fme, ffrom)]);
+      }
       let b = L(n.base, s, me, c);
-      if (!(n.base.k === 'sym' || (n.base.k === 'num' && n.base.v >= 0) || n.base.k === 'sqrt' || n.base.k === 'fn')) b = parens(b, s, n.base.id, me);
+      if (!(n.base.k === 'sym' || (n.base.k === 'num' && n.base.v >= 0) || n.base.k === 'sqrt' || (n.base.k === 'fn' && (n.base.name === 'abs' || n.base.name === 'fact')))) b = parens(b, s, n.base.id, me);
       const es = Math.max(s * 0.62, c.base * 0.36);
       const e = L(n.exp, es, me, c);
       const rise = Math.max(0.44 * s, b.asc - 0.5 * es * ASC);
@@ -312,6 +328,8 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       return row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
     }
     case 'fn': {
+      const bare = c.bare !== false;
+      if (!bare) c = { base: c.base };
       const a = L(n.arg, s, me, c);
       if (n.name === 'abs') return parens(a, s, n.id, me, from, true);
       if (n.name === 'fact') {
@@ -319,7 +337,7 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
         return row([simple ? a : parens(a, s, n.id, me, from), 0.02 * s, text('!', s, `f${n.id}`, me, false, from && `f${from}`)]);
       }
       const name = text(FN_TEXT[n.name] ?? n.name, s, `f${n.id}`, me, false, from && `f${from}`);
-      const simple = n.arg.k === 'sym' || (n.arg.k === 'num' && n.arg.v >= 0);
+      const simple = bare && (n.arg.k === 'sym' || (n.arg.k === 'num' && n.arg.v >= 0));
       return simple ? row([name, 0.12 * s, a]) : row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
     }
   }

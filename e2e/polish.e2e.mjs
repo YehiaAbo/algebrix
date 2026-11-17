@@ -62,4 +62,19 @@ export const tests = {
     note = await p.evaluate(() => document.getElementById('graph-note').textContent);
     assert(note.includes('slope field'), `a slope field: ${note}`);
   },
+  async "a function's power sits on its name, and brackets stay when more follows"({ load, p, assert, wait }) {
+    await load('y = sin(x)^2 + sin(x) x^2'); await wait(400);
+    const read = await p.evaluate(() => [...document.querySelectorAll('#stage .g.text')]
+      .map(g => ({ t: g.textContent, x: g.getBoundingClientRect().left })).sort((a, b) => a.x - b.x).map(g => g.t).join(''));
+    assert(read === 'ysin2xsin(x)x2', `sin² x, then sin(x) x², read left to right: ${read}`);
+  },
+  async 'a quadratic solved in cases shows both answers together, and a cubic factors'({ load, key, until, p, assert }) {
+    await load('x^2 - 5x + 6 = 0');
+    await key('e'); await until(s => s.eq === 'x = 2' || s.eq === 'x = 3', 'solved in cases', 12000);
+    await p.waitForFunction(() => document.getElementById('answer').textContent.includes('both answers'), null, { timeout: 4000 }).catch(() => {});
+    const ans = await p.evaluate(() => document.getElementById('answer').textContent);
+    assert(/both answers: x = 2 or x = 3/.test(ans.replace(/\u2009/g, ' ')), `both answers: ${ans}`);
+    await load('x^3 = 4x');
+    await key('e'); await until(s => /^x = (0|2|−2)$/.test(s.eq), 'a cubic factors and splits', 12000);
+  },
 };

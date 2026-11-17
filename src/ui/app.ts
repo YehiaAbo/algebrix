@@ -1,4 +1,4 @@
-import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector } from '../engine/ast';
+import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
 import { parseEquation } from '../engine/parse';
@@ -195,8 +195,11 @@ export class App {
     const at = key(me.origin);
     const kin = this.slots.map((s, i) => ({ s, e: this.eqOf(i) })).filter(({ s }) => s.origin && key(s.origin) === at);
     if (kin.length < 2 || kin.some(({ e }) => solvedFor(e) !== v)) return null;
-    const good = kin.filter(({ s }) => !s.bad).map(({ e }) => toText(e.lhs.k === 'sym' ? e.rhs : e.lhs));
-    const uniq = [...new Set(good)];
+    // in order along the number line when they are numbers: x = −2, 0 or 2
+    const sides = kin.filter(({ s }) => !s.bad).map(({ e }) => (e.lhs.k === 'sym' ? e.rhs : e.lhs));
+    const at0 = sides.map(n => evaluate(n, {}));
+    const order = at0.every(Number.isFinite) ? sides.map((n, i) => i).sort((a, b) => at0[a] - at0[b]) : sides.map((n, i) => i);
+    const uniq = [...new Set(order.map(i => toText(sides[i])))];
     if (!uniq.length) return null;
     if (uniq.length === 1) return me.bad ? `<b>${v} = ${uniq[0]}</b>` : null;
     return uniq.map(a => `<b>${v} = ${a}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');

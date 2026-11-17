@@ -65,7 +65,7 @@ describe('isolate', () => {
   it('stops when the variable cancels', () => expect(isErr(isolate(parseEquation('x - x + 1 = y'), 'x') as never)).toBe(true));
   it('a cubic with no nice factors says where it crosses instead of going round', () => {
     const r = isolate(parseEquation('x^3 = x + 1'), 'x') as { error: string };
-    expect(r.error).toMatch(/no nice factors.*x ≈ 1\.325/);
+    expect(r.error).toMatch(/^x³ − x − 1 = 0 has no nice factors.*x ≈ 1\.325/);
   });
   it('no real solutions', () => expect(isErr(isolate(parseEquation('x^2 + 1 = 0'), 'x') as never)).toBe(true));
 });

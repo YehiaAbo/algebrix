@@ -81,7 +81,7 @@ export class Library {
     const steps = w.slots.reduce((n, s) => n + s.at, 0);
     const meta = document.createElement('div');
     meta.className = 'lib-meta';
-    meta.textContent = `${w.slots.length} equation${w.slots.length === 1 ? '' : 's'} · ${steps} step${steps === 1 ? '' : 's'} · ${ago(w.updated)}`;
+    meta.textContent = [`${w.slots.length} equation${w.slots.length === 1 ? '' : 's'}`, steps ? `${steps} step${steps === 1 ? '' : 's'}` : '', ago(w.updated)].filter(Boolean).join(' · ');
     const acts = document.createElement('div');
     acts.className = 'lib-acts';
     for (const [k, label, run] of [['r', 'Rename', () => this.rename(w.id)], ['d', 'Copy', () => this.duplicate(w.id)], ['⌫', 'Delete', () => this.remove(w.id)]] as const) {

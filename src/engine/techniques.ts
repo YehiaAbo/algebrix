@@ -313,7 +313,8 @@ function realRoots(c: Rat[]): number[] {
 }
 
 function noNiceFactors(cur: Eq, v: string, c: Rat[]): string {
-  const zero = toText(eq(simplify(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()), newHints()), num(0)));
+  const zero = toText(eq(simplify(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()), newHints()), num(0)))
+    .replace(/\^(\d+)/g, (_, d: string) => [...d].map(ch => '⁰¹²³⁴⁵⁶⁷⁸⁹'[+ch]).join(''));
   const rs = realRoots(c).map(r => `${v} ≈ ${Number(r.toFixed(3))}`);
   return `${zero} has no nice factors, so there is no exact step to take. ${rs.length ? `It crosses zero at ${rs.join(' and ')} (the graph shows it).` : 'It never crosses zero.'}`;
 }

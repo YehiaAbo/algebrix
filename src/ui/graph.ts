@@ -790,7 +790,8 @@ function interesting(f: (x: number) => number, xs: number[], ys: number[]): { x:
 
 /** an expression as plain text for a note */
 function escapeText(n: Node) {
-  const sup = (d: string) => [...d].map(ch => '⁰¹²³⁴⁵⁶⁷⁸⁹'[+ch]).join('');
-  return toText(n).replace(/\^(\d+)/g, (_, d) => sup(d)).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]!));
+  // every power raised, not just digits: x²eˣ, never x²e^x
+  const raise = (t: string): string => t.replace(/\^(?:\(((?:[^()]|\([^()]*\))*)\)|(−?\d+(?:\.\d+)?|[a-zA-Zα-ωπ]))/g, (_, g, a) => `<sup>${g ? raise(g) : a}</sup>`);
+  return raise(toText(n).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]!)));
 }
 

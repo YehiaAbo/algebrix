@@ -235,6 +235,7 @@ kbd {
 #graph { width: 100%; height: 100%; display: block; }
 .graph-note { margin: 0 6px; color: var(--muted); font-size: 12.5px; min-height: 36px; }
 .graph-note b { font-weight: 600; color: var(--ink); font-family: var(--math-font); font-size: 14px; }
+.graph-note sup { font-size: .7em; line-height: 0; }
 .graph-keys { margin: 0 6px; color: var(--faint); font-size: 12px; display: flex; gap: 6px; align-items: center; }
 .graph-keys kbd { font-size: 10.5px; min-width: 17px; height: 17px; }
 
@@ -384,6 +385,7 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .how h3 { color: var(--ink); margin-bottom: 6px; }
 .how p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .how kbd { font-size: 10.5px; }
+.how i { font: 14px var(--math-font); font-style: normal; color: var(--ink); white-space: nowrap; }
 @media (max-width: 900px) { .how { grid-template-columns: 1fr; } }
 
 /* tour */
@@ -459,7 +461,7 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .lib-keys { color: var(--faint); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .lib-keys kbd { font-size: 10.5px; min-width: 17px; height: 17px; }
 .lib-keys kbd + kbd { margin-left: -2px; }
-.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 14px; }
 .lib-card {
   position: relative; display: grid; grid-template-rows: 118px auto auto; grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 10px 12px 12px;
   border: 0; border-radius: 12px; background: var(--bg); cursor: pointer; text-align: left; color: var(--ink);
@@ -480,11 +482,13 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .lib-rename { font: 600 14px var(--ui-font); border: 1px solid var(--sel); border-radius: 6px; padding: 2px 6px; background: var(--desk); color: var(--ink); outline: none; }
 .lib-meta { color: var(--muted); font-size: 12px; }
 .lib-open { position: absolute; top: 16px; right: 18px; font-size: 11px; font-weight: 600; color: var(--sel); background: var(--desk); padding: 1px 7px; border-radius: 99px; z-index: 1; }
-.lib-acts { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; opacity: 0; transition: opacity .12s; }
+.lib-acts { display: flex; flex-wrap: nowrap; gap: 2px; margin-top: 6px; opacity: 0; transition: opacity .12s; }
 .lib-card.focus .lib-acts { opacity: 1; }
-.lib-acts button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--desk); border-radius: 6px; padding: 3px 6px; font-size: 11.5px; color: var(--muted); cursor: pointer; }
+.lib-acts button { display: inline-flex; align-items: center; gap: 3px; border: 0; background: var(--desk); border-radius: 6px; padding: 3px 4px; white-space: nowrap; font-size: 11px; color: var(--muted); cursor: pointer; }
 .lib-acts button:hover { color: var(--ink); }
-.lib-acts kbd { font-size: 10px; min-width: 15px; height: 15px; }
+.lib-acts button:last-child { margin-left: auto; }
+.lib-acts button:last-child:hover { color: var(--bad); }
+.lib-acts kbd { font-size: 10px; min-width: 14px; height: 15px; }
 .lib-new { grid-template-rows: 1fr auto; place-items: center; align-content: center; color: var(--muted); min-height: 190px; background: transparent; box-shadow: 0 0 0 1.5px var(--line) inset; }
 .lib-new .lib-plus { font-size: 34px; font-weight: 300; line-height: 1; color: var(--faint); }
 .lib-new kbd { margin-top: 4px; }
