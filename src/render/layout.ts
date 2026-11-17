@@ -169,7 +169,7 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const parts: (Box | number)[] = [];
       let drawn = 0;
       n.factors.forEach((f, i) => {
-        if (i === 0 && f.k === 'num' && Math.abs(f.v) === 1 && n.factors.length > 1) {
+        if (i === 0 && f.k === 'num' && Math.abs(f.v) === 1 && n.factors.length > 1 && n.factors[1].k !== 'num' && n.factors[1].k !== 'frac') {
           if (f.v < 0) { parts.push(sign(true, s, `sg${n.id}`, me), 0.04 * s); }
           return;
         }

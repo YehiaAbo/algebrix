@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The brick sounds are pure functions from a sample rate to samples, so they can be checked
 // here: they are finite, they end, and they are made the way a snap is made.
 import { describe, it, expect } from 'vitest';

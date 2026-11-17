@@ -99,7 +99,7 @@ export const TOURS: TourDef[] = [
       { load: '5x = 20', say: 'Press <kbd>w</kbd> to see your workspaces as cards.', done: t => t.app.library.isOpen },
       { say: 'Arrows move, <kbd>Enter</kbd> opens, <kbd>n</kbd> starts a new one. Press <kbd>Esc</kbd> to close.', done: t => !t.app.library.isOpen },
       { say: 'Press <kbd>,</kbd> for settings: theme, look, size, speed, sounds.', done: t => t.app.settings.isOpen },
-      { say: 'Try the Pixel look or the Blocks sounds with <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd>, then <kbd>Esc</kbd>.', done: t => !t.app.settings.isOpen },
+      { say: 'Try the Pixel look or the Bricks sounds with <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd>, then <kbd>Esc</kbd>.', done: t => !t.app.settings.isOpen },
       { say: 'Press <kbd>z</kbd> for ⚡ flash mode (the bolt bottom right). Everything moves about 3× faster.', done: () => prefs.speed === 'flash' },
       { say: 'Press <kbd>e</kbd> to see it, then <kbd>z</kbd> again whenever you want normal speed.', done: t => solved(t.app) },
     ],

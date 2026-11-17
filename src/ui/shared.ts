@@ -35,7 +35,8 @@ export interface Tech { key: string; label: string; ok: boolean; run: () => void
 export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; calc?: boolean; tab?: number; asking?: Tech }
 
 /** words that are on their way while you type them: their first letters shouldn't show as a·b */
-const WORDS = ['int', 'integral', 'lim', 'sum', 'prod', 'sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'pi', 'grad', 'div', 'curl', 'inf'];
+const WORDS = ['int', 'integral', 'iint', 'iiint', 'lim', 'sum', 'prod', 'sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'abs', 'exp', 'ln', 'log', 'pi', 'grad', 'div', 'curl', 'inf',
+  'alpha', 'beta', 'gamma', 'delta', 'theta', 'lambda', 'sigma', 'omega', 'epsilon', 'phi', 'rho', 'tau'];
 
 /** What to show while typing. Unfinished input is completed with □ where something is still to
  *  come (x + □, d/dx(□), ∫ □ dx), brackets close themselves, and a word being typed is left out

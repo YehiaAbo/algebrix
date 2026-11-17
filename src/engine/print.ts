@@ -28,11 +28,12 @@ export function toText(n: Node, ascii = false): string {
     case 'mul': {
       let out = '';
       n.factors.forEach((f, i) => {
-        if (i === 0 && f.k === 'num' && Math.abs(f.v) === 1 && n.factors.length > 1) { if (f.v < 0) out += minus; return; }
+        if (i === 0 && f.k === 'num' && Math.abs(f.v) === 1 && n.factors.length > 1 && n.factors[1].k !== 'num' && n.factors[1].k !== 'frac') { if (f.v < 0) out += minus; return; }
         const wrap = f.k === 'add' || f.k === 'frac' || (i > 0 && isNeg(f));
         const s = p(f, wrap);
-        const prev = n.factors[i - 1];
-        const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || (prev && prev.k === 'num' && /^\d/.test(s)));
+        // a number written after anything needs a dot: x·3 (x3 would read as x₃), 2·3!
+        // and so does anything next to |x|, whose bars could otherwise be read the other way
+        const needsDot = i > 0 && out !== '' && out !== minus && (f.k === 'num' || /^[\d.|]/.test(s) || /\|$/.test(out));
         const fnLike = (f.k === 'fn' && f.name !== 'abs' && f.name !== 'fact') || f.k === 'deriv' || f.k === 'lim' || f.k === 'int' || f.k === 'sum' || (f.k === 'pow' && f.base.k === 'fn' && f.base.name !== 'abs');
         // after a subscripted name (a_n) a space keeps the next letter out of the subscript
         const afterSub = i > 0 && /_[a-zA-Z0-9]+$/.test(out) && /^[a-zA-Zα-ω]/.test(s);
@@ -45,7 +46,7 @@ export function toText(n: Node, ascii = false): string {
       if (isNeg(n.num) && n.num.k !== 'add') return minus + toText({ ...n, num: absOf(n.num) }, ascii);
       return `${p(n.num, !simple(n.num))}/${p(n.den, !(n.den.k === 'num' && n.den.v >= 0 || n.den.k === 'sym' || n.den.k === 'fn' || n.den.k === 'sqrt'))}`;
     }
-    case 'pow': return `${p(n.base, n.base.k !== 'num' && n.base.k !== 'sym' && n.base.k !== 'fn' || isNeg(n.base))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
+    case 'pow': return `${p(n.base, (n.base.k !== 'num' && n.base.k !== 'sym' && n.base.k !== 'fn' || isNeg(n.base)) && !/^(?:[a-zA-Zα-ωπ]|\d+)$/.test(toText(n.base, ascii)))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
     case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
     case 'deriv': return n.partial ? `∂/∂${n.v}(${toText(n.arg, ascii)})` : `d/d${n.v}(${toText(n.arg, ascii)})`;

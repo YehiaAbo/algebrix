@@ -119,7 +119,7 @@ describe('typing integrals', () => {
     return fc.tuple(fc.constant(ls.map(l => ({ ...l, sign: 'int' }))), fc.array(term, { minLength: 1, maxLength: 3 }).map(ts => ts.join(' + ')), bounds, fc.boolean());
   });
 
-  test.prop([workable], { numRuns: 40, timeout: 120000 } as never)('stacked integrals work out to the right value, or to an answer, without getting stuck', ([ls, body, bs, definite]) => {
+  test.prop([workable], { numRuns: 40 })('stacked integrals work out to the right value, or to an answer, without getting stuck', ([ls, body, bs, definite]) => {
     const withB = ls.map((l, k) => ({ ...l, bounds: definite ? bs[k] as [string, string] : null }));
     const e = eq(meant(withB, body), num(0), 'expr');
     const t0 = performance.now();
