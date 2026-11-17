@@ -1,10 +1,9 @@
-import { Eq, Node, find, findPath, children, symbols, relOf, isIneq, key } from '../engine/ast';
-import { solveInequality } from '../engine/inequality';
+import { Eq, Node, find, findPath, children, symbols, relOf, key } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
 import { parseEquation } from '../engine/parse';
 import { toText } from '../engine/print';
-import { applyMove, direction, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
+import { applyMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { moveAny, WrapItem, simplifySpot, Spot } from '../engine/techniques';
 import { layout, Rect } from '../render/layout';
@@ -22,6 +21,7 @@ import { Library } from './library';
 import { Settings } from './settings';
 import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml } from './shared';
 import * as nav from './nav';
+import * as sheet from './sheet';
 import { renderShelf, ShelfItem } from './shelf';
 import type { NavView } from './nav';
 import * as opsPart from './ops';
@@ -118,7 +118,7 @@ export class App {
   /** what the stage shows: the typed preview, a form being browsed, or the current step */
   get shown(): Eq { return this.peek ?? this.eq; }
   get step(): Step { return this.steps[this.at]; }
-  eqOf(i: number): Eq { const s = this.slots[i]; return s.steps[s.at].eq; }
+  eqOf(i: number): Eq { return sheet.eqOf(this, i); }
 
   /* ---------------- rendering ---------------- */
 
@@ -403,12 +403,8 @@ export class App {
     this.message = null;
     clearTimeout(this.typingTimer);
     $('input-error').textContent = '';
-    const fresh: Slot = { steps: [{ eq, label: 'start', conditions: [] }], at: 0, sel: null };
-    if (this.writing === 'new' || !this.slots.length) {
-      if (this.slots.length >= 9) { this.refuse('Nine equations is the limit for now.'); return; }
-      this.slots.push(fresh);
-      this.cur = this.slots.length - 1;
-    } else this.slots[this.cur] = fresh;
+    const full = sheet.place(this, eq, this.writing === 'new');
+    if (full) { this.refuse(full); return; }
     this.writing = 'edit';
     this.setMode('solve');
     if (!quiet) sound.commit();
@@ -436,13 +432,7 @@ export class App {
     this.grouped = null;
     const before = this.eq;
     const wasSolved = solvedFor(before);
-    const conditions = [...new Set([...this.step.conditions, ...(r.conditions ?? [])])];
-    this.steps = this.steps.slice(0, this.at + 1);
-    let answer = r.answer;
-    const sv = solvedFor(r.eq);
-    if (!answer && isIneq(r.eq) && sv && symbols(r.eq).length === 1) { const s = solveInequality(r.eq, sv); if (!('error' in s)) answer = s.text; }
-    this.steps.push({ eq: r.eq, label: r.label, conditions, auto: r.auto, rule: r.rule ?? r.label, dir: direction(r), answer });
-    this.at++;
+    const { answer } = sheet.addStep(this, r);
     this.sel = r.select !== undefined ? (r.select && find(r.eq, r.select) ? r.select : null) : this.sel && find(r.eq, this.sel) ? this.sel : null;
     sound.move(pitch);
     this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
@@ -488,16 +478,12 @@ export class App {
   }
 
   undo() {
-    if (this.at === 0) { this.refuse('Nothing to undo. This is the original.'); return; }
-    while (this.at > 1 && this.steps[this.at].auto) this.at--;
-    this.at--;
+    if (!sheet.undo(this)) { this.refuse('Nothing to undo. This is the original.'); return; }
     this.afterJump();
   }
 
   redo() {
-    if (this.at >= this.steps.length - 1) { this.refuse('Nothing to redo.'); return; }
-    this.at++;
-    while (this.at < this.steps.length - 1 && this.steps[this.at + 1].auto) this.at++;
+    if (!sheet.redo(this)) { this.refuse('Nothing to redo.'); return; }
     this.afterJump();
   }
 
@@ -614,8 +600,7 @@ export class App {
       return;
     }
     this.deleteArmed = 0;
-    this.slots.splice(this.cur, 1);
-    this.cur = Math.min(this.cur, this.slots.length - 1);
+    sheet.removeCurrent(this);
     sound.undo();
     this.stage.clear();
     this.renderAll(null);
