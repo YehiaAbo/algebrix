@@ -206,3 +206,16 @@ App:
   - h (a form): the derivative as its limit definition.
 - e works out every derivative and limit one checked step after another (plug in, else L'Hôpital), then tidies an expression or a definition, or solves for y′ after differentiating both sides.
 - Tours (Calculus 1): derivatives rule by rule, limits, implicit differentiation, max and min, the definition.
+
+### Round 11: Calculus 2 on C
+
+**How integrals are checked.** A definite integral has a value, worked out by double-exponential quadrature (tanh-sinh, or exp-sinh and sinh-sinh for infinite bounds), so a step on it is checked like any other. An indefinite integral is only known up to a constant, so when one is in play the safety net compares slopes (d/dx of before and after, with d/dx ∫ f dx = f) instead of values. A u-substitution is checked by the chain rule (Q(g(x))·g′(x) must equal the integrand), and putting x back by substituting u = g. Series are summed exactly when finite, and to ∞ when the terms shrink fast, are smooth and one-signed (Euler-Maclaurin tail), or alternate (repeated averaging); otherwise a step on them can't be checked and is refused.
+
+- Notation: `int x^2 dx`, `∫_0^1 … dx`, `\int_{0}^{\pi} … \, dx`, `int_1^∞`, `sum_{n=1}^∞ 1/n^2`, `Σ`, `n!`. ∫ is drawn as a stroke as tall as what it integrates, with the bounds at its corners; F|ₐᵇ is drawn with a bar; Σ with its bounds above and below.
+- C + i: the next integration rule (power, ∫ 1/x = ln|x|, eˣ, aˣ, sin, cos, sec², tan⁻¹, sin⁻¹, a linear inside by the reverse chain rule, sums, constant multiples). + C joins once, when the last indefinite integral goes. On an expression or f(x) = … with nothing to work out, it adds ∫ … dx as a new equation.
+- C + u: u-substitution. It finds the inside g whose derivative is also there (or uses the aimed piece), writes the integral in u, and puts u = g on the shelf; e puts g back for u at the end. With bounds, the bounds change instead.
+- C + b: by parts, u chosen by LIATE or by aiming at a factor; ∫ ln x dx works with dv = dx.
+- C + p on F|ₐᵇ plugs in the bounds; an infinite bound becomes a limit, and a limit toward ∞ that is a plain number is taken in one step.
+- Series: C + g (geometric: first term over 1 − r, with |r| < 1 noted), C + r (the ratio test's verdict in the bar), C + t (the Taylor polynomial of degree 5 about 0, or about 1 when 0 won't do, as a new expression to compare on the graph).
+- A sum subtracted as a whole keeps its brackets when drawn: F(b) − (a + b).
+- Tours (Calculus 2): antiderivatives, definite integrals, u-substitution, by parts, series.

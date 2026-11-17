@@ -4,7 +4,7 @@
 import { Node, FN_TEXT } from '../engine/ast';
 import { isNeg, absOf, signKey } from '../engine/terms';
 
-export type GlyphKind = 'text' | 'sign' | 'eq' | 'bar' | 'paren' | 'rad';
+export type GlyphKind = 'text' | 'sign' | 'eq' | 'bar' | 'paren' | 'rad' | 'int';
 export interface Glyph {
   key: string;
   from?: string;
@@ -152,7 +152,9 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const flat = n.terms.flatMap(t => (t.k === 'add' ? t.terms.map(u => ({ t: u, own: [...me, t.id] })) : [{ t, own: me }]));
       flat.forEach(({ t, own }, i) => {
         const tOwn = t.k === 'neg' ? [...own, t.id] : own;
-        const body = L(absOf(t), s, tOwn, c);
+        const inner = absOf(t);
+        // a whole sum taken away keeps its brackets: − (a + b)
+        const body = inner.k === 'add' && isNeg(t) ? parens(L(inner, s, tOwn, c), s, inner.id, tOwn, inner.from) : L(inner, s, tOwn, c);
         const neg = isNeg(t);
         if (i === 0) {
           if (neg) parts.push(sign(true, s, `sg${signKey(t)}`, [...own, t.id]), 0.04 * s);
@@ -203,6 +205,50 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const bare = n.arg.k === 'sym' || n.arg.k === 'num' || n.arg.k === 'call' || (n.arg.k === 'fn' && n.arg.name !== 'abs');
       return row([op, 0.06 * s, bare ? a : parens(a, s, n.id, me, from)]);
     }
+    case 'int': {
+      // ∫ as tall as what it integrates, bounds at its top and bottom right, then f and dx
+      const a = L(n.arg, s, me, c);
+      const wrap = n.arg.k === 'add' || n.arg.k === 'neg';
+      const body = wrap ? parens(a, s, n.id, me, from) : a;
+      const top = Math.max(body.asc, ASC * s) + 0.12 * s, bot = Math.max(body.desc, DESC * s) + 0.12 * s;
+      const w = 0.42 * s;
+      const sign: Glyph = { key: `i${n.id}`, from: from && `i${from}`, kind: 'int', x: 0, y: -top, w, h: top + bot, s, owners: me };
+      let op: Box = { w, asc: top, desc: bot, gs: [sign] };
+      if (n.lo && n.hi) {
+        const ss = Math.max(s * 0.6, c.base * 0.36);
+        const hi = L(n.hi, ss, me, c), lo = L(n.lo, ss, me, c);
+        const bw = Math.max(hi.w, lo.w);
+        op = { w: w + 0.04 * s + bw, asc: Math.max(top, top - 0.1 * s + hi.asc), desc: Math.max(bot, bot + lo.desc - 0.1 * s), gs: [sign, ...shift(hi, w + 0.04 * s, -top + hi.asc - 0.05 * s), ...shift(lo, w - 0.12 * s, bot - lo.desc + 0.05 * s)] };
+      }
+      const dx = row([text('d', s, `id${n.id}`, me, false, from && `id${from}`), 0.02 * s, text(n.v, s, `iv${n.id}`, me, true, from && `iv${from}`)]);
+      return row([op, 0.12 * s, body, 0.16 * s, dx]);
+    }
+    case 'sum': {
+      // Σ with the top bound above and "n = lo" below
+      const sig = text('Σ', 1.35 * s, `S${n.id}`, me, false, from && `S${from}`);
+      const ss = Math.max(s * 0.6, c.base * 0.36);
+      const hi = L(n.hi, ss, me, c);
+      const lo = row([text(n.v, ss, `Sv${n.id}`, me, true), 0.04 * ss, text('=', ss, `Se${n.id}`, me, false), 0.04 * ss, L(n.lo, ss, me, c)]);
+      const w = Math.max(sig.w, hi.w, lo.w);
+      const lift = sig.asc - 0.32 * s;
+      const sigB = { ...sig, gs: shift(sig, (w - sig.w) / 2, 0.32 * s) };
+      const hiY = -(lift + 0.06 * s + hi.desc), loY = sig.desc + 0.32 * s + 0.06 * s + lo.asc;
+      const op: Box = { w, asc: -hiY + hi.asc, desc: loY + lo.desc, gs: [...sigB.gs, ...shift(hi, (w - hi.w) / 2, hiY), ...shift(lo, (w - lo.w) / 2, loY)] };
+      const a = L(n.arg, s, me, c);
+      return row([op, 0.14 * s, n.arg.k === 'add' || n.arg.k === 'neg' ? parens(a, s, n.id, me, from) : a]);
+    }
+    case 'at': {
+      // F, then a bar with the bounds at its top and bottom: F|ₐᵇ
+      const a = L(n.arg, s, me, c);
+      const body = n.arg.k === 'add' || n.arg.k === 'neg' ? parens(a, s, n.id, me, from) : a;
+      const top = Math.max(body.asc, ASC * s) + 0.1 * s, bot = Math.max(body.desc, DESC * s) + 0.1 * s;
+      const bw = 0.2 * s;
+      const bar: Glyph = { key: `a${n.id}`, from: from && `a${from}`, kind: 'paren', straight: true, right: true, x: 0, y: -top, w: bw, h: top + bot, s, owners: me };
+      const ss = Math.max(s * 0.6, c.base * 0.36);
+      const hi = L(n.hi, ss, me, c), lo = L(n.lo, ss, me, c);
+      const tail: Box = { w: bw + Math.max(hi.w, lo.w), asc: top + 0.05 * s, desc: bot + 0.05 * s, gs: [bar, ...shift(hi, bw, -top + hi.asc - 0.05 * s), ...shift(lo, bw, bot - lo.desc + 0.05 * s)] };
+      return row([body, 0.04 * s, tail]);
+    }
     case 'lim': {
       // "lim" with "x → a" small underneath, then what the limit is of
       const word = text('lim', s, `lm${n.id}`, me, false, from && `lm${from}`);
@@ -242,6 +288,10 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     case 'fn': {
       const a = L(n.arg, s, me, c);
       if (n.name === 'abs') return parens(a, s, n.id, me, from, true);
+      if (n.name === 'fact') {
+        const simple = n.arg.k === 'sym' || (n.arg.k === 'num' && n.arg.v >= 0);
+        return row([simple ? a : parens(a, s, n.id, me, from), 0.02 * s, text('!', s, `f${n.id}`, me, false, from && `f${from}`)]);
+      }
       const name = text(FN_TEXT[n.name] ?? n.name, s, `f${n.id}`, me, false, from && `f${from}`);
       const simple = n.arg.k === 'sym' || (n.arg.k === 'num' && n.arg.v >= 0);
       return simple ? row([name, 0.12 * s, a]) : row([name, 0.04 * s, parens(a, s, n.id, me, from)]);

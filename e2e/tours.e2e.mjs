@@ -51,6 +51,11 @@ const PLAYS = {
   implicit: [calc('d'), keys('e')],
   maxmin: [calc('m'), keys('e'), both(keys('1'), calc('d'))],
   definition: [calc('h'), keys('e')],
+  integrals: [calc('i'), calc('i'), calc('i'), calc('i'), keys('e')],
+  definite: [calc('i'), calc('p'), async h => { for (let i = 0; i < 4 && (await h.text()) !== '8'; i++) { await h.key('s'); await h.wait(250); } }, keys('e')],
+  usub: [calc('u'), calc('i'), keys('e'), keys('e')],
+  parts: [calc('b'), calc('i'), keys('e')],
+  series: [calc('g'), async h => { for (let i = 0; i < 4 && (await h.text()) !== '15/2'; i++) { await h.key('s'); await h.wait(250); } }, calc('r'), calc('t')],
 };
 
 export const tests = {};

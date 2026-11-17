@@ -22,7 +22,7 @@ import { Settings } from './settings';
 import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml } from './shared';
 import * as nav from './nav';
 import * as sheet from './sheet';
-import { hasDeriv, hasLim } from '../engine/calcmoves';
+import { hasCalc } from '../engine/calcmoves';
 import { renderShelf, ShelfItem } from './shelf';
 import type { NavView } from './nav';
 import * as opsPart from './ops';
@@ -686,7 +686,8 @@ export class App {
 
   /** e: solve. Aimed at a variable (or only one variable): straight to the answer; otherwise pick one */
   solveKey() {
-    if (hasDeriv(this.eq) || hasLim(this.eq)) return this.finishCalculus();
+    // calculus to work out, or a u to put back
+    if (hasCalc(this.eq) || Object.keys(this.substitutions()).some(u => symbols(this.eq).includes(u))) return this.finishCalculus();
     if (relOf(this.eq) === 'expr') {
       // nothing to solve in a lone expression: e tidies it as far as it goes instead
       const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');

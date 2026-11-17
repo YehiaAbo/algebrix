@@ -2,11 +2,11 @@
 // numerically and refuses anything that isn't provably the same equation.
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
-  evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds,
+  evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
-import './calculus';
+import { derivative } from './calculus';
 import { distributeNode, factorize } from './rewrite';
 import { toText } from './print';
 import { parseExpr } from './parse';
@@ -267,9 +267,24 @@ function addEquation(e: Eq, op: string, coefText: string, j: number, others: Eq[
 let seed = 12345;
 const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
 
+/** the variables of indefinite integrals (∫ f dx with no bounds) in n */
+export function indefiniteVars(n: Node): string[] {
+  const vs = new Set<string>();
+  walk(n, m => { if (m.k === 'int' && !(m.lo && m.hi)) vs.add(m.v); });
+  return [...vs];
+}
+
 export function verify(before: Eq, r: MoveOk): string | null {
   const ids = allIds(r.eq);
   if (new Set(ids).size !== ids.length) return 'duplicate ids';
+  // an indefinite integral is only known up to a constant: compare slopes instead of values
+  const ivs = r.check ? [] : [...new Set([...indefiniteVars(before), ...indefiniteVars(r.eq)])];
+  if (ivs.length) {
+    const pairs = ivs.map(v => [derivative(add([r.eq.lhs, neg(r.eq.rhs)]), v), derivative(add([before.lhs, neg(before.rhs)]), v)] as const);
+    if (pairs.some(([a, b]) => !a || !b)) return 'could not check: no derivative';
+    const slope: MoveOk = { ...r, check: env => { const f = r.factor(env); return pairs.map(([a, b]) => [evaluate(a!, env), f * evaluate(b!, env)]); } };
+    return verify(before, slope);
+  }
   const vars = symbols(eq(before.lhs, add([before.rhs, r.eq.lhs, r.eq.rhs])));
   let checked = 0;
   for (let i = 0; i < 120 && checked < 6; i++) {

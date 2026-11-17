@@ -5,31 +5,44 @@
 import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren } from './ast';
 import { dependsOn, derivative } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
-import { newHints } from './simplify';
+import { gcd } from './terms';
+import { newHints, simplify } from './simplify';
+import { intStep, uSub, byParts, plugBounds, geometric, backSub, ratNode } from './integrate';
 import { toText } from './print';
 
 const one = () => 1;
 const fresh = cloneFresh;
 const isNum = (n: Node, v?: number) => n.k === 'num' && (v === undefined || n.v === v);
 
-/** a product without the clutter: numbers multiplied together in front, 1s dropped, 0 wins */
+/** a product without the clutter: numbers (and number fractions) multiplied together in front,
+ *  1s dropped, 0 wins; a fraction coefficient goes underneath: x^4/4, 2x^3/3 */
 export function times(...fs: Node[]): Node {
-  let c = 1, sign = 1;
+  let p = 1, q = 1;
   const rest: Node[] = [];
-  for (const f of fs.flatMap(f => (f.k === 'mul' ? f.factors : [f]))) {
-    if (f.k === 'num') c *= f.v;
-    else if (f.k === 'neg') { sign = -sign; rest.push(...(f.arg.k === 'mul' ? f.arg.factors : [f.arg])); }
-    else rest.push(f);
-  }
-  c *= sign;
-  if (c === 0) return num(0);
-  if (!rest.length) return num(c);
-  // simple pieces (numbers, letters, powers) read best in front: 2x·cos(x²)
+  const take = (f: Node) => {
+    if (f.k === 'mul') return f.factors.forEach(take);
+    if (f.k === 'num') { p *= f.v; return; }
+    if (f.k === 'neg') { p = -p; return take(f.arg); }
+    if (f.k === 'frac' && f.den.k === 'num' && f.den.v !== 0) { q *= f.den.v; return take(f.num); }
+    rest.push(f);
+  };
+  fs.forEach(take);
+  if (p === 0) return num(0);
+  const g = gcd(Math.round(Math.abs(p)), Math.round(Math.abs(q))) || 1;
+  if (Number.isInteger(p) && Number.isInteger(q)) { p /= g; q /= g; }
+  if (q < 0) { p = -p; q = -q; }
+  // simple pieces (letters, powers of letters) read best in front: 2x·cos(x²)
   const simple = (n: Node) => n.k === 'sym' || (n.k === 'pow' && n.base.k === 'sym');
   const sorted = [...rest.filter(simple), ...rest.filter(f => !simple(f))];
-  if (c === 1) return sorted.length === 1 ? sorted[0] : mul(sorted);
-  if (c === -1) return neg(sorted.length === 1 ? sorted[0] : mul(sorted));
-  return mul([num(c), ...sorted]);
+  const body = (c: number): Node => {
+    if (!sorted.length) return num(c);
+    if (c === 1) return sorted.length === 1 ? sorted[0] : mul(sorted);
+    if (c === -1) return neg(sorted.length === 1 ? sorted[0] : mul(sorted));
+    return mul([num(c), ...sorted]);
+  };
+  if (q === 1) return body(p);
+  const top = body(Math.abs(p));
+  return p < 0 ? neg(frac(top, num(q))) : frac(top, num(q));
 }
 
 /** a sum without zeros */
@@ -89,6 +102,14 @@ function quick(u: Node, c: Ctx): { d: Node; label: string } | null {
     return { d: plus(...qs.map(q => q!.d)), label: 'sum rule' };
   }
   return null;
+}
+
+/** d/dv u written out nicely: the quick rules, else the kernel's answer tidied */
+export function prettyDerivative(u: Node, v: string): Node {
+  const q = quick(u, { v, dep: [] });
+  if (q) return q.d;
+  const d = derivative(u, v);
+  return d ? simplify(d, newHints()) : deriv(v, fresh(u));
 }
 
 /** d/dv w as the next piece of a rule: worked out if it is simple, otherwise left to do */
@@ -201,7 +222,13 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
   if (hasDeriv(L.arg)) return { error: 'Work out the derivatives inside first (C + d).' };
   const env = sampleEnv(L);
   const a = evaluate(L.to, env);
-  if (!Number.isFinite(a)) return { error: `You can't plug in ${fmt(a)}. Try L'Hôpital (C + l), or divide top and bottom by the highest power (Tab).` };
+  if (!Number.isFinite(a)) {
+    // toward ∞: the pieces that shrink go to 0. Only when the whole limit is a plain number.
+    const val = symbols(L).length ? NaN : evaluate(L, {});
+    const n = ratNode(Math.round(val * 1e8) / 1e8);
+    if (!n) return { error: `You can't plug in ${fmt(a)} here. Try L'Hôpital (C + l), or divide top and bottom by the highest power (Tab).` };
+    return checked(e, { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' });
+  }
   const body = plugged(L);
   const at = evaluate(body, env);
   if (!Number.isFinite(at)) {
@@ -233,17 +260,45 @@ export function lhopital(e: Eq, sel: string | null): MoveResult {
 
 /* ---------- e: finish all the calculus ---------- */
 
-/** the steps that work out every derivative and limit, in order; stops at the first one that won't go */
-export function finishCalc(e: Eq): { steps: MoveOk[]; stuck?: string } {
+/** derivatives, limits, integrals, bounds or sums still to work out */
+export const hasCalc = (n: Node) => { let f = false; walk(n, m => { if (CALC.includes(m.k)) f = true; }); return f; };
+const CALC = ['deriv', 'lim', 'int', 'at', 'sum'];
+
+/** the innermost piece of calculus: children before parents, left to right */
+function nextCalc(n: Node): Node | null {
+  for (const c of children(n)) { const t = nextCalc(c); if (t) return t; }
+  return CALC.includes(n.k) ? n : null;
+}
+
+/** the steps that work out every derivative, limit and integral, in order; stops at the first
+ *  one that won't go. subs: u-substitutions in force (u → what it stands for), to put back. */
+export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: MoveOk[]; stuck?: string } {
   const steps: MoveOk[] = [];
+  const active = { ...subs };
   let cur = e;
-  for (let i = 0; i < 40 && (hasDeriv(cur) || hasLim(cur)); i++) {
-    const L = limTarget(cur, null);
+  for (let i = 0; i < 60; i++) {
+    const t = nextCalc(cur);
     let r: MoveResult;
-    if (L && !hasDeriv(L.arg)) {
-      r = plugIn(cur, L.id);
-      if (isErr(r)) { const h = lhopital(cur, L.id); if (!isErr(h)) r = h; }
-    } else r = derivStep(cur, L && hasDeriv(L.arg) ? L.arg.id : null);
+    if (!t) {
+      // all worked out: put any u back
+      const u = Object.keys(active).find(w => symbols(cur).includes(w));
+      if (!u) break;
+      r = backSub(cur, u, active[u]);
+      delete active[u];
+    } else if (t.k === 'deriv') r = derivStep(cur, t.id);
+    else if (t.k === 'lim') {
+      r = plugIn(cur, t.id);
+      if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }
+    } else if (t.k === 'at') r = plugBounds(cur, t.id);
+    else if (t.k === 'sum') r = geometric(cur, t.id);
+    else {
+      r = intStep(cur, t.id);
+      if (isErr(r)) {
+        const s = uSub(cur, t.id);
+        if (!isErr(s.move) && s.u && s.g) { r = s.move; if (s.side) active[s.u] = s.g; }
+        else { const b = byParts(cur, t.id); if (!isErr(b)) r = b; }
+      }
+    }
     if (isErr(r)) return { steps, stuck: r.error };
     steps.push(r);
     cur = r.eq;
