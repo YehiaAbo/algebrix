@@ -47,7 +47,9 @@ export function toText(n: Node, ascii = false): string {
     case 'pow': return `${p(n.base, n.base.k !== 'num' && n.base.k !== 'sym' && n.base.k !== 'fn' || isNeg(n.base))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
     case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
-    case 'deriv': return `d/d${n.v}(${toText(n.arg, ascii)})`;
+    case 'deriv': return n.partial ? `∂/∂${n.v}(${toText(n.arg, ascii)})` : `d/d${n.v}(${toText(n.arg, ascii)})`;
+    case 'vec': return `⟨${n.items.map(i => toText(i, ascii)).join(', ')}⟩`;
+    case 'grad': return `∇${n.op === 'div' ? '·' : n.op === 'curl' ? '×' : ''}${p(n.arg, !(n.arg.k === 'sym' || n.arg.k === 'call' || (!!n.op && n.arg.k === 'vec')))}`;
     case 'int': {
       const b = n.lo && n.hi ? `_{${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}}` : '';
       return `${ascii ? 'int' : '∫'}${b} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')} d${n.v}`;

@@ -68,7 +68,7 @@ export function split(this: App, v?: string, cases?: Cases) {
   const nums = c.rest.map((_, j) => at + 2 + j).join(' and ');
   if (!c.rest.length) this.say('One repeated root, so there is only one case.');
   else this.say(`${c.why[0].toUpperCase()}${c.why.slice(1)}: the ${c.rest.length > 1 ? 'others are' : 'other is'} equation ${nums}.`);
-  if (v) this.later(ms(450), () => this.solveFor(v));
+  if (v && solvedFor(this.eq) !== v) this.later(ms(450), () => this.solveFor(v));
 }
 
 /** a solved slot: does its answer work in the equation it came from? */

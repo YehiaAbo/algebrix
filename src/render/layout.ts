@@ -198,8 +198,9 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     case 'deriv': {
       // d/dx as a small fraction, then what is differentiated
       const ss = fracSize(s, c);
-      const top = text('d', ss, `dd${n.id}`, me, false, from && `dd${from}`);
-      const bot = row([text('d', ss, `de${n.id}`, me, false, from && `de${from}`), 0.02 * ss, text(n.v, ss, `dv${n.id}`, me, true, from && `dv${from}`)]);
+      const d = n.partial ? '∂' : 'd';
+      const top = text(d, ss, `dd${n.id}`, me, false, from && `dd${from}`);
+      const bot = row([text(d, ss, `de${n.id}`, me, false, from && `de${from}`), 0.02 * ss, text(n.v, ss, `dv${n.id}`, me, true, from && `dv${from}`)]);
       const op = stack(top, bot, s, n.id, me, from);
       const a = L(n.arg, s, me, c);
       const bare = n.arg.k === 'sym' || n.arg.k === 'num' || n.arg.k === 'call' || (n.arg.k === 'fn' && n.arg.name !== 'abs');
@@ -210,18 +211,39 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const a = L(n.arg, s, me, c);
       const wrap = n.arg.k === 'add' || n.arg.k === 'neg';
       const body = wrap ? parens(a, s, n.id, me, from) : a;
-      const top = Math.max(body.asc, ASC * s) + 0.12 * s, bot = Math.max(body.desc, DESC * s) + 0.12 * s;
-      const w = 0.42 * s;
+      // taller than what it holds, like a typeset ∫, and slanted
+      // nested integrals all stand as tall as the innermost one's inside
+      let core: Node = n.arg;
+      while (core.k === 'int') core = core.arg;
+      const sized = core === n.arg ? body : L(core, s, me, c);
+      const top = Math.max(sized.asc, ASC * s) + 0.3 * s, bot = Math.max(sized.desc, DESC * s) + 0.3 * s;
+      const w = 0.5 * s;
       const sign: Glyph = { key: `i${n.id}`, from: from && `i${from}`, kind: 'int', x: 0, y: -top, w, h: top + bot, s, owners: me };
       let op: Box = { w, asc: top, desc: bot, gs: [sign] };
       if (n.lo && n.hi) {
         const ss = Math.max(s * 0.6, c.base * 0.36);
         const hi = L(n.hi, ss, me, c), lo = L(n.lo, ss, me, c);
         const bw = Math.max(hi.w, lo.w);
-        op = { w: w + 0.04 * s + bw, asc: Math.max(top, top - 0.1 * s + hi.asc), desc: Math.max(bot, bot + lo.desc - 0.1 * s), gs: [sign, ...shift(hi, w + 0.04 * s, -top + hi.asc - 0.05 * s), ...shift(lo, w - 0.12 * s, bot - lo.desc + 0.05 * s)] };
+        op = { w: w + 0.1 * s + bw, asc: Math.max(top, top - 0.1 * s + hi.asc), desc: Math.max(bot, bot + lo.desc - 0.1 * s), gs: [sign, ...shift(hi, w + 0.1 * s, -top + hi.asc - 0.05 * s), ...shift(lo, w * 0.72, bot - lo.desc + 0.05 * s)] };
       }
       const dx = row([text('d', s, `id${n.id}`, me, false, from && `id${from}`), 0.02 * s, text(n.v, s, `iv${n.id}`, me, true, from && `iv${from}`)]);
-      return row([op, 0.12 * s, body, 0.16 * s, dx]);
+      return row([op, 0.2 * s, body, 0.16 * s, dx]);
+    }
+    case 'vec': {
+      // ⟨a, b, c⟩
+      const parts: (Box | number)[] = [text('⟨', s, `vl${n.id}`, me, false, from && `vl${from}`), 0.06 * s];
+      n.items.forEach((it, i) => {
+        if (i) parts.push(text(',', s, `vc${n.id}.${i}`, me, false), 0.22 * s);
+        parts.push(L(it, s, me, c));
+      });
+      parts.push(0.06 * s, text('⟩', s, `vr${n.id}`, me, false, from && `vr${from}`));
+      return row(parts);
+    }
+    case 'grad': {
+      const a = L(n.arg, s, me, c);
+      const bare = n.arg.k === 'sym' || n.arg.k === 'call' || (!!n.op && n.arg.k === 'vec');
+      const sign = text(n.op === 'div' ? '∇·' : n.op === 'curl' ? '∇×' : '∇', s, `gn${n.id}`, me, false, from && `gn${from}`);
+      return row([sign, 0.04 * s, bare ? a : parens(a, s, n.id, me, from)]);
     }
     case 'sum': {
       // Σ with the top bound above and "n = lo" below

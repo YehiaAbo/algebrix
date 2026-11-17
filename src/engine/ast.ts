@@ -17,7 +17,7 @@ export interface Fn extends Base { k: 'fn'; name: FnName; arg: Node }
 /** a named function you defined, like f(x + 1) */
 export interface Call extends Base { k: 'call'; name: string; arg: Node }
 /** d/dv of arg. dep: variables that depend on v (implicit differentiation): d/dx y = y′ */
-export interface Deriv extends Base { k: 'deriv'; v: string; arg: Node; dep?: string[] }
+export interface Deriv extends Base { k: 'deriv'; v: string; arg: Node; dep?: string[]; partial?: boolean }
 /** the limit of arg as v goes to `to` (from one side with side); v is bound inside */
 export interface Lim extends Base { k: 'lim'; v: string; to: Node; side?: '+' | '-'; arg: Node }
 /** ∫ arg dv, from lo to hi when both are there (then v is bound inside) */
@@ -26,11 +26,15 @@ export interface Int extends Base { k: 'int'; v: string; arg: Node; lo?: Node; h
 export interface At extends Base { k: 'at'; v: string; arg: Node; lo: Node; hi: Node }
 /** Σ arg for v = lo to hi (hi may be ∞); v is bound inside */
 export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node }
+/** a vector ⟨a, b, c⟩ */
+export interface Vec extends Base { k: 'vec'; items: Node[] }
+/** ∇f: the vector of partial derivatives along vars. With op, ∇·F (divergence) or ∇×F (curl) of a field ⟨…⟩ */
+export interface Grad extends Base { k: 'grad'; arg: Node; vars: string[]; op?: 'div' | 'curl' }
 /** How the two sides relate. 'expr' is a lone expression (the right side is an unused 0);
  *  '≟' is an identity to prove: each side may only be rewritten into an equal form. */
 export type Rel = '=' | '<' | '>' | '≤' | '≥' | 'expr' | '≟' | 'def';
 export interface Eq extends Base { k: 'eq'; lhs: Node; rhs: Node; rel?: Rel }
-export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Call | Deriv | Lim | Int | At | Sum | Eq;
+export type Node = Num | Sym | Add | Mul | Neg | Frac | Pow | Sqrt | Fn | Call | Deriv | Lim | Int | At | Sum | Vec | Grad | Eq;
 
 /** Named constants: they look like symbols but are never variables. */
 export const CONSTS: Record<string, number> = { e: Math.E, π: Math.PI, '∞': Infinity };
@@ -57,6 +61,14 @@ export const sqrt = (arg: Node, id = newId()): Sqrt => ({ k: 'sqrt', id, arg });
 export const fn = (name: FnName, arg: Node, id = newId()): Fn => ({ k: 'fn', id, name, arg });
 export const call = (name: string, arg: Node, id = newId()): Call => ({ k: 'call', id, name, arg });
 export const deriv = (v: string, arg: Node, dep?: string[], id = newId()): Deriv => (dep?.length ? { k: 'deriv', id, v, arg, dep } : { k: 'deriv', id, v, arg });
+/** ∂/∂v: other variables held constant */
+export const partial = (v: string, arg: Node, id = newId()): Deriv => ({ k: 'deriv', id, v, arg, partial: true });
+export const vec = (items: Node[], id = newId()): Vec => ({ k: 'vec', id, items });
+export const grad = (arg: Node, vars: string[], id = newId(), op?: 'div' | 'curl'): Grad => (op ? { k: 'grad', id, arg, vars, op } : { k: 'grad', id, arg, vars });
+/** ∇·F or ∇×F, the letters x, y, z as many as F has entries */
+export const fieldOp = (op: 'div' | 'curl', F: Node, id = newId()): Grad => grad(F, ['x', 'y', 'z'].slice(0, F.k === 'vec' ? F.items.length : 3), id, op);
+/** the variables of a function in the usual order: x, y, z first */
+export const varOrder = (vs: string[]) => [...vs].sort((a, b) => { const r = (v: string) => { const i = ['x', 'y', 'z', 't'].indexOf(v); return i < 0 ? 9 : i; }; return r(a) - r(b) || a.localeCompare(b); });
 export const lim = (v: string, to: Node, arg: Node, side?: '+' | '-', id = newId()): Lim => (side ? { k: 'lim', id, v, to, arg, side } : { k: 'lim', id, v, to, arg });
 export const int = (v: string, arg: Node, lo?: Node, hi?: Node, id = newId()): Int => (lo && hi ? { k: 'int', id, v, arg, lo, hi } : { k: 'int', id, v, arg });
 export const at = (v: string, arg: Node, lo: Node, hi: Node, id = newId()): At => ({ k: 'at', id, v, arg, lo, hi });
@@ -92,7 +104,8 @@ export function children(n: Node): Node[] {
     case 'num': case 'sym': return [];
     case 'add': return n.terms;
     case 'mul': return n.factors;
-    case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': return [n.arg];
+    case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': case 'grad': return [n.arg];
+    case 'vec': return n.items;
     case 'lim': return [n.to, n.arg];
     case 'int': return n.lo && n.hi ? [n.lo, n.hi, n.arg] : [n.arg];
     case 'at': return [n.arg, n.lo, n.hi];
@@ -109,7 +122,8 @@ export function withChildren<T extends Node>(n: T, kids: Node[]): T {
     case 'num': case 'sym': return n;
     case 'add': return { ...n, terms: kids };
     case 'mul': return { ...n, factors: kids };
-    case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': return { ...n, arg: kids[0] };
+    case 'neg': case 'sqrt': case 'fn': case 'call': case 'deriv': case 'grad': return { ...n, arg: kids[0] };
+    case 'vec': return { ...n, items: kids };
     case 'lim': return { ...n, to: kids[0], arg: kids[1] };
     case 'int': return n.lo && n.hi ? { ...n, lo: kids[0], hi: kids[1], arg: kids[2] } : { ...n, arg: kids[0] };
     case 'at': return { ...n, arg: kids[0], lo: kids[1], hi: kids[2] };
@@ -175,7 +189,9 @@ export function key(n: Node): string {
     case 'sqrt': return '(sqrt ' + key(n.arg) + ')';
     case 'fn': return '(' + n.name + ' ' + key(n.arg) + ')';
     case 'call': return '(call ' + n.name + ' ' + key(n.arg) + ')';
-    case 'deriv': return '(d/d' + n.v + (n.dep ? '[' + n.dep.join(',') + ']' : '') + ' ' + key(n.arg) + ')';
+    case 'deriv': return '(' + (n.partial ? '∂' : 'd') + '/d' + n.v + (n.dep ? '[' + n.dep.join(',') + ']' : '') + ' ' + key(n.arg) + ')';
+    case 'vec': return '(vec ' + n.items.map(key).join(' ') + ')';
+    case 'grad': return '(' + (n.op ?? 'grad') + ' ' + n.vars.join(',') + ' ' + key(n.arg) + ')';
     case 'lim': return '(lim ' + n.v + ' ' + key(n.to) + (n.side ?? '') + ' ' + key(n.arg) + ')';
     case 'int': return '(int ' + n.v + (n.lo && n.hi ? ' ' + key(n.lo) + ' ' + key(n.hi) : '') + ' ' + key(n.arg) + ')';
     case 'at': return '(at ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
@@ -190,7 +206,17 @@ export function evaluate(n: Node, env: Env): number {
     case 'num': return n.v;
     case 'sym': return n.name in env ? env[n.name] : n.name in CONSTS ? CONSTS[n.name] : NaN;
     case 'add': return n.terms.reduce((s, t) => s + evaluate(t, env), 0);
-    case 'mul': return n.factors.reduce((s, t) => s * evaluate(t, env), 1);
+    case 'mul': {
+      // two vectors in a product: their dot product
+      const vs = n.factors.filter(isVector);
+      if (vs.length === 2) {
+        const a = vectorValue(vs[0], env), b = vectorValue(vs[1], env);
+        if (!a || !b || a.length !== b.length) return NaN;
+        return n.factors.filter(f => !vs.includes(f)).reduce((s, t) => s * evaluate(t, env), a.reduce((s, x, i) => s + x * b[i], 0));
+      }
+      if (vs.length > 2) return NaN;
+      return n.factors.reduce((s, t) => s * evaluate(t, env), 1);
+    }
     case 'neg': return -evaluate(n.arg, env);
     case 'frac': return evaluate(n.num, env) / evaluate(n.den, env);
     case 'pow': return Math.pow(evaluate(n.base, env), evaluate(n.exp, env));
@@ -222,6 +248,9 @@ export function evaluate(n: Node, env: Env): number {
     case 'int': return n.lo && n.hi ? CALC.integral(n, env) : NaN;
     case 'at': return evaluate(n.arg, { ...env, [n.v]: evaluate(n.hi, env) }) - evaluate(n.arg, { ...env, [n.v]: evaluate(n.lo, env) });
     case 'sum': return CALC.series(n, env);
+    case 'grad': if (n.op && !isVector(n)) return fieldValue(n, env) as number;
+    // falls through
+    case 'vec': { const v = vectorValue(n, env); return v ? project(v) : NaN; }
     case 'eq': return evaluate(n.lhs, env) - evaluate(n.rhs, env);
   }
 }
@@ -247,8 +276,51 @@ export const CALC: {
   integral: (n: Int, env: Env) => number;
   series: (n: Sum, env: Env) => number;
   gamma: (x: number) => number;
+  partialOf: (n: Node, v: string) => Node | null;
   primeDef: (name: string) => { param: string; body: Node } | undefined;
-} = { derive: () => null, limit: () => NaN, integral: () => NaN, series: () => NaN, gamma: () => NaN, primeDef: () => undefined };
+} = { derive: () => null, limit: () => NaN, integral: () => NaN, series: () => NaN, gamma: () => NaN, partialOf: () => null, primeDef: () => undefined };
+
+/** A vector is checked through one fixed, irrational mix of its entries: equal vectors give
+ *  equal numbers, and different ones almost never do. Sums and multiples keep the mix. */
+const WEIGHTS = [1, Math.SQRT2, Math.sqrt(3), Math.sqrt(5), Math.sqrt(7), Math.sqrt(11)];
+const project = (v: number[]) => v.reduce((s, x, i) => s + x * WEIGHTS[i % WEIGHTS.length] * (1 + Math.floor(i / WEIGHTS.length)), 0);
+
+/** is this piece a vector (so a product of two is a dot product)? */
+export function isVector(n: Node): boolean {
+  switch (n.k) {
+    case 'vec': return true;
+    case 'grad': return n.op === 'div' ? false : n.op === 'curl' ? n.vars.length === 3 : true;
+    case 'neg': return isVector(n.arg);
+    case 'mul': return n.factors.filter(isVector).length === 1;
+    case 'frac': return isVector(n.num) && !isVector(n.den);
+    case 'add': return n.terms.length > 0 && n.terms.every(isVector);
+    default: return false;
+  }
+}
+
+/** a vector's entries */
+export function vectorValue(n: Node, env: Env): number[] | null {
+  switch (n.k) {
+    case 'vec': return n.items.map(i => evaluate(i, env));
+    case 'grad': if (n.op) { const f = fieldValue(n, env); return Array.isArray(f) ? f : null; }
+      return n.vars.map(v => { const d = CALC.partialOf(n.arg, v); return d ? evaluate(d, env) : NaN; });
+    case 'neg': { const a = vectorValue(n.arg, env); return a && a.map(x => -x); }
+    case 'mul': {
+      const v = n.factors.find(isVector);
+      const a = v ? vectorValue(v, env) : null;
+      if (!a) return null;
+      const k = n.factors.filter(f => f !== v).reduce((s, t) => s * evaluate(t, env), 1);
+      return a.map(x => x * k);
+    }
+    case 'frac': { const a = vectorValue(n.num, env); const k = evaluate(n.den, env); return a && a.map(x => x / k); }
+    case 'add': {
+      const vs = n.terms.map(t => vectorValue(t, env));
+      if (vs.some(v => !v || v.length !== vs[0]!.length)) return null;
+      return vs[0]!.map((_, i) => vs.reduce((s, v) => s + v![i], 0));
+    }
+    default: return null;
+  }
+}
 
 function factorial(n: number) { let p = 1; for (let i = 2; i <= n; i++) p *= i; return p; }
 
@@ -258,4 +330,16 @@ export function allIds(n: Node): string[] {
   const ids: string[] = [];
   walk(n, m => ids.push(m.id));
   return ids;
+}
+
+/** ∇·F (a number) or ∇×F (a vector in 3D, a number in 2D) of a field written out as ⟨P, Q, R⟩ */
+function fieldValue(n: Grad, env: Env): number | number[] {
+  const F = n.arg;
+  if (F.k !== 'vec' || F.items.length !== n.vars.length) return NaN;
+  const d = (i: number, v: string) => { const p = CALC.partialOf(F.items[i], v); return p ? evaluate(p, env) : NaN; };
+  const [x, y, z] = n.vars;
+  if (n.op === 'div') return n.vars.reduce((s, v, i) => s + d(i, v), 0);
+  if (n.vars.length === 2) return d(1, x) - d(0, y);
+  if (n.vars.length !== 3) return NaN;
+  return [d(2, y) - d(1, z), d(0, z) - d(2, x), d(1, x) - d(0, y)];
 }

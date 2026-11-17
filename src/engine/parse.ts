@@ -1,7 +1,7 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed, int, at, sum, symbols } from './ast';
+import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
 import { negate, gcd } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
@@ -26,6 +26,15 @@ function tokenize(s: string): Tok[] {
     const cal = prevLetter ? null
       : /^(?:d\/d|\\frac\{d\}\{d)([a-zA-Zα-ω])\}?/.exec(rest) ?? /^(?:d\^2\/d|d²\/d|\\frac\{d\^\{?2\}?\}\{d)([a-zA-Zα-ω])(?:\^\{?2\}?|²)\}?/.exec(rest);
     if (cal) { out.push({ t: 'cmd', v: `${/2|²/.test(cal[0]) ? 'deriv2' : 'deriv'}:${cal[1]}` }); i += cal[0].length; continue; }
+    const par = /^(?:∂\/∂|\\frac\{\\partial\}\{\\partial ?)([a-zA-Zα-ω])\}?/.exec(rest);
+    if (par) { out.push({ t: 'cmd', v: `pderiv:${par[1]}` }); i += par[0].length; continue; }
+    // ∇· and ∇× (or div, curl) before plain ∇
+    const vop = /^(?:(?:∇|\\nabla) ?(?:·|\\cdot|\*)|div(?![a-zA-Z]))/.exec(rest) ?? null;
+    const cop = /^(?:(?:∇|\\nabla) ?(?:×|\\times)|curl(?![a-zA-Z]))/.exec(rest) ?? null;
+    if ((vop || cop) && (!prevLetter || /^[∇\\]/.test(rest))) { out.push({ t: 'cmd', v: vop ? 'div' : 'curl' }); i += (vop ?? cop)![0].length; continue; }
+    const nab = /^(?:∇|\\nabla(?![a-zA-Z])|grad(?![a-zA-Z]))/.exec(rest);
+    if (nab && (nab[0] === '∇' || !prevLetter)) { out.push({ t: 'cmd', v: 'grad' }); i += nab[0].length; continue; }
+    if (c === '⟨' || c === '⟩' || c === ',') { out.push({ t: 'op', v: c }); i++; continue; }
     const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
     if (leib) { out.push({ t: 'id', v: primed(leib[1] ?? leib[3]) }); i += leib[0].length; continue; }
     const big = prevLetter ? null : /^(?:∫|\\int(?![a-zA-Z])|integral(?![a-zA-Z])|int(?![a-zA-Z])|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z]))/.exec(rest);
@@ -145,7 +154,7 @@ class Parser {
     const t = this.peek();
     if (!t) return false;
     if (t.t === 'num' || t.t === 'id' || t.t === 'cmd') return true;
-    return t.t === 'op' && (t.v === '(' || t.v === '{' || t.v === '[' || (t.v === '|' && this.abs === 0));
+    return t.t === 'op' && (t.v === '(' || t.v === '{' || t.v === '[' || t.v === '⟨' || (t.v === '|' && this.abs === 0));
   }
 
   group(): Node {
@@ -175,6 +184,9 @@ class Parser {
       return sym(t.v);
     }
     if (t.t === 'cmd') {
+      if (t.v.startsWith('pderiv')) return partial(t.v.slice(7), this.term());
+      if (t.v === 'grad') { const a = this.fnArg(); return grad(a, varOrder(symbols(a))); }
+      if (t.v === 'div' || t.v === 'curl') return fieldOp(t.v, this.isOp('(') || this.isOp('⟨') ? this.atom() : this.fnArg());
       if (t.v.startsWith('deriv')) {
         const v = t.v.slice(t.v.indexOf(':') + 1), a = this.term();
         return t.v.startsWith('deriv2') ? deriv(v, deriv(v, a)) : deriv(v, a);
@@ -204,9 +216,17 @@ class Parser {
       this.eat('|');
       return fn('abs', e);
     }
-    const close = ({ '(': ')', '{': '}', '[': ']' } as Record<string, string>)[t.v];
+    const close = ({ '(': ')', '{': '}', '[': ']', '⟨': '⟩' } as Record<string, string>)[t.v];
     if (close) {
-      const outer = this.abs; this.abs = 0; const e = this.expr(); this.abs = outer; this.eat(close);
+      const outer = this.abs; this.abs = 0; const e = this.expr();
+      // a comma makes it a vector: ⟨1, 2⟩, (1, 2), [1, 2]
+      if (this.isOp(',') || t.v === '⟨') {
+        const items = [e];
+        while (this.isOp(',')) { this.i++; items.push(this.expr()); }
+        this.abs = outer; this.eat(close);
+        return vec(items);
+      }
+      this.abs = outer; this.eat(close);
       // [F]_a^b: what F is worth between two bounds
       if (t.v === '[' && this.isOp('_')) { this.i++; const b = this.bound(); this.eat('^'); const hi = this.bound(); return at(b.v ?? onlyVar(e), e, b.at, hi.at); }
       return e;

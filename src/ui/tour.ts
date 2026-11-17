@@ -30,7 +30,7 @@ const tab = (key: string) => `hold ${kb('Tab')} and press ${kb(key)}`;
 const Tab = (key: string) => `Hold ${kb('Tab')} and press ${kb(key)}`;
 const C = (key: string) => `Hold ${kb('C')} and press ${kb(key)}`;
 /** derivatives or limits still to work out */
-const calcLeft = (a: App) => /d\/d|lim/.test(text(a));
+const calcLeft = (a: App) => /d\/d|lim|∂|∇/.test(text(a));
 
 export const TOURS: TourDef[] = [
   {
@@ -309,11 +309,83 @@ export const TOURS: TourDef[] = [
       { load: 'e^x', say: `${C('t')}: the Taylor polynomial, a polynomial that hugs eˣ near 0. Switch between the two with <kbd>1</kbd> and <kbd>2</kbd> and watch the graph.`, done: t => t.app.slots.length === 2 },
     ],
   },
+  {
+    id: 'partials', group: 'Calculus 3', name: 'Partial derivatives', blurb: 'One letter moves, the others hold still.',
+    steps: [
+      { load: 'x^2 y + y^3', say: `Two letters. ${C('d')}: ∂/∂x, the slope as x moves with y held still.`, done: t => text(t.app).startsWith('∂') },
+      { say: `${C('d')} again: y is just a number here, so x²y goes like 2x times it, and y³ is a constant.`, done: t => !calcLeft(t.app) },
+      { load: '∂/∂y (x^2 y + y^3)', say: 'Now in y, with x held still. Press <kbd>e</kbd>.', done: t => !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'gradient', group: 'Calculus 3', name: 'The gradient', blurb: 'Every partial at once, and the slope in any direction.',
+    steps: [
+      { load: 'x^2 y', say: `${C('n')}: ∇, the gradient. It points the way the function climbs fastest.`, done: t => text(t.app).startsWith('∇') },
+      { say: 'Press <kbd>e</kbd>: one partial for each letter, side by side in a vector.', done: t => text(t.app) === '⟨2xy, x^2⟩' },
+      { load: '∇(x^2 y) ⟨3/5, 4/5⟩', say: 'The slope heading along ⟨3/5, 4/5⟩ is the gradient dotted with it. Press <kbd>e</kbd>.', done: t => !calcLeft(t.app) && !text(t.app).includes('⟨') },
+    ],
+  },
+  {
+    id: 'maxmin2', group: 'Calculus 3', name: 'Max and min in 3D', blurb: 'Every partial is 0, then solve them together.',
+    steps: [
+      { load: 'x^2 + y^2 - 2x + 4y', say: `A bowl. ${C('m')}: its bottom is where the gradient is the zero vector.`, done: t => text(t.app).startsWith('∇') },
+      { say: 'Press <kbd>e</kbd>: the gradient, then one equation for each entry.', done: t => t.app.slots.length === 3 },
+      { say: 'Press <kbd>e</kbd> to solve this one, then <kbd>3</kbd> and <kbd>e</kbd> for the other.', done: t => [1, 2].every(i => !!solvedFor(t.app.eqOf(i))) },
+    ],
+  },
+  {
+    id: 'lagrange', group: 'Calculus 3', name: 'Lagrange multipliers', blurb: 'Biggest on a constraint: ∇f = λ∇g.',
+    steps: [
+      { load: 'x y', say: 'Make xy as big as it can be with x + y = 4. Press <kbd>n</kbd>, type <b>x + y = 4</b>, then <kbd>Enter</kbd>.', done: t => t.app.slots.length >= 2 },
+      { say: `Back to equation 1 with <kbd>1</kbd>. ${C('k')}: at the best point the two gradients line up, ∇f = λ∇g.`, done: t => text(t.app).includes('λ') },
+      { say: 'Press <kbd>e</kbd>: both gradients, then an equation for each entry. y = λ and x = λ, so x = y, and x + y = 4 makes both 2.', done: t => t.app.slots.length >= 4 },
+    ],
+  },
+  {
+    id: 'double', group: 'Calculus 3', name: 'Double integrals', blurb: 'Inside out: one integral, then the next.',
+    steps: [
+      { load: 'int_0^1 int_0^2 x y dy dx', say: `The inner one first, in y, with x held still. ${C('i')}.`, done: t => text(t.app).startsWith('∫_{0}^{1} [') },
+      { say: `${C('p')} plugs in y = 2 and y = 0.`, done: t => !text(t.app).includes('[') },
+      { say: 'Press <kbd>e</kbd> for the outer one.', done: t => text(t.app) === '1' },
+    ],
+  },
+  {
+    id: 'separable', group: 'Calculus 4', name: 'Separable equations', blurb: 'y’s on one side, x’s on the other, integrate both.',
+    steps: [
+      { load: "y' = x y", say: `A differential equation: the slope depends on x and y. ${C('s')}: the y’s go left, the x’s go right, each under an integral.`, done: t => text(t.app).startsWith('∫') },
+      { say: 'Press <kbd>e</kbd>: both integrals, one + C between them, then solved for y. The ± gives two equations.', done: t => solved(t.app) && !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'linear1', group: 'Calculus 4', name: 'Integrating factor', blurb: 'y′ + P y = Q: turn the left side into one derivative.',
+    steps: [
+      { load: "y' + 2y = e^x", say: `Not separable, but linear. ${C('f')}: multiply by e^(∫2 dx) = e^(2x), and the left side becomes the product rule of (y e^(2x))′.`, done: t => text(t.app).includes('∫') },
+      { say: 'Press <kbd>e</kbd>: integrate the right side, then solve for y.', done: t => solved(t.app) && !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'second', group: 'Calculus 4', name: 'Second order', blurb: 'y″ + b y′ + c y = 0: try y = e^(rx).',
+    steps: [
+      { load: "y'' - 3y' + 2y = 0", say: `Guess y = e^(rx). ${C('r')}: every term has e^(rx), so what’s left is r² − 3r + 2 = 0.`, done: t => t.app.slots.length === 2 },
+      { say: 'Press <kbd>e</kbd>: the roots are 1 and 2.', done: t => t.app.slots.length === 3 },
+      { say: `Back to equation 1 with <kbd>1</kbd>. ${C('g')}: the general solution, checked by putting it back in.`, done: t => t.app.slots.length === 4 },
+      { load: "y'' + 2y' + 5y = 0", say: 'Here the roots are complex, −1 ± 2i: waves that shrink. Press <kbd>e</kbd>.', done: t => t.app.slots.length === 2 && text(t.app).includes('cos') },
+    ],
+  },
+  {
+    id: 'fields', group: 'Calculus 4', name: 'Divergence and curl', blurb: 'How a field spreads out, and how it spins.',
+    steps: [
+      { load: '(-y, x, 0)', say: `A field that turns around the z axis. ${C('w')}: its curl, ∇×F.`, done: t => text(t.app).startsWith('∇×') },
+      { say: 'Press <kbd>e</kbd>: it spins about z, twice as fast as it turns.', done: t => text(t.app) === '⟨0, 0, 2⟩' },
+      { load: '(x, y, z)', say: `Every arrow points straight out. ${C('v')}: its divergence, ∇·F.`, done: t => text(t.app).startsWith('∇·') },
+      { say: 'Press <kbd>e</kbd>: it spreads out by 3 everywhere.', done: t => text(t.app) === '3' },
+    ],
+  },
 ];
 
 
-/** menu keys: digits, then letters that aren't already menu keys (g closes, j k move) */
-const MENU_KEYS = [...'123456789abcdefhilmnopqrstuvwxy'];
+/** menu keys: digits, then letters that aren't already menu keys (g closes, j k move), then capitals */
+const MENU_KEYS = [...'123456789abcdefhilmnopqrstuvwxyz', ...'ABCDEFHILMNOPQRSTUVWXYZ'];
 
 export class Tour {
   i = -1;

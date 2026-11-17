@@ -206,6 +206,38 @@ function sig(g: Glyph): string {
   return g.kind;
 }
 
+/** ∫ as a filled shape, like a typeset one: a slanted stem, thick in the middle and thin at the
+ *  hooks, with a small ball at each end */
+function integralPath(w: number, h: number, sw: number): string {
+  const segs: [number, number][][] = [
+    [[0.95, 0.075], [0.9, -0.005], [0.72, -0.01], [0.64, 0.13]],
+    [[0.64, 0.13], [0.56, 0.32], [0.44, 0.68], [0.36, 0.87]],
+    [[0.36, 0.87], [0.28, 1.01], [0.1, 1.005], [0.05, 0.925]],
+  ];
+  const pt = (q: [number, number][], t: number) => {
+    const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+    return [(a * q[0][0] + b * q[1][0] + c * q[2][0] + d * q[3][0]) * w, (a * q[0][1] + b * q[1][1] + c * q[2][1] + d * q[3][1]) * h];
+  };
+  const mid: number[][] = [];
+  const N = 16;
+  segs.forEach((q, i) => { for (let j = i ? 1 : 0; j <= N; j++) mid.push(pt(q, j / N)); });
+  const left: string[] = [], right: string[] = [];
+  const thick = Math.max(sw * 2.3, h * 0.045);
+  mid.forEach((m, i) => {
+    const a = mid[Math.max(0, i - 1)], b = mid[Math.min(mid.length - 1, i + 1)];
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+    const t = i / (mid.length - 1);
+    const half = (sw * 0.32 + (thick - sw * 0.32) * Math.pow(Math.sin(Math.PI * t), 2)) / 2;
+    const nx = -dy / len * half, ny = dx / len * half;
+    left.push(`${(m[0] + nx).toFixed(2)} ${(m[1] + ny).toFixed(2)}`);
+    right.push(`${(m[0] - nx).toFixed(2)} ${(m[1] - ny).toFixed(2)}`);
+  });
+  const r = Math.max(sw * 0.95, h * 0.022);
+  const ball = (x: number, y: number) => `M ${(x - r).toFixed(2)} ${y.toFixed(2)} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0 Z`;
+  const [s0, s1] = [mid[0], mid[mid.length - 1]];
+  return `M ${left.join(' L ')} L ${right.reverse().join(' L ')} Z ${ball(s0[0] - r * 0.3, s0[1] + r * 0.6)} ${ball(s1[0] + r * 0.3, s1[1] - r * 0.6)}`;
+}
+
 function elTag(g: Glyph) { return g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int' ? 'svg' : 'DIV'; }
 
 function create(g: Glyph): HTMLElement | SVGSVGElement {
@@ -263,10 +295,7 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     const path = svg.firstChild as SVGPathElement;
     path.setAttribute('stroke-width', String(g.kind === 'rad' ? sw * 0.95 : sw));
     if (g.kind === 'int') {
-      // a slanted long s, as tall as what it integrates
-      const w = g.w, h = g.h;
-      path.setAttribute('stroke-width', String(sw * 1.15));
-      path.setAttribute('d', `M ${w * 0.95} ${h * 0.07} C ${w * 0.86} ${-h * 0.02} ${w * 0.66} ${h * 0.0} ${w * 0.6} ${h * 0.18} L ${w * 0.4} ${h * 0.82} C ${w * 0.34} ${h * 1.0} ${w * 0.14} ${h * 1.02} ${w * 0.05} ${h * 0.93}`);
+      path.setAttribute('d', integralPath(g.w, g.h, sw));
     } else if (g.kind === 'paren' && g.straight) {
       path.setAttribute('d', `M ${g.w / 2} ${sw} L ${g.w / 2} ${g.h - sw}`);
     } else if (g.kind === 'paren') {

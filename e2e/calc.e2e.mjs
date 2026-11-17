@@ -48,4 +48,39 @@ export const tests = {
     await until(s => s.eq === 'lim_{x→0} sin(x)/x', 'the limit typed');
     await key('e'); await until(s => s.eq === '1', 'and worked out', 10000);
   },
+
+  async 'two letters: C shows ∂, ∇ and Lagrange, and aiming picks the letter'({ load, p, key, hold, until, assert, wait, aim }) {
+    await load('x^2 y + y^3');
+    await p.keyboard.down('c'); await wait(150);
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .chip')].map(c => c.textContent));
+    await p.keyboard.up('c'); await key('Escape');
+    assert(chips.some(c => c.startsWith('d∂/∂x')) && chips.some(c => c.startsWith('ngradient')), `partials and the gradient: ${chips}`);
+    assert(chips.some(c => c.includes('type a constraint first')), `Lagrange waits for a constraint: ${chips}`);
+    await aim('y^3');
+    await key('ArrowDown'); await until(s => s.aim === 'y', 'aimed at the y of y³');
+    await hold('c', 'd');
+    await until(s => s.eq.startsWith('∂/∂y') && s.slots === 2, 'aimed at y: ∂/∂y as a new equation');
+    await key('e'); await until(s => s.eq === 'x^2 + 3y^2', 'worked out', 10000);
+  },
+
+  async 'a vector equation splits into one equation per entry'({ key, type, until }) {
+    await key('i'); await type('∇(x^2 + y^2 - 2x) = (0, 0)'); await key('Enter');
+    await until(s => s.eq.startsWith('∇'), 'typed, with ( , ) as a vector');
+    await key('e'); await until(s => s.slots === 2 && s.eq === '2x − 2 = 0', 'gradient worked out, then split', 10000);
+  },
+
+  async "a differential equation: C offers the method that fits, and e solves it"({ load, p, key, until, assert, wait }) {
+    await load("y' = x y");
+    await p.keyboard.down('c'); await wait(150);
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .chip')].map(c => c.textContent + (c.classList.contains('off') || c.hasAttribute('disabled') ? ' (off)' : '')));
+    await p.keyboard.up('c'); await key('Escape');
+    assert(chips.some(c => c.startsWith('sseparate')), `separate is offered: ${chips}`);
+    await key('e'); await until(s => s.eq.startsWith('y = ') && !s.eq.includes('∫'), 'separated, integrated and solved', 12000);
+  },
+
+  async "y'' typed in the box is an equation, not a proof"({ key, type, until }) {
+    await key('i'); await type("y'' + 9y = 0"); await key('Enter');
+    await until(s => s.eq === 'y″ + 9y = 0', 'an equation, not ≟');
+    await key('e'); await until(s => s.slots === 2 && s.eq === 'y = C_1 cos(3x) + C_2 sin(3x)', 'the general solution beside it', 8000);
+  },
 };

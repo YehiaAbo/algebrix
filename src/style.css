@@ -166,6 +166,7 @@ body[data-mode="write"] .original { display: none; }
 .g.eq[data-rel="≟"]::after { content: '?'; position: absolute; left: 0; right: 0; bottom: calc(100% + var(--s) * 0.04); text-align: center; font: calc(var(--s) * 0.32) var(--ui-font); color: var(--sel); }
 svg.g { overflow: visible; }
 svg.g path { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+svg.g.int path { fill: currentColor; stroke: none; }
 .mini .g { color: inherit; }
 
 .sel {

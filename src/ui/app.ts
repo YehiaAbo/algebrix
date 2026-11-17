@@ -1,4 +1,4 @@
-import { Eq, Node, find, findPath, children, symbols, relOf, key } from '../engine/ast';
+import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
 import { parseEquation } from '../engine/parse';
@@ -23,6 +23,7 @@ import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePrev
 import * as nav from './nav';
 import * as sheet from './sheet';
 import { hasCalc } from '../engine/calcmoves';
+import { odeKind } from '../engine/ode';
 import { renderShelf, ShelfItem } from './shelf';
 import type { NavView } from './nav';
 import * as opsPart from './ops';
@@ -688,6 +689,8 @@ export class App {
   solveKey() {
     // calculus to work out, or a u to put back
     if (hasCalc(this.eq) || Object.keys(this.substitutions()).some(u => symbols(this.eq).includes(u))) return this.finishCalculus();
+    if (relOf(this.eq) === '=' && (isVector(this.eq.lhs) || isVector(this.eq.rhs))) return this.splitComponents();
+    if (odeKind(this.eq)) return this.solveOde();
     if (relOf(this.eq) === 'expr') {
       // nothing to solve in a lone expression: e tidies it as far as it goes instead
       const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');
