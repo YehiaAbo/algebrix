@@ -77,7 +77,7 @@ function wrapNode(s: Node, f: Wrap, arg: Node): Node {
 
 const NUMERIC: Record<Wrap, (v: number, k: number) => number> = {
   square: v => v * v, cube: v => v ** 3, power: (v, k) => Math.pow(v, k), recip: v => 1 / v,
-  sqrt: v => Math.sqrt(v), cbrt: v => (v < 0 ? NaN : Math.cbrt(v)), root: (v, k) => Math.pow(v, 1 / k),
+  sqrt: v => Math.sqrt(v), cbrt: v => Math.cbrt(v), root: (v, k) => (v < 0 && Number.isInteger(k) && k % 2 === 1 ? -Math.pow(-v, 1 / k) : Math.pow(v, 1 / k)),
   exp: v => Math.exp(v), pow10: v => 10 ** v, powb: (v, k) => Math.pow(k, v),
   ln: v => (v > 0 ? Math.log(v) : NaN), log: v => (v > 0 ? Math.log10(v) : NaN), logb: (v, k) => (v > 0 ? Math.log(v) / Math.log(k) : NaN),
   sin: Math.sin, cos: Math.cos, tan: v => Math.tan(v), asin: Math.asin, acos: Math.acos, atan: Math.atan,
@@ -103,7 +103,7 @@ export function wrapBoth(e: Eq, f: Wrap, arg: Node = num(2)): MoveResult {
   const sides = [e.lhs, e.rhs];
   const even = (x: number) => Number.isInteger(x) && x % 2 === 0;
   if (f === 'square' || (f === 'power' && even(k)) || f === 'sin' || f === 'cos' || f === 'tan') conditions.push('this can add solutions: check answers');
-  if (f === 'sqrt' || f === 'cbrt' || (f === 'root' && !(Number.isInteger(k) && k % 2 === 1)) || (f === 'power' && !Number.isInteger(k))) sides.filter(s => !nonNeg(s) && hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≥ 0`));
+  if (f === 'sqrt' || (f === 'root' && !(Number.isInteger(k) && k % 2 === 1)) || (f === 'power' && !Number.isInteger(k))) sides.filter(s => !nonNeg(s) && hasSymbols(s)).forEach(s => conditions.push(`${t(s)} ≥ 0`));
   if (f === 'ln' || f === 'log' || f === 'logb') sides.filter(s => !positive(s)).forEach(s => conditions.push(`${t(s)} > 0`));
   if (f === 'recip' || (f === 'power' && k < 0)) sides.filter(s => hasSymbols(s) && !neverZero(s)).forEach(s => conditions.push(`${t(s)} ≠ 0`));
   if (f === 'asin' || f === 'acos') sides.filter(s => hasSymbols(s)).forEach(s => conditions.push(`−1 ≤ ${t(s)} ≤ 1`));

@@ -226,7 +226,18 @@ export function evaluate(n: Node, env: Env): number {
     }
     case 'neg': return -evaluate(n.arg, env);
     case 'frac': return evaluate(n.num, env) / evaluate(n.den, env);
-    case 'pow': return Math.pow(evaluate(n.base, env), evaluate(n.exp, env));
+    case 'pow': {
+      const b = evaluate(n.base, env), x = evaluate(n.exp, env);
+      // an odd root of a negative is real: (−8)^(1/3) = −2, (−8)^(2/3) = 4
+      if (b < 0 && !Number.isInteger(x)) {
+        const e = n.exp.k === 'neg' ? n.exp.arg : n.exp, sg = n.exp.k === 'neg' ? -1 : 1;
+        if (e.k === 'frac' && e.num.k === 'num' && e.den.k === 'num' && Number.isInteger(e.num.v) && Number.isInteger(e.den.v) && Math.abs(e.den.v) % 2 === 1) {
+          const m = Math.pow(-b, x);
+          return Math.abs(e.num.v * sg) % 2 === 0 ? m : -m;
+        }
+      }
+      return Math.pow(b, x);
+    }
     case 'sqrt': return Math.sqrt(evaluate(n.arg, env));
     case 'fn': {
       const a = evaluate(n.arg, env);

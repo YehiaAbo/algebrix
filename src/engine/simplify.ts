@@ -61,10 +61,21 @@ function rule(n: Node, h: Hints): Node | null {
       }
       // (1/b)ⁿ = 1/bⁿ: sec² typed as (1/cos x)² is 1/cos² x
       if (base.k === 'frac' && base.num.k === 'num' && base.num.v === 1 && exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 1) return frac(base.num, pow(base.den, exp), n.id);
-      // integer roots of numbers: 8^(1/3) → 2
-      if (base.k === 'num' && base.v > 0 && exp.k === 'frac' && exp.num.k === 'num' && exp.num.v === 1 && exp.den.k === 'num' && exp.den.v > 1) {
-        const r = Math.round(base.v ** (1 / exp.den.v));
-        if (r ** exp.den.v === base.v) { h.absorbs.set(exp.id, base.id); return num(r, base.id); }
+      // whole roots of numbers: 8^(1/3) → 2, 8^(2/3) → 4, 4^(−1/2) → 1/2, (−8)^(1/3) → −2
+      const pq = ratOf(exp.k === 'neg' ? exp.arg : exp);
+      if (base.k === 'num' && Number.isInteger(base.v) && base.v !== 0 && pq && pq.q > 1 && Math.abs(pq.p) <= 6 && (base.v > 0 || pq.q % 2 === 1)) {
+        const p = exp.k === 'neg' ? -pq.p : pq.p;
+        const r = Math.round(Math.abs(base.v) ** (1 / pq.q)) * Math.sign(base.v);
+        if (r ** pq.q === base.v) {
+          h.absorbs.set(exp.id, base.id);
+          const v = r ** Math.abs(p);
+          if (safe(v)) return p > 0 ? num(v, base.id) : frac(num(1), num(v, base.id), n.id);
+        }
+      }
+      // √3³ → 3√3: whole squares come out of a root's power
+      if (base.k === 'sqrt' && exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 2) {
+        const k = Math.floor(exp.v / 2);
+        return mul([pow(base.arg, num(k)), ...(exp.v % 2 ? [base] : [])], n.id);
       }
       // inverse pairs: e^(ln a) = a, 10^(log a) = a, (√a)² = a
       if (base.k === 'sym' && base.name === 'e' && exp.k === 'fn' && exp.name === 'ln') return exp.arg;
@@ -118,6 +129,23 @@ function rule(n: Node, h: Hints): Node | null {
       if (a.k === 'frac' && a.den.k === 'num' && a.den.v > 1 && Number.isInteger(a.den.v) && a.num.k === 'num' && a.num.v > 0 && Number.isInteger(a.num.v)) return frac(sqrt(num(a.num.v * a.den.v, a.num.id), n.id), num(a.den.v, a.den.id));
       // √(b²) = |b|
       if (a.k === 'pow' && a.exp.k === 'num' && a.exp.v === 2) { h.absorbs.set(a.exp.id, a.base.id); return fn('abs', a.base, n.id); }
+      // √(x⁴) = x², √(x⁶) = |x³|
+      if (a.k === 'pow' && a.exp.k === 'num' && Number.isInteger(a.exp.v) && a.exp.v > 2 && a.exp.v % 2 === 0) {
+        const half = pow(a.base, num(a.exp.v / 2, a.exp.id));
+        return (a.exp.v / 2) % 2 === 0 ? half : fn('abs', half, n.id);
+      }
+      // √(4x²) = 2|x|: the factors that are squares come out
+      if (a.k === 'mul') {
+        const out: Node[] = [], keep: Node[] = [];
+        for (const f of a.factors) {
+          if (f.k === 'num' && f.v > 0 && Number.isInteger(Math.sqrt(f.v))) out.push(num(Math.sqrt(f.v), f.id));
+          else if (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v % 2 === 0 && f.exp.v > 0) out.push(sqrt(f, f.id + 'r'));
+          else keep.push(f);
+        }
+        // the number, then what stays under the root, then the letters: 3√2·|x|
+        const nums = out.filter(f => f.k === 'num'), rest = out.filter(f => f.k !== 'num');
+        if (out.length && !(out.length === 1 && out[0].k === 'num' && out[0].v === 1 && !keep.length)) return mul([...nums, ...(keep.length ? [sqrt(keep.length === 1 ? keep[0] : mul(keep), n.id)] : []), ...rest]);
+      }
       return null;
     }
     case 'fn': return fnRule(n.name, n.arg, n.id, h);

@@ -137,3 +137,33 @@ describe('sign charts', () => {
     expect(chart('sin(x) > x/10')).toContain('∪');
   });
 });
+
+describe('roots and powers of numbers', () => {
+  const S = (s: string) => toText(simplify(parseExpr(s), newHints()));
+  it('works out whole rational powers', () => {
+    expect(S('8^(2/3)')).toBe('4');
+    expect(S('9^(3/2)')).toBe('27');
+    expect(S('4^(-1/2)')).toBe('1/2');
+    expect(S('2^(1/3)')).toBe('2^(1/3)');
+  });
+  it('takes odd roots of negatives, as real numbers', () => {
+    expect(S('(-8)^(1/3)')).toBe('−2');
+    expect(S('cbrt(-27)')).toBe('−3');
+    expect(evaluate(parseExpr('(-8)^(1/3)'), {})).toBeCloseTo(-2, 12);
+    expect(evaluate(parseExpr('(-8)^(2/3)'), {})).toBeCloseTo(4, 12);
+  });
+  it('brings squares out of roots', () => {
+    expect(S('sqrt(3)^3')).toBe('3 sqrt(3)');
+    expect(S('sqrt(x^4)')).toBe('x^2');
+    expect(S('sqrt(x^6)')).toBe('|x^3|');
+    expect(S('sqrt(4x^2)')).toBe('2·|x|');
+    expect(S('sqrt(2x^2)')).toBe('sqrt(2)·|x|');
+  });
+});
+
+describe('odd roots in solving', () => {
+  it('cube-roots a negative side', () => {
+    expect(last('x^3 = -8')).toBe('x = −2');
+    expect(last('(x-1)^3 = -1')).toBe('x = 0');
+  });
+});
