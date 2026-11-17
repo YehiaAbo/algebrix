@@ -5,6 +5,8 @@ import { parseEquation, ParseError } from '../engine/parse';
 import { toText } from '../engine/print';
 import { applyMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { formsFor } from '../engine/forms';
+import { substitute } from '../engine/calculus';
+import { simplify, newHints } from '../engine/simplify';
 import { moveAny, WrapItem, simplifySpot, Spot } from '../engine/techniques';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition } from '../render/stage';
@@ -206,6 +208,21 @@ export class App {
     const out = kin.filter(({ s }) => s.bad).map(({ e }) => toText(e.lhs.k === 'sym' ? e.rhs : e.lhs));
     if (uniq.length === 1 && !me.bad && out.length) return `the only answer: <b>${v} = ${mathHtml(uniq[0])}</b> (${out.map(o => `${v} = ${mathHtml(o)}`).join(', ')} fails the original)`;
     if (uniq.length === 1) return me.bad ? `<b>${v} = ${mathHtml(uniq[0])}</b>` : null;
+    // a system: another equation gives y from x (y = x + 1), so each answer is a point
+    const partner = this.slots.map((_, i) => this.eqOf(i)).find(e => {
+      const w = solvedFor(e);
+      return !!w && w !== v && !kin.some(k => k.e === e) && symbols(e.lhs.k === 'sym' ? e.rhs : e.lhs).every(n => n === v);
+    });
+    if (partner && uniq.every(a => !symbols(sides[order.find(i => toText(sides[i]) === a)!]).length)) {
+      const w = solvedFor(partner)!, g = partner.lhs.k === 'sym' ? partner.rhs : partner.lhs;
+      const pts = uniq.map(a => {
+        const x = sides[order.find(i => toText(sides[i]) === a)!], y = toText(simplify(substitute(g, v, x), newHints()));
+        return v < w ? [a, y] : [y, a];
+      });
+      const names = v < w ? `(${v}, ${w})` : `(${w}, ${v})`;
+      const items = pts.map(([p, q], i) => `<b>${i ? '' : `${names} = `}(${mathHtml(p)}, ${mathHtml(q)})</b>`);
+      return items.length === 2 ? items.join(' or ') : `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`;
+    }
     return uniq.map(a => `<b>${v} = ${mathHtml(a)}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
   }
 
@@ -620,6 +637,8 @@ export class App {
     const eqBox = this.stage.box('eq');
     const old = this.cur;
     this.cur = i;
+    // a message about the equation you left ("Equation 2. …") doesn't hold for this one
+    this.message = null;
     sound.tick(1);
     this.stage.clear();
     this.renderAll(null);

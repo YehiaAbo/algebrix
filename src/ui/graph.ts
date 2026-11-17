@@ -448,8 +448,14 @@ export class Graph {
       c.globalAlpha = this.fade;
     }
     this.implicit(eq, hx, vy, ux, uy, css('--graph-a'), 1, relOf(eq) === '<' || relOf(eq) === '>');
+    // where the curves cross, every equation holds: mark those points and name them
+    const meet = !isIneq(eq) && extra.length ? crossings(eq, extra.filter(o => !isIneq(o)), hx, vy, [ux(0), ux(this.W)], [uy(this.H), uy(0)]) : [];
+    for (const q of meet) this.dot(X(q[0]), Y(q[1]), css('--ink'));
+    const pt = (q: number[]) => `(${fmt(q[0])}, ${fmt(q[1])})`;
     this.note.innerHTML = isIneq(eq) ? 'Shaded: every point where it holds. A dashed edge is not included.' : extra.length
-      ? `Your equation is the bold curve. Where it crosses the others, all of them hold at once.`
+      ? meet.length
+        ? `They cross at <b>${meet.slice(0, 3).map(pt).join(', ')}</b>${meet.length > 3 ? '…' : ''}${meet.every(q => exact(q[0]) && exact(q[1])) ? '' : ' (about)'}: there every equation holds at once.`
+        : `Your equation is the bold curve. Where it crosses the others, all of them hold at once.`
       : `Every point on the curve solves the equation. It stays the same curve at every step.`;
     const ms = this.mouse;
     if (ms && !this.drag?.moved) {
@@ -755,6 +761,43 @@ function hexRgb(h: string): number[] {
   const m = h.replace('#', '');
   const v = m.length === 3 ? m.split('').map(x => x + x) : [m.slice(0, 2), m.slice(2, 4), m.slice(4, 6)];
   return v.map(x => parseInt(x, 16));
+}
+
+/** where eq and one of the others both hold in view, by Newton's method from a grid of starts (cached) */
+const crossCache = new Map<string, number[][]>();
+function crossings(eq: Eq, others: Eq[], hx: string, vy: string, [x0, x1]: number[], [y0, y1]: number[]): number[][] {
+  const k = [toText(eq), ...others.map(o => toText(o)), x0, x1, y0, y1].join('|');
+  const hit = crossCache.get(k);
+  if (hit) return hit;
+  const out: number[][] = [];
+  const F = (e: Eq) => (x: number, y: number) => evaluate(e.lhs, { [hx]: x, [vy]: y }) - evaluate(e.rhs, { [hx]: x, [vy]: y });
+  const f = F(eq), tol = 1e-9 * (Math.abs(x1 - x0) + Math.abs(y1 - y0));
+  for (const o of others) {
+    const g = F(o);
+    for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+      let x = x0 + ((x1 - x0) * i) / 8, y = y0 + ((y1 - y0) * j) / 8;
+      for (let n = 0; n < 40; n++) {
+        const h = 1e-6 * (1 + Math.abs(x) + Math.abs(y));
+        const a = f(x, y), b = g(x, y);
+        const fx = (f(x + h, y) - a) / h, fy = (f(x, y + h) - a) / h, gx = (g(x + h, y) - b) / h, gy = (g(x, y + h) - b) / h;
+        const det = fx * gy - fy * gx;
+        if (!Number.isFinite(det) || Math.abs(det) < 1e-14) break;
+        const dx = (a * gy - b * fy) / det, dy = (b * fx - a * gx) / det;
+        x -= dx; y -= dy;
+        if (Math.abs(dx) + Math.abs(dy) < tol) break;
+      }
+      if (!(x >= x0 && x <= x1 && y >= y0 && y <= y1)) continue;
+      if (!(Math.abs(f(x, y)) < 1e-7 && Math.abs(g(x, y)) < 1e-7)) continue;
+      // a whole number or short decimal that Newton nearly hit is that number
+      const sn = (t: number) => (Math.abs(t * 1000 - Math.round(t * 1000)) < 1e-6 ? Math.round(t * 1000) / 1000 : t);
+      const q = [sn(x), sn(y)];
+      if (!out.some(p => Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) < 1e-5 * (1 + Math.abs(x1 - x0)))) out.push(q);
+    }
+  }
+  out.sort((a, b) => a[0] - b[0]);
+  if (crossCache.size > 50) crossCache.clear();
+  crossCache.set(k, out);
+  return out;
 }
 
 /** a whole number, or a short decimal, that fmt shows exactly */

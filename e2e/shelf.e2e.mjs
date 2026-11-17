@@ -51,4 +51,26 @@ export const tests = {
     for (let i = 0; i < 4; i++) { await h.key('s'); await h.wait(200); }
     await h.key('e'); await h.expectEq('x = 6', 10000);
   },
+
+  async 'the graph names where a system crosses, and switching clears the old message'(h) {
+    await h.load('x^2 + y^2 = 25');
+    await add(h, 'y = x + 1');
+    await h.key('1'); await h.until(s => s.cur === 0, 'equation 1');
+    await h.wait(400);
+    const note = await h.p.evaluate(() => document.getElementById('graph-note').textContent);
+    h.assert(note.includes('(−4, −3)') && note.includes('(3, 4)'), `the crossings: ${note}`);
+    const bar = await h.p.evaluate(() => document.getElementById('hints').textContent);
+    h.assert(!bar.includes('Equation 2'), `no stale message: ${bar}`);
+  },
+
+  async 'a system solved by substituting answers with points'(h) {
+    await h.load('x^2 + y^2 = 25');
+    await add(h, 'y = x + 1');
+    await h.key('1'); await h.until(s => s.cur === 0, 'equation 1');
+    await h.hold('Tab', '2'); await h.until(s => !s.eq.includes('y'), 'y substituted away');
+    await h.key('e'); await h.until(s => /^x = /.test(s.eq), 'solved', 12000);
+    await h.p.waitForFunction(() => document.getElementById('answer').textContent.includes('(x, y)'), null, { timeout: 5000 }).catch(() => {});
+    const ans = await h.p.evaluate(() => document.getElementById('answer').textContent);
+    h.assert(ans.includes('(−4, −3)') && ans.includes('(3, 4)'), `points: ${ans}`);
+  },
 };
