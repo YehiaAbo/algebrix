@@ -315,7 +315,10 @@ let DOMAINS: Record<string, Domain> = {};
 export function setDomains(d: Record<string, Domain>) { DOMAINS = d; }
 export function sampleIn(name: string, i: number): number {
   const d = DOMAINS[name] ?? 'real';
-  const x = (Math.sin(i * 12.9898 + name.charCodeAt(0) * 78.233) * 43758.5453) % 1;
+  // every character counts, so y, y′ and y″ get values of their own
+  let h = name.charCodeAt(0);
+  for (let k = 1; k < name.length; k++) h += name.charCodeAt(k) * (k + 0.618);
+  const x = (Math.sin(i * 12.9898 + h * 78.233) * 43758.5453) % 1;
   const u = i < 30 ? x * 9 : x * 60;
   if (d === 'positive') return Math.abs(u) + 0.013;
   if (d === 'nonneg') return Math.abs(u);

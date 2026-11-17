@@ -349,6 +349,38 @@ export const TOURS: TourDef[] = [
       { say: 'Press <kbd>e</kbd> for the outer one.', done: t => text(t.app) === '1' },
     ],
   },
+  {
+    id: 'separable', group: 'Calculus 4', name: 'Separable equations', blurb: 'y’s on one side, x’s on the other, integrate both.',
+    steps: [
+      { load: "y' = x y", say: `A differential equation: the slope depends on x and y. ${C('s')}: the y’s go left, the x’s go right, each under an integral.`, done: t => text(t.app).startsWith('∫') },
+      { say: 'Press <kbd>e</kbd>: both integrals, one + C between them, then solved for y. The ± gives two equations.', done: t => solved(t.app) && !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'linear1', group: 'Calculus 4', name: 'Integrating factor', blurb: 'y′ + P y = Q: turn the left side into one derivative.',
+    steps: [
+      { load: "y' + 2y = e^x", say: `Not separable, but linear. ${C('f')}: multiply by e^(∫2 dx) = e^(2x), and the left side becomes the product rule of (y e^(2x))′.`, done: t => text(t.app).includes('∫') },
+      { say: 'Press <kbd>e</kbd>: integrate the right side, then solve for y.', done: t => solved(t.app) && !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'second', group: 'Calculus 4', name: 'Second order', blurb: 'y″ + b y′ + c y = 0: try y = e^(rx).',
+    steps: [
+      { load: "y'' - 3y' + 2y = 0", say: `Guess y = e^(rx). ${C('r')}: every term has e^(rx), so what’s left is r² − 3r + 2 = 0.`, done: t => t.app.slots.length === 2 },
+      { say: 'Press <kbd>e</kbd>: the roots are 1 and 2.', done: t => t.app.slots.length === 3 },
+      { say: `Back to equation 1 with <kbd>1</kbd>. ${C('g')}: the general solution, checked by putting it back in.`, done: t => t.app.slots.length === 4 },
+      { load: "y'' + 2y' + 5y = 0", say: 'Here the roots are complex, −1 ± 2i: waves that shrink. Press <kbd>e</kbd>.', done: t => t.app.slots.length === 2 && text(t.app).includes('cos') },
+    ],
+  },
+  {
+    id: 'fields', group: 'Calculus 4', name: 'Divergence and curl', blurb: 'How a field spreads out, and how it spins.',
+    steps: [
+      { load: '(-y, x, 0)', say: `A field that turns around the z axis. ${C('w')}: its curl, ∇×F.`, done: t => text(t.app).startsWith('∇×') },
+      { say: 'Press <kbd>e</kbd>: it spins about z, twice as fast as it turns.', done: t => text(t.app) === '⟨0, 0, 2⟩' },
+      { load: '(x, y, z)', say: `Every arrow points straight out. ${C('v')}: its divergence, ∇·F.`, done: t => text(t.app).startsWith('∇·') },
+      { say: 'Press <kbd>e</kbd>: it spreads out by 3 everywhere.', done: t => text(t.app) === '3' },
+    ],
+  },
 ];
 
 
