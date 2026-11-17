@@ -1,7 +1,7 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed, int, at, sum, symbols, partial, grad, vec, varOrder } from './ast';
+import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
 import { negate, gcd } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
@@ -28,6 +28,10 @@ function tokenize(s: string): Tok[] {
     if (cal) { out.push({ t: 'cmd', v: `${/2|²/.test(cal[0]) ? 'deriv2' : 'deriv'}:${cal[1]}` }); i += cal[0].length; continue; }
     const par = /^(?:∂\/∂|\\frac\{\\partial\}\{\\partial ?)([a-zA-Zα-ω])\}?/.exec(rest);
     if (par) { out.push({ t: 'cmd', v: `pderiv:${par[1]}` }); i += par[0].length; continue; }
+    // ∇· and ∇× (or div, curl) before plain ∇
+    const vop = /^(?:(?:∇|\\nabla) ?(?:·|\\cdot|\*)|div(?![a-zA-Z]))/.exec(rest) ?? null;
+    const cop = /^(?:(?:∇|\\nabla) ?(?:×|\\times)|curl(?![a-zA-Z]))/.exec(rest) ?? null;
+    if ((vop || cop) && (!prevLetter || /^[∇\\]/.test(rest))) { out.push({ t: 'cmd', v: vop ? 'div' : 'curl' }); i += (vop ?? cop)![0].length; continue; }
     const nab = /^(?:∇|\\nabla(?![a-zA-Z])|grad(?![a-zA-Z]))/.exec(rest);
     if (nab && (nab[0] === '∇' || !prevLetter)) { out.push({ t: 'cmd', v: 'grad' }); i += nab[0].length; continue; }
     if (c === '⟨' || c === '⟩' || c === ',') { out.push({ t: 'op', v: c }); i++; continue; }
@@ -182,6 +186,7 @@ class Parser {
     if (t.t === 'cmd') {
       if (t.v.startsWith('pderiv')) return partial(t.v.slice(7), this.term());
       if (t.v === 'grad') { const a = this.fnArg(); return grad(a, varOrder(symbols(a))); }
+      if (t.v === 'div' || t.v === 'curl') return fieldOp(t.v, this.isOp('(') || this.isOp('⟨') ? this.atom() : this.fnArg());
       if (t.v.startsWith('deriv')) {
         const v = t.v.slice(t.v.indexOf(':') + 1), a = this.term();
         return t.v.startsWith('deriv2') ? deriv(v, deriv(v, a)) : deriv(v, a);

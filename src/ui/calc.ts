@@ -1,6 +1,7 @@
 // The calculus hub (C): derivatives a rule at a time, limits, both sides, critical points.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, relOf, key, Eq, Node, symbols, walk, int, num, cloneFresh, eq as mkEq, grad } from '../engine/ast';
+import { find, relOf, key, Eq, Node, symbols, walk, int, num, cloneFresh, eq as mkEq, grad, fieldOp } from '../engine/ast';
+import { odeKind, separate, linearSteps, characteristic, generalSolution } from '../engine/ode';
 import { isErr, MoveOk } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { tidy } from '../engine/techniques';
@@ -18,6 +19,25 @@ export function calcTechniques(this: App): Tech[] {
   const v = calcVar(eq, aimed?.k === 'sym' ? aimed.name : null);
   const rel = relOf(eq);
   const out: Tech[] = [];
+  // a vector field ⟨P, Q, R⟩: divergence and curl
+  if (rel === 'expr' && eq.lhs.k === 'vec' && !hasCalc(eq)) {
+    const F = eq.lhs;
+    out.push({ key: 'v', label: 'divergence ∇·', ok: F.items.length >= 2, run: () => this.addWork(eqOf(fieldOp('div', cloneFresh(F))), 'divergence') });
+    out.push({ key: 'w', label: 'curl ∇×', ok: F.items.length === 2 || F.items.length === 3, run: () => this.addWork(eqOf(fieldOp('curl', cloneFresh(F))), 'curl') });
+    return out;
+  }
+  // a differential equation: the method that fits
+  const ode = hasCalc(eq) ? null : odeKind(eq);
+  if (ode) {
+    const sep = ode === 'separable', lin = !Array.isArray(linearSteps(eq)) ? false : true, second = ode === 'second';
+    if (!second) {
+      out.push({ key: 's', label: 'separate the variables', ok: sep, run: () => this.apply(separate(this.eq), 1.1) });
+      out.push({ key: 'f', label: 'integrating factor', ok: lin, run: () => this.integratingFactor() });
+    } else {
+      out.push({ key: 'r', label: 'characteristic equation', ok: true, run: () => this.addWork(characteristic(this.eq), 'characteristic equation: try y = e^(rx)') });
+      out.push({ key: 'g', label: 'general solution', ok: true, run: () => this.addWork(generalSolution(this.eq), 'general solution, checked in the equation') });
+    }
+  }
   // a function of two or more letters: partial derivatives, the gradient, Lagrange
   const vs = rel === 'expr' || rel === 'def' ? calcVars(eq) : [];
   const multi = vs.length >= 2 && !hasCalc(eq);
@@ -88,6 +108,23 @@ export function substituteU(this: App) {
   this.apply(r.move, 1.1);
 }
 
+/** C + f: the integrating factor method, every step played */
+export function integratingFactor(this: App) {
+  const s = linearSteps(this.eq);
+  if (!Array.isArray(s)) return this.refuse(s.error);
+  this.play(s, () => this.say('Now integrate the right side: C + i, or e to finish and solve for the function.'));
+}
+
+/** e on a differential equation: the method that fits, then solve */
+export function solveOde(this: App) {
+  const k = odeKind(this.eq);
+  if (k === 'second') return this.addWork(generalSolution(this.eq), 'general solution, checked in the equation');
+  if (k === 'separable') { const r = separate(this.eq); if (isErr(r)) return this.refuse(r.error); return this.play([r], () => this.finishCalculus()); }
+  const s = linearSteps(this.eq);
+  if (!Array.isArray(s)) return this.refuse(s.error);
+  this.play(s, () => this.finishCalculus());
+}
+
 /** a vector equation: one equation for each entry, side by side on the shelf */
 export function splitComponents(this: App) {
   const c = components(this.eq);
@@ -143,6 +180,9 @@ export function finishCalculus(this: App) {
     // differentiated both sides: solve for the y′ that appeared
     const primed = symbols(this.eq).find(w => w.endsWith('′'));
     if (primed) return this.solveFor(primed);
+    // a differential equation, integrated: solve for the function
+    const fnOf = symbols(this.steps[0].eq).find(w => /[′″]$/.test(w))?.slice(0, -1);
+    if (fnOf && symbols(this.eq).includes(fnOf)) return this.solveFor(fnOf);
     this.solveKey();
   };
   if (!steps.length) return then();

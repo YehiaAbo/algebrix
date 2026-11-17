@@ -231,3 +231,16 @@ App:
 - Double integrals go inside out: C + i takes the innermost, and after its bounds go in, e tidies what the outer one holds.
 - Vectors are not graphed: the graph says to split into components.
 - Tours (Calculus 3): partial derivatives, the gradient, max and min in 3D, Lagrange multipliers, double integrals. Past 31 tours the menu uses capitals.
+
+
+### Round 13: Calculus 4 on C (differential equations, vector calculus)
+
+**How differential equations are checked.** y, y′ and y″ are letters of their own, so algebra on an ODE is checked as usual (sampling now gives every character of a name its own weight, so y, y′ and y″ never share a value; before, y″ − 3y′ + 2y = 0 looked like an identity). One-way steps are checked by differentiating back with y depending on x: separating y′ = g(x)h(y) into ∫ 1/h dy = ∫ g dx must give y′/h − g = (old)/h, and integrating (μy)′ = μQ must differentiate back to it. A general solution is checked by putting it into the equation for several x, C₁, C₂; if it doesn't satisfy it, it is not offered.
+
+- Notation: `y'`, `y''` (y′, y″), `C_1`; fields `(P, Q, R)`, `div(…)`, `curl(…)`, `∇·⟨…⟩`, `∇×⟨…⟩`.
+- C on a first-order equation: s separates (when y′ = g(x)h(y), with h ≠ 0 noted), f runs the integrating factor (standard form, × μ = e^(∫P), the left side as (μy)′, integrate both sides; e^(k ln|x|) is written x^k). e picks the method, integrates, and solves for y.
+- C on a y″ + b y′ + c y = 0 equation with number coefficients: r adds the characteristic equation, g the general solution (two real roots, a repeated root, or complex roots as e^(αx)(C₁cos βx + C₂sin βx)). Only the homogeneous kind for now.
+- C on a field ⟨P, Q, R⟩: v divergence, w curl (a number in 2D). e works them out with partials.
+- ODE steps tidy powers of the same base (e^(2x)e^x = e^(3x), x³/x = x²).
+- Tours (Calculus 4): separable equations, integrating factor, second order, divergence and curl.
+- Not yet: nonhomogeneous second order (undetermined coefficients), line and surface integrals, Green's and Stokes' theorems.

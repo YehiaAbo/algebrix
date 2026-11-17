@@ -49,7 +49,7 @@ export function toText(n: Node, ascii = false): string {
     case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
     case 'deriv': return n.partial ? `∂/∂${n.v}(${toText(n.arg, ascii)})` : `d/d${n.v}(${toText(n.arg, ascii)})`;
     case 'vec': return `⟨${n.items.map(i => toText(i, ascii)).join(', ')}⟩`;
-    case 'grad': return `∇${p(n.arg, !(n.arg.k === 'sym' || n.arg.k === 'call'))}`;
+    case 'grad': return `∇${n.op === 'div' ? '·' : n.op === 'curl' ? '×' : ''}${p(n.arg, !(n.arg.k === 'sym' || n.arg.k === 'call' || (!!n.op && n.arg.k === 'vec')))}`;
     case 'int': {
       const b = n.lo && n.hi ? `_{${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}}` : '';
       return `${ascii ? 'int' : '∫'}${b} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')} d${n.v}`;

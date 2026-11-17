@@ -60,6 +60,10 @@ const PLAYS = {
   maxmin2: [calc('m'), keys('e'), both(later(keys('e')), keys('3'), keys('e'))],
   lagrange: [async h => { await h.key('n'); await h.type('x + y = 4'); await h.key('Enter'); }, both(keys('1'), calc('k')), keys('e')],
   double: [calc('i'), calc('p'), keys('e')],
+  separable: [calc('s'), keys('e')],
+  linear1: [calc('f'), keys('e')],
+  second: [calc('r'), keys('e'), both(keys('1'), calc('g')), keys('e')],
+  fields: [calc('w'), keys('e'), calc('v'), keys('e')],
   series: [calc('g'), async h => { for (let i = 0; i < 4 && (await h.text()) !== '15/2'; i++) { await h.key('s'); await h.wait(250); } }, calc('r'), calc('t')],
 };
 

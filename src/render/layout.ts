@@ -241,8 +241,9 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     }
     case 'grad': {
       const a = L(n.arg, s, me, c);
-      const bare = n.arg.k === 'sym' || n.arg.k === 'call';
-      return row([text('∇', s, `gn${n.id}`, me, false, from && `gn${from}`), 0.04 * s, bare ? a : parens(a, s, n.id, me, from)]);
+      const bare = n.arg.k === 'sym' || n.arg.k === 'call' || (!!n.op && n.arg.k === 'vec');
+      const sign = text(n.op === 'div' ? '∇·' : n.op === 'curl' ? '∇×' : '∇', s, `gn${n.id}`, me, false, from && `gn${from}`);
+      return row([sign, 0.04 * s, bare ? a : parens(a, s, n.id, me, from)]);
     }
     case 'sum': {
       // Σ with the top bound above and "n = lo" below

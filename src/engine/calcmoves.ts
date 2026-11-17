@@ -422,6 +422,18 @@ function target(e: Eq, sel: string | null, ok: (n: Node) => boolean): Node | nul
 export function gradStep(e: Eq, sel: string | null): MoveResult {
   const G = target(e, sel, n => n.k === 'grad') as Grad | null;
   if (!G) return { error: 'No gradient here.' };
+  if (G.op) {
+    const F = G.arg;
+    if (F.k !== 'vec' || F.items.length !== G.vars.length) return { error: 'Divergence and curl need a field written out, like ⟨x y, y^2, z⟩.' };
+    const d = (i: number, v: string) => partial(v, fresh(F.items[i]));
+    const [x, y, z] = G.vars;
+    const diff = (i: number, v: string, j: number, w: string) => add([d(i, v), neg(d(j, w))]);
+    const next = G.op === 'div' ? add(G.vars.map((v, i) => d(i, v)))
+      : G.vars.length === 2 ? diff(1, x, 0, y)
+      : vec([diff(2, y, 1, z), diff(0, z, 2, x), diff(1, x, 0, y)]);
+    const label = G.op === 'div' ? 'divergence: ∂P/∂x + ∂Q/∂y' + (z ? ' + ∂R/∂z' : '') : G.vars.length === 2 ? 'curl: ∂Q/∂x − ∂P/∂y' : 'curl: the cross product of ∇ with the field';
+    return checked(e, { eq: replace(e, G.id, next), label, hints: newHints(), factor: one, select: null, rule: G.op === 'div' ? 'divergence' : 'curl' });
+  }
   const next = vec(G.vars.map(v => partial(v, fresh(G.arg))));
   return checked(e, { eq: replace(e, G.id, next), label: 'gradient: a partial for each letter', hints: newHints(), factor: one, select: null, rule: 'gradient' });
 }
