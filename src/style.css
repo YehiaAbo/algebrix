@@ -141,6 +141,7 @@ body[data-mode="write"] .original { display: none; }
 .g { position: absolute; color: var(--ink); will-change: transform; transform-origin: 0 0; pointer-events: none; }
 .g.text { font-family: var(--math-font); white-space: pre; text-align: left; }
 .g.text.it { font-style: italic; }
+.g.text.hole { color: var(--muted, #8a8f98); opacity: .55; }
 .g.bar { background: currentColor; border-radius: 1px; }
 .g.sign i, .g.eq i { position: absolute; background: currentColor; display: block; }
 .g.sign .h { left: 10%; right: 10%; top: calc(50% - var(--s) * 0.026); height: calc(var(--s) * 0.052); border-radius: 1px; }
@@ -334,6 +335,11 @@ kbd.wide { padding: 0 7px; }
 .pal-tab { border: 0; background: transparent; color: var(--muted); font-size: 12.5px; padding: 6px 10px 7px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .pal-tab.on { color: var(--ink); border-bottom-color: var(--sel); font-weight: 600; }
 .pal-items { padding-top: 4px; }
+.forms.calc { min-width: 560px; max-width: 760px; }
+.forms.calc .pal-tab:not(.live) { opacity: .55; }
+.forms.calc .pal-tab.live::after { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--sel); margin-left: 5px; vertical-align: 2px; }
+.calc-items { padding-top: 6px; flex-wrap: wrap; }
+.calc-empty { color: var(--muted); font-size: 12.5px; padding: 6px 4px; }
 .pal-items .chip { flex-direction: column; align-items: center; gap: 3px; height: auto; padding: 24px 10px 6px; min-width: 78px; position: relative; }
 .pal-items .chip kbd { position: absolute; left: 5px; top: 5px; }
 .pal-items .chip .fx { line-height: 1.1; }

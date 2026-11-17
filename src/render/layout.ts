@@ -216,15 +216,17 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       let core: Node = n.arg;
       while (core.k === 'int') core = core.arg;
       const sized = core === n.arg ? body : L(core, s, me, c);
-      const top = Math.max(sized.asc, ASC * s) + 0.3 * s, bot = Math.max(sized.desc, DESC * s) + 0.3 * s;
-      const w = 0.5 * s;
+      // never shorter than a typeset display integral (about 2.2 em)
+      const top = Math.max(sized.asc + 0.3 * s, 1.25 * s), bot = Math.max(sized.desc + 0.3 * s, 0.95 * s);
+      // as wide as the typeset sign is for its height, within reason
+      const w = Math.min(1 * s, Math.max(0.6 * s, 0.4 * (top + bot)));
       const sign: Glyph = { key: `i${n.id}`, from: from && `i${from}`, kind: 'int', x: 0, y: -top, w, h: top + bot, s, owners: me };
       let op: Box = { w, asc: top, desc: bot, gs: [sign] };
       if (n.lo && n.hi) {
         const ss = Math.max(s * 0.6, c.base * 0.36);
         const hi = L(n.hi, ss, me, c), lo = L(n.lo, ss, me, c);
         const bw = Math.max(hi.w, lo.w);
-        op = { w: w + 0.1 * s + bw, asc: Math.max(top, top - 0.1 * s + hi.asc), desc: Math.max(bot, bot + lo.desc - 0.1 * s), gs: [sign, ...shift(hi, w + 0.1 * s, -top + hi.asc - 0.05 * s), ...shift(lo, w * 0.72, bot - lo.desc + 0.05 * s)] };
+        op = { w: w + 0.1 * s + bw, asc: Math.max(top, top - 0.1 * s + hi.asc), desc: Math.max(bot, bot + lo.desc - 0.1 * s), gs: [sign, ...shift(hi, w + 0.1 * s, -top + hi.asc - 0.05 * s), ...shift(lo, w * 0.55, bot - lo.desc + 0.05 * s)] };
       }
       const dx = row([text('d', s, `id${n.id}`, me, false, from && `id${from}`), 0.02 * s, text(n.v, s, `iv${n.id}`, me, true, from && `iv${from}`)]);
       return row([op, 0.2 * s, body, 0.16 * s, dx]);

@@ -356,7 +356,7 @@ export class App {
       return;
     }
     if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
-    if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>${this.hub?.calc ? 'C' : 'Tab'}</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
+    if (this.mode === 'hub') { host.innerHTML = this.hub?.calc ? '<span class="aside">Calculus: <kbd>←</kbd><kbd>→</kbd> sections, <kbd>↓</kbd> into one, or press a key to use it now.</span>' : '<span class="aside">Holding <kbd>Tab</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>'; return; }
     if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`; return; }
     if (this.mode === 'fnask') { host.innerHTML = `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`; return; }
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
@@ -399,8 +399,9 @@ export class App {
 
   commit(src: string, quiet = false) {
     let eq: Eq;
-    try { eq = this.preview && !quiet ? this.preview : parseEquation(src, true); }
-    catch (e) { this.refuse((e as Error).message); return; }
+    // the preview, when it is what you typed (brackets closed); otherwise the text itself, so nothing typed is lost
+    try { eq = this.preview && !quiet && livePreview(src)?.whole ? this.preview : parseEquation(src, true); }
+    catch (e) { this.refuse(this.preview && symbols(this.preview).includes('□') ? 'Fill in the □ first: it marks what is still missing.' : (e as Error).message); return; }
     if (isIdentity(eq)) eq = { ...eq, rel: '≟' };
     this.preview = null;
     this.message = null;
@@ -420,7 +421,8 @@ export class App {
     if (quiet) this.say('Space aims. m moves it across. = − . / do anything to both sides. Hold Tab for algebra, f for functions, e solves. ? shows every key.');
     else if (rel === '≟') this.say('Both sides agree for every value: an identity. Prove it by rewriting one side at a time until they match.');
     else if (rel === 'def' && eq.lhs.k === 'call') this.say(`Defined ${eq.lhs.name}. Use ${eq.lhs.name}(…) in other equations; hold Tab + u to unfold it, Tab + b for its inverse.`);
-    else if (rel === 'expr') this.say('An expression: rewrite it with s, d, e and f. Add “= …” to make it an equation.');
+    else if (rel === 'expr' && hasCalc(eq)) this.say('Hold C for the next rule (its name shows on the key), or press e to work it all out.');
+    else if (rel === 'expr') this.say('An expression: rewrite it with s, d, e and f, or hold C for calculus. Add “= …” to make it an equation.');
     else if (this.slots.length > 1) this.say(`Equation ${this.cur + 1}. Press 1–${this.slots.length} to switch between them.`);
   }
 

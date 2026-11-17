@@ -244,3 +244,14 @@ App:
 - ODE steps tidy powers of the same base (e^(2x)e^x = e^(3x), x³/x = x²).
 - Tours (Calculus 4): separable equations, integrating factor, second order, divergence and curl.
 - Not yet: nonhomogeneous second order (undetermined coefficients), line and surface integrals, Green's and Stokes' theorems.
+
+### Round 14: smooth typing, C in sections, a typeset ∫
+
+User: typing `int x dx` or `d/dx` glitched on the way (stray i·n, d/d), the integral sign looked hand-drawn, and C should open in sections like f.
+
+- Live preview: a word on its way (in, li, si, d/, d/d) never shows as letters. What is still to come shows as a grey □: `int` is ∫ □ dx, `d/dx` is d/dx(□), `lim x->` is lim_{x→□} □, `x +` is x + □. Enter takes the preview only when nothing is missing; with a □ left it resists ("Fill in the □ first").
+- ∫ is the TeX large-operator glyph (the same outline as typeset LaTeX), stretched to its contents and slanted, with the limits placed like \int_a^b.
+- C opens in sections: Derivatives, Limits, Integrals, Series, Several variables, Differential equations, Vector fields. ← → move between sections (a dot marks those with something that applies, and C opens on the most useful one), ↓ steps in, ← → pick, Enter or C applies, Esc goes back. A key still applies at once. An empty section says what to type for it.
+- New items that work on any expression: l, a limit as x → (asks where), and a, a definite integral (asks for the bounds, like `0, pi`). Like f′, each starts a new piece of work beside the old one.
+- An indefinite integral has no graph until it is worked out (+ C), and the graph says so instead of staying blank.
+

@@ -206,37 +206,8 @@ function sig(g: Glyph): string {
   return g.kind;
 }
 
-/** ∫ as a filled shape, like a typeset one: a slanted stem, thick in the middle and thin at the
- *  hooks, with a small ball at each end */
-function integralPath(w: number, h: number, sw: number): string {
-  const segs: [number, number][][] = [
-    [[0.95, 0.075], [0.9, -0.005], [0.72, -0.01], [0.64, 0.13]],
-    [[0.64, 0.13], [0.56, 0.32], [0.44, 0.68], [0.36, 0.87]],
-    [[0.36, 0.87], [0.28, 1.01], [0.1, 1.005], [0.05, 0.925]],
-  ];
-  const pt = (q: [number, number][], t: number) => {
-    const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
-    return [(a * q[0][0] + b * q[1][0] + c * q[2][0] + d * q[3][0]) * w, (a * q[0][1] + b * q[1][1] + c * q[2][1] + d * q[3][1]) * h];
-  };
-  const mid: number[][] = [];
-  const N = 16;
-  segs.forEach((q, i) => { for (let j = i ? 1 : 0; j <= N; j++) mid.push(pt(q, j / N)); });
-  const left: string[] = [], right: string[] = [];
-  const thick = Math.max(sw * 2.3, h * 0.045);
-  mid.forEach((m, i) => {
-    const a = mid[Math.max(0, i - 1)], b = mid[Math.min(mid.length - 1, i + 1)];
-    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
-    const t = i / (mid.length - 1);
-    const half = (sw * 0.32 + (thick - sw * 0.32) * Math.pow(Math.sin(Math.PI * t), 2)) / 2;
-    const nx = -dy / len * half, ny = dx / len * half;
-    left.push(`${(m[0] + nx).toFixed(2)} ${(m[1] + ny).toFixed(2)}`);
-    right.push(`${(m[0] - nx).toFixed(2)} ${(m[1] - ny).toFixed(2)}`);
-  });
-  const r = Math.max(sw * 0.95, h * 0.022);
-  const ball = (x: number, y: number) => `M ${(x - r).toFixed(2)} ${y.toFixed(2)} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0 Z`;
-  const [s0, s1] = [mid[0], mid[mid.length - 1]];
-  return `M ${left.join(' L ')} L ${right.reverse().join(' L ')} Z ${ball(s0[0] - r * 0.3, s0[1] + r * 0.6)} ${ball(s1[0] + r * 0.3, s1[1] - r * 0.6)}`;
-}
+/** ∫ from the Computer Modern large operators (as MathJax ships it, Apache 2.0), in font units */
+const TEX_INTEGRAL = 'M114 -798Q132 -824 165 -824H167Q195 -824 223 -764T275 -600T320 -391T362 -164Q365 -143 367 -133Q439 292 523 655T645 1127Q651 1145 655 1157T672 1201T699 1257T733 1306T777 1346T828 1360Q884 1360 912 1325T944 1245Q944 1220 932 1205T909 1186T887 1183Q866 1183 849 1198T832 1239Q832 1287 885 1296L882 1300Q879 1303 874 1307T866 1313Q851 1323 833 1323Q819 1323 807 1311T775 1255T736 1139T689 936T633 628Q574 293 510 -5T410 -437T355 -629Q278 -862 165 -862Q125 -862 92 -831T55 -746Q55 -711 74 -698T112 -685Q133 -685 150 -700T167 -741Q167 -789 114 -798Z';
 
 function elTag(g: Glyph) { return g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int' ? 'svg' : 'DIV'; }
 
@@ -283,7 +254,8 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     if (el.textContent !== g.text) el.textContent = g.text!;
     st.fontSize = g.s + 'px';
     st.lineHeight = r.h + 'px';
-    el.classList.toggle('it', !!g.italic);
+    el.classList.toggle('it', !!g.italic && g.text !== '□');
+    el.classList.toggle('hole', g.text === '□');
   } else if (g.kind === 'eq') {
     (el as HTMLElement).dataset.rel = g.rel ?? '=';
   } else if (g.kind === 'sign') {
@@ -295,7 +267,11 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     const path = svg.firstChild as SVGPathElement;
     path.setAttribute('stroke-width', String(g.kind === 'rad' ? sw * 0.95 : sw));
     if (g.kind === 'int') {
-      path.setAttribute('d', integralPath(g.w, g.h, sw));
+      // the display-size ∫ of Computer Modern (TeX), drawn to the box: font units, y up
+      svg.setAttribute('viewBox', '50 -1366 900 2234');
+      svg.setAttribute('preserveAspectRatio', 'none');
+      path.setAttribute('transform', 'scale(1,-1)');
+      path.setAttribute('d', TEX_INTEGRAL);
     } else if (g.kind === 'paren' && g.straight) {
       path.setAttribute('d', `M ${g.w / 2} ${sw} L ${g.w / 2} ${g.h - sw}`);
     } else if (g.kind === 'paren') {

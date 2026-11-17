@@ -193,7 +193,9 @@ export class Graph {
     const rel = relOf(eq);
     // a lone expression or a definition is one curve: y = it
     const single = rel === 'expr' ? 'l' : rel === 'def' ? 'r' : null;
-    this.note.innerHTML = single ? `The graph of <b>y = ${rel === 'def' ? (eq.lhs.k === 'call' ? eq.lhs.name + '(' + v + ')' : 'it') : 'it'}</b>. Rewriting never changes it.`
+    const blank = single && (single === 'l' ? l : r).every(y => !Number.isFinite(y));
+    this.note.innerHTML = blank ? 'Nothing to draw yet: an indefinite integral is only known up to + C. Work it out (e) and its curve appears.'
+      : single ? `The graph of <b>y = ${rel === 'def' ? (eq.lhs.k === 'call' ? eq.lhs.name + '(' + v + ')' : 'it') : 'it'}</b>. Rewriting never changes it.`
       : isIneq(eq) ? `Shaded where it holds. The boundary is where the sides meet${roots.length ? `, <b>${v} ≈ ${roots.slice(0, 3).map(fmt).join(', ')}</b>` : ''}.`
       : rel === '≟' ? 'The two sides are the same curve everywhere. That is what you are proving.'
       : roots.length

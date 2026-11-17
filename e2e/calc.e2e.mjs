@@ -83,4 +83,41 @@ export const tests = {
     await until(s => s.eq === 'y″ + 9y = 0', 'an equation, not ≟');
     await key('e'); await until(s => s.slots === 2 && s.eq === 'y = C_1 cos(3x) + C_2 sin(3x)', 'the general solution beside it', 8000);
   },
+
+  async 'typing int x dx and d/dx: □ marks what is still to come, never stray letters'({ p, key, type, until, assert, countRefusals, refusals }) {
+    await key('i');
+    const seen = [];
+    for (const ch of 'int x dx') { await type(ch); await p.waitForTimeout(40); seen.push(await p.evaluate(() => window.algebrix.preview ? window.toText(window.algebrix.preview) : '-')); }
+    assert(!seen.some(t => /^i·?n|^in/.test(t)), `no i·n on the way: ${seen.join(' | ')}`);
+    assert(seen[2] === '∫ □ dx', `int waits for its integrand: ${seen[2]}`);
+    await key('Enter'); await until(s => s.eq === '∫ x dx', 'the integral typed');
+    await key('i'); await type('d/dx');
+    await countRefusals(); await key('Enter');
+    assert(await refusals() === 1, 'Enter with a □ left is refused');
+    await type(' x^2'); await key('Enter');
+    await until(s => s.eq === 'd/dx(x^2)', 'd/dx typed as an expression');
+    await key('e'); await until(s => s.eq === '2x', 'and worked out', 10000);
+  },
+
+  async 'C has sections: ← → between them, ↓ into one, and the limit and the area ask for what they need'({ load, p, key, until, assert, wait }) {
+    await load('sin(x)/x');
+    await key('c'); await wait(150);
+    const tabs = () => p.evaluate(() => [...document.querySelectorAll('#forms .pal-tab')].map(t => t.textContent + (t.classList.contains('on') ? '*' : '')));
+    const t0 = await tabs();
+    assert(t0.includes('Derivatives*') && t0.includes('Integrals') && t0.includes('Limits'), `sections, Derivatives open: ${t0}`);
+    await key('ArrowRight');
+    assert((await tabs()).includes('Limits*'), `→ moves to Limits: ${await tabs()}`);
+    await key('ArrowDown', 'Enter');
+    const input = await p.evaluate(() => !!document.getElementById('calc-input'));
+    assert(input, 'the limit asks where x goes');
+    await p.keyboard.type('0'); await key('Enter');
+    await until(s => s.eq === 'lim_{x→0} sin(x)/x', 'the limit wrapped');
+    await key('e'); await until(s => s.eq === '1', 'worked out', 10000);
+    await load('sin(x)');
+    await key('c'); await wait(150);
+    await key('a'); await wait(100);
+    await p.keyboard.type('0, pi'); await key('Enter');
+    await until(s => s.eq === '∫_{0}^{π} sin(x) dx', 'the area between the bounds');
+    await key('e'); await until(s => s.eq === '2', 'worked out', 10000);
+  },
 };

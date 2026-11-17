@@ -35,6 +35,8 @@ function tokenize(s: string): Tok[] {
     const nab = /^(?:∇|\\nabla(?![a-zA-Z])|grad(?![a-zA-Z]))/.exec(rest);
     if (nab && (nab[0] === '∇' || !prevLetter)) { out.push({ t: 'cmd', v: 'grad' }); i += nab[0].length; continue; }
     if (c === '⟨' || c === '⟩' || c === ',') { out.push({ t: 'op', v: c }); i++; continue; }
+    // □: a hole the live preview puts where something is still to come
+    if (c === '□') { out.push({ t: 'id', v: '□' }); i++; continue; }
     const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
     if (leib) { out.push({ t: 'id', v: primed(leib[1] ?? leib[3]) }); i += leib[0].length; continue; }
     const big = prevLetter ? null : /^(?:∫|\\int(?![a-zA-Z])|integral(?![a-zA-Z])|int(?![a-zA-Z])|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z]))/.exec(rest);

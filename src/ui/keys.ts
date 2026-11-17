@@ -89,6 +89,7 @@ export function bind(this: App) {
     }
     const tab = t.closest<HTMLElement>('.pal-tab');
     if (tab && this.mode === 'fnpal') { this.pal.tab = Number(tab.dataset.tab); this.pal.i = 0; this.pal.sticky = true; this.renderPal(); }
+    if (tab && this.mode === 'hub' && this.hub?.calc) { this.hub.tab = Number(tab.dataset.tab); this.hub.moved = false; this.hub.sticky = true; this.renderHub(); }
   });
 }
 
