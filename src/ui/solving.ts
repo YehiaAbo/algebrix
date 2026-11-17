@@ -63,6 +63,8 @@ export function split(this: App, v?: string, cases?: Cases) {
     this.judge(at + 1 + j);
   });
   if (!this.slot!.origin) this.slot!.origin = origin;
+  // the other cases go straight onto the shelf, in view
+  this.renderLanes();
   this.renderRail();
   this.save();
   const nums = c.rest.map((_, j) => at + 2 + j).join(' and ');
@@ -88,7 +90,7 @@ export function judge(this: App, i: number): string | null {
   if (outside) { slot.bad = `${v} = ${toText(rhs)} isn't ${DOMAIN_TEXT[dom!]}, so it is left out.`; return slot.bad; }
   const L = evaluate(origin.lhs, { [v]: x }), R = evaluate(origin.rhs, { [v]: x });
   if (Number.isFinite(L) && Number.isFinite(R) && Math.abs(L - R) <= 1e-7 * (1 + Math.abs(L) + Math.abs(R))) return null;
-  slot.bad = `${v} = ${toText(rhs)} doesn't work in the original ${toText(origin)}${Number.isFinite(L) && Number.isFinite(R) ? '' : ' (it is undefined there)'}, so it is not a solution.`;
+  slot.bad = `${v} = ${toText(rhs)} doesn't work in the original ${toText(origin).replace(/sqrt\(/g, '√(')}${Number.isFinite(L) && Number.isFinite(R) ? '' : ' (it is undefined there)'}, so it is not a solution.`;
   return slot.bad;
 }
 

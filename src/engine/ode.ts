@@ -3,7 +3,7 @@
 // (the characteristic equation). Steps are checked like any other: y and y′ are letters of their
 // own, and a one-way step is checked by differentiating back. A general solution is checked by
 // putting it into the equation.
-import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, int, deriv, eq, evaluate, symbols, relOf, Env, primed, cloneFresh, children, withChildren, key } from './ast';
+import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, int, deriv, eq, evaluate, symbols, relOf, Env, primed, cloneFresh, children, withChildren, key, walk } from './ast';
 import { derivative, dependsOn, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { simplify, newHints } from './simplify';
@@ -198,18 +198,109 @@ export function linearSteps(e: Eq): MoveOk[] | { error: string } {
 
 /* ---------- constant coefficients, second order ---------- */
 
-function coefficients(e: Eq, y: string): { a: number; b: number; c: number } | { error: string } {
+/** a y″ + b y′ + c y = g(x): the numbers a, b, c, and the forcing g (null when it is 0) */
+function coefficients(e: Eq, y: string): { a: number; b: number; c: number; g: Node | null } | { error: string } {
   const F = add([e.lhs, neg(e.rhs)]);
   const ks = [y + '″', primed(y), y].map(v => derivative(F, v));
   if (ks.some(k => !k)) return { error: 'There is no derivative rule for something in here yet.' };
   const [a, b, c] = ks.map(k => evaluate(k!, {}));
-  if (![a, b, c].every(Number.isFinite) || a === 0) return { error: 'The characteristic equation needs plain-number coefficients: a y″ + b y′ + c y = 0.' };
-  const vs = symbols(F).filter(v => ![y, primed(y), y + '″'].includes(v));
-  for (let i = 0; i < 3; i++) {
-    const env: Env = { ...env0(vs, i), [y]: 0, [primed(y)]: 0, [y + '″']: 0 };
-    if (Math.abs(evaluate(F, env)) > 1e-9) return { error: `Only the homogeneous kind for now: everything with ${y} on one side, = 0 on the other.` };
+  if (![a, b, c].every(Number.isFinite) || a === 0) return { error: 'The characteristic equation needs plain-number coefficients: a y″ + b y′ + c y = g(x).' };
+  const g = neg(substitute(substitute(substitute(F, y + '″', num(0)), primed(y), num(0)), y, num(0)));
+  const vs = symbols(g);
+  const zero = [0, 1, 2].every(i => Math.abs(evaluate(g, env0(vs, i))) < 1e-12);
+  return { a, b, c, g: zero ? null : g };
+}
+
+/** how fast arg grows in x, when it is k·x (+ a constant) */
+function rate(arg: Node, x: string): number | null {
+  const f = (t: number) => evaluate(arg, { [x]: t });
+  const r = f(1) - f(0);
+  return Number.isFinite(r) && Math.abs(f(2) - f(0) - 2 * r) < 1e-9 ? Math.round(r * 1e9) / 1e9 : null;
+}
+
+/** undetermined coefficients: a particular solution of a y″ + b y′ + c y = g, tried as a sum of
+ *  xʲ·e^(kx)·(cos or sin)(wx) for the k and w in g. Solved numerically (least squares, a trial term
+ *  that already solves the homogeneous equation drops out, so x·e^(kx) takes its place), and only
+ *  kept when every coefficient is a simple number. */
+function particular(a: number, b: number, c: number, g: Node, x: string): Node | null {
+  // each term of g is xʲ·e^(kx)·(cos or sin)(wx): read off its k, w and power
+  const groups = new Map<string, { k: number; w: number | null; deg: number }>();
+  const degree = (n: Node): number => n.k === 'sym' ? (n.name === x ? 1 : 0)
+    : n.k === 'pow' && n.base.k === 'sym' && n.base.name === 'e' ? 0
+    : n.k === 'fn' ? 0
+    : n.k === 'pow' && n.exp.k === 'num' && Number.isInteger(n.exp.v) ? degree(n.base) * n.exp.v
+    : n.k === 'mul' ? n.factors.reduce((t, f) => t + degree(f), 0)
+    : n.k === 'frac' ? degree(n.num)
+    : Math.max(0, ...children(n).map(degree));
+  const terms0 = g.k === 'add' ? g.terms : [g];
+  for (const t of terms0) {
+    let k = 0, w: number | null = null, ok = true;
+    walk(t, n => {
+      if (n.k === 'pow' && n.base.k === 'sym' && n.base.name === 'e') { const r = rate(n.exp, x); if (r === null) ok = false; else k += r; }
+      if (n.k === 'fn') { const r = n.name === 'sin' || n.name === 'cos' ? rate(n.arg, x) : null; if (r === null || w !== null) ok = false; else w = Math.abs(r); }
+    });
+    const d = degree(t);
+    if (!ok || d > 4) return null;
+    const id = `${k}|${w}`;
+    const o = groups.get(id);
+    groups.set(id, { k, w, deg: Math.max(d, o?.deg ?? 0) });
   }
-  return { a, b, c };
+  // xʲ up to two more than g has, for when e^(kx) already solves the homogeneous equation
+  const kernels: { K: Node; top: number }[] = [];
+  for (const { k, w, deg } of groups.values()) {
+    const ex = k === 0 ? null : expOf(numNode(k), x);
+    const waves = w === null || w === 0 ? [null] : [fn('cos', times(numNode(w), sym(x))), fn('sin', times(numNode(w), sym(x)))];
+    for (const wave of waves) kernels.push({ K: times(...[ex, wave].filter((m): m is Node => !!m)), top: deg + 2 });
+  }
+  // highest power first within each kernel, so 2x + 3 reads that way
+  const basis: Node[] = [], group: number[] = [];
+  kernels.forEach(({ K, top }, gi) => { for (let j = top; j >= 0; j--) { basis.push(j === 0 ? K : times(j === 1 ? sym(x) : pow(sym(x), num(j)), cloneFresh(K))); group.push(gi); } });
+  const L = basis.map(B => { const d1 = derivative(B, x), d2 = d1 && derivative(d1, x); return d1 && d2 ? (t: number) => a * evaluate(d2, { [x]: t }) + b * evaluate(d1, { [x]: t }) + c * evaluate(B, { [x]: t }) : null; });
+  if (L.some(f => !f)) return null;
+  // sample wide enough that cos x and 1 − x²/2 don't look alike
+  const freqs = [...groups.values()].map(o => o.w).filter((w): w is number => !!w);
+  const half = freqs.length ? Math.max(3, 4 / Math.min(...freqs)) : 1.15;
+  const ts = Array.from({ length: 3 * basis.length + 6 }, (_, i) => -half + 0.05 + (2 * half * i) / (3 * basis.length + 5));
+  const cols = L.map(f => ts.map(t => f!(t)));
+  const rhs = ts.map(t => evaluate(g, { [x]: t }));
+  // least squares by modified Gram-Schmidt, lowest powers first so a trial term the homogeneous
+  // part already has drops out (its column is 0); then again with only the terms that matter
+  const solve = (order: number[]) => {
+    const Q: number[][] = [], R: number[][] = [], kept: number[] = [];
+    const dotv = (u: number[], v: number[]) => u.reduce((s, ui, i) => s + ui * v[i], 0);
+    for (const j of order) {
+      const v = [...cols[j]], r: number[] = [];
+      const n0 = Math.sqrt(dotv(v, v));
+      for (const q of Q) { const rq = dotv(q, v); r.push(rq); for (let i = 0; i < v.length; i++) v[i] -= rq * q[i]; }
+      const n = Math.sqrt(dotv(v, v));
+      if (n <= 1e-8 * (1 + n0)) continue;
+      Q.push(v.map(t => t / n)); r.push(n); R.push(r); kept.push(j);
+    }
+    const qb = Q.map(q => dotv(q, rhs));
+    const coef: number[] = new Array(kept.length).fill(0);
+    for (let i = kept.length - 1; i >= 0; i--) {
+      let s = qb[i];
+      for (let k = i + 1; k < kept.length; k++) s -= R[k][i] * coef[k];
+      coef[i] = s / R[i][i];
+    }
+    const res = rhs.map((gv, i) => kept.reduce((s, j, k) => s + coef[k] * cols[j][i], 0) - gv);
+    const fits = res.every(r => Math.abs(r) < 1e-6 * (1 + Math.max(...rhs.map(Math.abs))));
+    return { kept, coef, fits };
+  };
+  const first = solve(basis.map((_, i) => i).sort((i, j) => group[i] - group[j] || j - i));
+  if (!first.fits) return null;
+  const big = Math.max(...first.coef.map(Math.abs));
+  const { kept, coef, fits } = solve(first.kept.filter((_, k) => Math.abs(first.coef[k]) > 1e-5 * big));
+  if (!fits) return null;
+  const terms: Node[] = [];
+  for (let j = 0; j < basis.length; j++) {
+    const k = kept.indexOf(j);
+    if (k < 0 || Math.abs(coef[k]) < 1e-9) continue;
+    const q = ratNode(coef[k]);
+    if (!q) return null;
+    terms.push(S(times(q, basis[j])));
+  }
+  return terms.length ? plus(...terms) : num(0);
 }
 
 const numNode = (x: number): Node => ratNode(x) ?? num(+x.toPrecision(12));
@@ -229,7 +320,7 @@ const expOf = (k: Node, x: string): Node => pow(sym('e'), times(k, sym(x)));
 /** C + g: the general solution from the roots, checked by putting it back into the equation */
 export function generalSolution(e: Eq): Eq | { error: string } {
   const u = unknown(e);
-  if (!u || u.order !== 2) return { error: 'The general solution here is for y″ + b y′ + c y = 0.' };
+  if (!u || u.order !== 2) return { error: 'The general solution here is for y″ + b y′ + c y = g(x).' };
   const k = coefficients(e, u.y);
   if ('error' in k) return k;
   const { a, b, c } = k, x = u.x, disc = b * b - 4 * a * c;
@@ -248,12 +339,18 @@ export function generalSolution(e: Eq): Eq | { error: string } {
     const wave = add([mul([C1, fn('cos', times(beta, sym(x)))]), mul([C2, fn('sin', times(beta, sym(x)))])]);
     sol = al === 0 ? wave : mul([expOf(numNode(al), x), wave]);
   }
-  // the check: it must satisfy a y″ + b y′ + c y = 0 for any C₁, C₂
+  // a forcing term: add a particular solution
+  if (k.g) {
+    const yp = particular(a, b, c, k.g, x);
+    if (!yp) return { error: 'I can only find a particular solution when the right side is made of polynomials, e^(kx), sin and cos.' };
+    sol = plus(sol, yp);
+  }
+  // the check: it must satisfy a y″ + b y′ + c y = g for any C₁, C₂
   const d1 = derivative(sol, x), d2 = d1 && derivative(d1, x);
   if (!d1 || !d2) return { error: 'There is no derivative rule for the solution.' };
   for (let i = 0; i < 6; i++) {
     const env: Env = { [x]: -1.3 + 0.53 * i, C_1: 0.7 + 0.3 * i, C_2: -1.1 + 0.4 * i };
-    const res = a * evaluate(d2, env) + b * evaluate(d1, env) + c * evaluate(sol, env);
+    const res = a * evaluate(d2, env) + b * evaluate(d1, env) + c * evaluate(sol, env) - (k.g ? evaluate(k.g, env) : 0);
     if (!(Math.abs(res) <= 1e-7 * (1 + Math.abs(evaluate(d2, env)) + Math.abs(evaluate(sol, env))))) return { error: 'The solution did not check out, so I left it.' };
   }
   return eq(sym(u.y), sol);

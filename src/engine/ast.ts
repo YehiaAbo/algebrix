@@ -24,8 +24,8 @@ export interface Lim extends Base { k: 'lim'; v: string; to: Node; side?: '+' | 
 export interface Int extends Base { k: 'int'; v: string; arg: Node; lo?: Node; hi?: Node }
 /** [arg] from v = lo to v = hi: what an antiderivative is worth between two bounds */
 export interface At extends Base { k: 'at'; v: string; arg: Node; lo: Node; hi: Node }
-/** Σ arg for v = lo to hi (hi may be ∞); v is bound inside */
-export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node }
+/** Σ arg for v = lo to hi (hi may be ∞), or ∏ when prod; v is bound inside */
+export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node; prod?: boolean }
 /** a vector ⟨a, b, c⟩ */
 export interface Vec extends Base { k: 'vec'; items: Node[] }
 /** ∇f: the vector of partial derivatives along vars. With op, ∇·F (divergence) or ∇×F (curl) of a field ⟨…⟩ */
@@ -72,7 +72,7 @@ export const varOrder = (vs: string[]) => [...vs].sort((a, b) => { const r = (v:
 export const lim = (v: string, to: Node, arg: Node, side?: '+' | '-', id = newId()): Lim => (side ? { k: 'lim', id, v, to, arg, side } : { k: 'lim', id, v, to, arg });
 export const int = (v: string, arg: Node, lo?: Node, hi?: Node, id = newId()): Int => (lo && hi ? { k: 'int', id, v, arg, lo, hi } : { k: 'int', id, v, arg });
 export const at = (v: string, arg: Node, lo: Node, hi: Node, id = newId()): At => ({ k: 'at', id, v, arg, lo, hi });
-export const sum = (v: string, lo: Node, hi: Node, arg: Node, id = newId()): Sum => ({ k: 'sum', id, v, lo, hi, arg });
+export const sum = (v: string, lo: Node, hi: Node, arg: Node, id = newId(), prod = false): Sum => (prod ? { k: 'sum', id, v, lo, hi, arg, prod } : { k: 'sum', id, v, lo, hi, arg });
 /** the name of a derivative: y → y′, f′ → f″ */
 export const primed = (name: string) => name + '′';
 /** names that read as function calls when followed by "(" */
@@ -195,7 +195,7 @@ export function key(n: Node): string {
     case 'lim': return '(lim ' + n.v + ' ' + key(n.to) + (n.side ?? '') + ' ' + key(n.arg) + ')';
     case 'int': return '(int ' + n.v + (n.lo && n.hi ? ' ' + key(n.lo) + ' ' + key(n.hi) : '') + ' ' + key(n.arg) + ')';
     case 'at': return '(at ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
-    case 'sum': return '(sum ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
+    case 'sum': return (n.prod ? '(prod ' : '(sum ') + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
     case 'eq': return '(' + (n.rel ?? '=') + ' ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
   }
 }

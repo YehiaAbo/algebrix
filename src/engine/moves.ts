@@ -91,7 +91,7 @@ export function moveAcross(e: Eq, sel: string | null): MoveResult {
   }
   const moved = moving.map(negate);
   const theirs = appendTerms(side(e, other(s)), moved);
-  const label = moving.length === 1 ? `move ${isNeg(moving[0]) ? '−' : '+'}${t(isNeg(moving[0]) ? negate(moving[0]) : moving[0])}` : 'move side';
+  const label = moving.length === 1 ? `move ${isNeg(moving[0]) ? '−' : ''}${t(isNeg(moving[0]) ? negate(moving[0]) : moving[0])} across` : 'move side';
   return {
     eq: withSides(e, s, mine, theirs), label, focus: moved.length === 1 ? moved[0].id : undefined,
     select: moved.length === 1 ? moved[0].id : null, hints: newHints(), factor: one,
@@ -274,13 +274,23 @@ export function indefiniteVars(n: Node): string[] {
   return [...vs];
 }
 
+/** are the indefinite integrals in n one inside the next (∫ ∫ f dx dy), rather than side by side? */
+function stacked(n: Node): boolean {
+  const ints: Node[] = [];
+  walk(n, m => { if (m.k === 'int' && !(m.lo && m.hi)) ints.push(m); });
+  return ints.every((m, i) => i === 0 || (() => { let inside = false; walk(ints[i - 1], k => { if (k === m) inside = true; }); return inside; })());
+}
+
 export function verify(before: Eq, r: MoveOk): string | null {
   const ids = allIds(r.eq);
   if (new Set(ids).size !== ids.length) return 'duplicate ids';
   // an indefinite integral is only known up to a constant: compare slopes instead of values
   const ivs = r.check ? [] : [...new Set([...indefiniteVars(before), ...indefiniteVars(r.eq)])];
   if (ivs.length) {
-    const pairs = ivs.map(v => [derivative(add([r.eq.lhs, neg(r.eq.rhs)]), v), derivative(add([before.lhs, neg(before.rhs)]), v)] as const);
+    // stacked ones (∫ ∫ f dx dy): the mixed slope ∂/∂x ∂/∂y …, which each one's constant drops out of
+    const by = ivs.length > 1 && stacked(before) && stacked(r.eq) ? [ivs] : ivs.map(v => [v]);
+    const d = (n: Node, vs: string[]) => vs.reduce<Node | null>((a, v) => a && derivative(a, v), n);
+    const pairs = by.map(vs => [d(add([r.eq.lhs, neg(r.eq.rhs)]), vs), d(add([before.lhs, neg(before.rhs)]), vs)] as const);
     if (pairs.some(([a, b]) => !a || !b)) return 'could not check: no derivative';
     const slope: MoveOk = { ...r, check: env => { const f = r.factor(env); return pairs.map(([a, b]) => [evaluate(a!, env), f * evaluate(b!, env)]); } };
     return verify(before, slope);

@@ -198,7 +198,7 @@ export const TOURS: TourDef[] = [
     steps: [
       { load: 'sqrt(x + 3) = 5', say: 'Hold <kbd>f</kbd> and press <kbd>i</kbd>: squaring undoes the root.', done: t => !text(t.app).includes('sqrt') },
       { say: 'Press <kbd>e</kbd>.', done: t => solved(t.app) },
-      { load: 'sqrt(12) + sqrt(27)', say: 'Press <kbd>s</kbd> until it’s one term: √12 = 2√3 and √27 = 3√3.', done: t => text(t.app) === '5 sqrt(3)' },
+      { load: 'sqrt(12) + sqrt(27)', say: 'Press <kbd>s</kbd>: √12 = 2√3 and √27 = 3√3, so it is one term.', done: t => text(t.app) === '5 sqrt(3)' },
       { load: 'x^(1/2) + x^(-1)', say: `Aim at <b>x^(−1)</b> and ${tab('r')} to write it as a root or fraction.`, done: t => text(t.app).includes('1/x') },
     ],
   },

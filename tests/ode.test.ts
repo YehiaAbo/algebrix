@@ -60,7 +60,23 @@ describe('constant coefficients', () => {
   it('a repeated root', () => expect(sol("y'' + 4y' + 4y = 0")).toBe('y = (C_1 + C_2 x)e^(−2x)'));
   it('complex roots', () => expect(sol("y'' + 2y' + 5y = 0")).toBe('y = e^(−x)(C_1 cos(2x) + C_2 sin(2x))'));
   it('pure oscillation', () => expect(sol("y'' + 9y = 0")).toBe('y = C_1 cos(3x) + C_2 sin(3x)'));
-  it('only = 0 for now', () => expect(sol("y'' + y = x")).toMatch(/0/));
+  it('a forcing term: undetermined coefficients', () => expect(sol("y'' - 3y' + 2y = 4x")).toBe('y = C_1 e^x + C_2 e^(2x) + 2x + 3'));
+  it('a polynomial forcing on pure oscillation', () => expect(sol("y'' + y = x")).toBe('y = C_1 cos(x) + C_2 sin(x) + x'));
+  it('an exponential forcing', () => expect(sol("y'' - y = e^(2x)")).toBe('y = C_1 e^(−x) + C_2 e^x + e^(2x)/3'));
+  it('resonance: the forcing is already a solution, so × x', () => expect(sol("y'' - 3y' + 2y = e^x")).toBe('y = C_1 e^x + C_2 e^(2x) − xe^x'));
+  it('a trig forcing', () => expect(sol("y'' + 4y = cos(x)")).toBe('y = C_1 cos(2x) + C_2 sin(2x) + cos(x)/3'));
+  it('trig resonance', () => expect(sol("y'' + y = sin(x)")).toBe('y = C_1 cos(x) + C_2 sin(x) − x cos(x)/2'));
+  it('every one satisfies its equation', () => {
+    for (const src of ["y'' - 3y' + 2y = 4x", "y'' + y = sin(x)", "y'' + 2y' + y = x^2 e^(-x)", "y'' + y' = 3"]) {
+      const s = generalSolution(ex(src));
+      if ('error' in s) throw new Error(src + ': ' + s.error);
+      const e = ex(src);
+      const y = (x: number) => evaluate(s.rhs, { x, C_1: 0.8, C_2: -1.2 });
+      const h = 1e-3, x = 0.3;
+      const y0 = y(x), y1 = (y(x + h) - y(x - h)) / (2 * h), y2 = (y(x + h) - 2 * y0 + y(x - h)) / (h * h);
+      expect(evaluate(e.lhs, { x, y: y0, 'y′': y1, 'y″': y2 }) - evaluate(e.rhs, { x, y: y0, 'y′': y1, 'y″': y2 })).toBeCloseTo(0, 3);
+    }
+  });
   it('the solution satisfies the equation', () => {
     const s = generalSolution(ex("y'' - y' - 6y = 0"));
     if ('error' in s) throw new Error(s.error);

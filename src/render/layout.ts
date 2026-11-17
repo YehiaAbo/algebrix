@@ -4,7 +4,7 @@
 import { Node, FN_TEXT } from '../engine/ast';
 import { isNeg, absOf, signKey } from '../engine/terms';
 
-export type GlyphKind = 'text' | 'sign' | 'eq' | 'bar' | 'paren' | 'rad' | 'int';
+export type GlyphKind = 'text' | 'sign' | 'eq' | 'bar' | 'paren' | 'rad' | 'int' | 'sum' | 'prod';
 export interface Glyph {
   key: string;
   from?: string;
@@ -189,7 +189,8 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
     }
     case 'neg': {
       const b = L(n.arg, s, me, c);
-      return row([sign(true, s, `sg${signKey(n)}`, me), 0.04 * s, n.arg.k === 'add' ? parens(b, s, n.arg.id, me) : b]);
+      const wrap = n.arg.k === 'add' || n.arg.k === 'neg' || (n.arg.k === 'num' && n.arg.v < 0);
+      return row([sign(true, s, `sg${signKey(n)}`, me), 0.04 * s, wrap ? parens(b, s, n.arg.id, me) : b]);
     }
     case 'frac': {
       const ss = fracSize(s, c);
@@ -216,10 +217,11 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       let core: Node = n.arg;
       while (core.k === 'int') core = core.arg;
       const sized = core === n.arg ? body : L(core, s, me, c);
-      // never shorter than a typeset display integral (about 2.2 em)
-      const top = Math.max(sized.asc + 0.3 * s, 1.25 * s), bot = Math.max(sized.desc + 0.3 * s, 0.95 * s);
+      // centred on the math axis like a typeset one, never shorter than TeX's display ∫ (2.2 em)
+      const half = Math.max(sized.asc - AXIS * s, sized.desc + AXIS * s) + 0.25 * s;
+      const top = Math.max(half + AXIS * s, 1.36 * s), bot = Math.max(half - AXIS * s, 0.86 * s);
       // as wide as the typeset sign is for its height, within reason
-      const w = Math.min(1 * s, Math.max(0.6 * s, 0.4 * (top + bot)));
+      const w = Math.min(0.85 * s, Math.max(0.5 * s, 0.32 * (top + bot)));
       const sign: Glyph = { key: `i${n.id}`, from: from && `i${from}`, kind: 'int', x: 0, y: -top, w, h: top + bot, s, owners: me };
       let op: Box = { w, asc: top, desc: bot, gs: [sign] };
       if (n.lo && n.hi) {
@@ -248,18 +250,18 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       return row([sign, 0.04 * s, bare ? a : parens(a, s, n.id, me, from)]);
     }
     case 'sum': {
-      // Σ with the top bound above and "n = lo" below
-      const sig = text('Σ', 1.35 * s, `S${n.id}`, me, false, from && `S${from}`);
+      // Σ or ∏ as TeX sets them in display: 1.4 em tall on the axis, the top bound above and
+      // "n = lo" below, both centred
+      const top = 0.95 * s, bot = 0.45 * s, gw = (n.prod ? 1.177 : 1.343) * 0.9 * s;
+      const sign: Glyph = { key: `S${n.id}`, from: from && `S${from}`, kind: n.prod ? 'prod' : 'sum', x: 0, y: -top, w: gw, h: top + bot, s, owners: me };
       const ss = Math.max(s * 0.6, c.base * 0.36);
       const hi = L(n.hi, ss, me, c);
       const lo = row([text(n.v, ss, `Sv${n.id}`, me, true), 0.04 * ss, text('=', ss, `Se${n.id}`, me, false), 0.04 * ss, L(n.lo, ss, me, c)]);
-      const w = Math.max(sig.w, hi.w, lo.w);
-      const lift = sig.asc - 0.32 * s;
-      const sigB = { ...sig, gs: shift(sig, (w - sig.w) / 2, 0.32 * s) };
-      const hiY = -(lift + 0.06 * s + hi.desc), loY = sig.desc + 0.32 * s + 0.06 * s + lo.asc;
-      const op: Box = { w, asc: -hiY + hi.asc, desc: loY + lo.desc, gs: [...sigB.gs, ...shift(hi, (w - hi.w) / 2, hiY), ...shift(lo, (w - lo.w) / 2, loY)] };
+      const w = Math.max(gw, hi.w, lo.w);
+      const hiY = -(top + 0.12 * s + hi.desc), loY = bot + 0.12 * s + lo.asc;
+      const op: Box = { w, asc: -hiY + hi.asc, desc: loY + lo.desc, gs: [{ ...sign, x: (w - gw) / 2 }, ...shift(hi, (w - hi.w) / 2, hiY), ...shift(lo, (w - lo.w) / 2, loY)] };
       const a = L(n.arg, s, me, c);
-      return row([op, 0.14 * s, n.arg.k === 'add' || n.arg.k === 'neg' ? parens(a, s, n.id, me, from) : a]);
+      return row([op, 0.18 * s, n.arg.k === 'add' || n.arg.k === 'neg' ? parens(a, s, n.id, me, from) : a]);
     }
     case 'at': {
       // F, then a bar with the bounds at its top and bottom: F|ₐᵇ

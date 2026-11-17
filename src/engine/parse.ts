@@ -39,17 +39,17 @@ function tokenize(s: string): Tok[] {
     if (c === '□') { out.push({ t: 'id', v: '□' }); i++; continue; }
     const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
     if (leib) { out.push({ t: 'id', v: primed(leib[1] ?? leib[3]) }); i += leib[0].length; continue; }
-    const big = prevLetter ? null : /^(?:∫|\\int(?![a-zA-Z])|integral(?![a-zA-Z])|int(?![a-zA-Z])|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z]))/.exec(rest);
+    const big = prevLetter ? null : /^(?:∫|\\int(?![a-zA-Z])|integral(?![a-zA-Z])|int(?![a-zA-Z])|Σ|∑|\\sum(?![a-zA-Z])|sum(?![a-zA-Z])|∏|Π|\\prod(?![a-zA-Z])|prod(?![a-zA-Z]))/.exec(rest);
     if (big) {
       const isInt = /∫|int/.test(big[0]);
-      out.push({ t: 'cmd', v: isInt ? 'int' : 'sum' });
+      out.push({ t: 'cmd', v: isInt ? 'int' : /∏|Π|prod/.test(big[0]) ? 'prod' : 'sum' });
       if (isInt) open++;
       i += big[0].length;
       if (s[i] === '_') { out.push({ t: 'op', v: '_' }); i++; }
       continue;
     }
     // the dx that closes an integral
-    const dx = open > 0 && !prevLetter ? /^d([a-zA-Zα-ω])(?![a-zA-Z(])/.exec(rest) : null;
+    const dx = open > 0 && !prevLetter ? /^d([a-zA-Zα-ω□])(?![a-zA-Z(])/.exec(rest) : null;
     if (dx) { out.push({ t: 'op', v: 'd:' + dx[1] }); open--; i += dx[0].length; continue; }
     if (c === '_' && s[i - 1] === ']') { out.push({ t: 'op', v: '_' }); i++; continue; }
     if (/^\\?lim(?![a-zA-Z])/.test(rest)) { out.push({ t: 'cmd', v: 'lim' }); i += rest[0] === '\\' ? 4 : 3; if (s[i] === '_') i++; continue; }
@@ -61,6 +61,8 @@ function tokenize(s: string): Tok[] {
     // a one-sided limit in LaTeX: 0^+ or 0^{-} (but not x^-1)
     const sideMark = /^\^(?:\{([+-])\}|([+-]))(?=\s*[})]|\s|$)/.exec(rest);
     if (sideMark) { out.push({ t: 'op', v: (sideMark[1] ?? sideMark[2]) === '+' ? '⁺' : '⁻' }); i += sideMark[0].length; continue; }
+    // and typed plainly: lim x->0+ 1/x (the sign stuck to where x goes, then a space)
+    if ((c === '+' || c === '-') && /(?:->|→)\s*-?[\w∞.]+$/.test(s.slice(0, i)) && /^\s/.test(s.slice(i + 1, i + 2))) { out.push({ t: 'op', v: c === '+' ? '⁺' : '⁻' }); i++; continue; }
     if (/[0-9.]/.test(c)) {
       let j = i;
       while (j < s.length && /[0-9.]/.test(s[j])) j++;
@@ -195,7 +197,7 @@ class Parser {
       }
       if (t.v === 'lim') return this.limit();
       if (t.v === 'int') return this.integral();
-      if (t.v === 'sum') return this.series();
+      if (t.v === 'sum' || t.v === 'prod') return this.series(t.v === 'prod');
       if (t.v === 'frac' || t.v === 'dfrac' || t.v === 'tfrac') {
         const a = this.braced(), b = this.braced();
         return frac(a, b);
@@ -284,15 +286,15 @@ class Parser {
     return int(d.v.slice(2), f, lo, hi);
   }
 
-  /** Σ_{n=1}^∞ f */
-  series(): Node {
-    if (!this.isOp('_')) throw new ParseError('Write a sum like sum_{n=1}^∞ 1/n^2.');
+  /** Σ_{n=1}^∞ f, or ∏ */
+  series(prod = false): Node {
+    if (!this.isOp('_')) throw new ParseError(prod ? 'Write a product like prod_{k=1}^5 k.' : 'Write a sum like sum_{n=1}^∞ 1/n^2.');
     this.i++;
     const b = this.bound();
     this.eat('^');
     const hi = this.bound().at;
-    if (!this.peek()) throw new ParseError('Unfinished: what is being added up?');
-    return sum(b.v ?? 'n', b.at, hi, this.term());
+    if (!this.peek()) throw new ParseError(prod ? 'Unfinished: what is being multiplied?' : 'Unfinished: what is being added up?');
+    return sum(b.v ?? 'n', b.at, hi, this.term(), undefined, prod);
   }
 
   /** argument of a function: braced/parenthesised, or the next power like "ln x²" */

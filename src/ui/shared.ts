@@ -35,7 +35,7 @@ export interface Tech { key: string; label: string; ok: boolean; run: () => void
 export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; calc?: boolean; tab?: number; asking?: Tech }
 
 /** words that are on their way while you type them: their first letters shouldn't show as a·b */
-const WORDS = ['int', 'integral', 'lim', 'sum', 'sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'pi', 'grad', 'div', 'curl', 'inf'];
+const WORDS = ['int', 'integral', 'lim', 'sum', 'prod', 'sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sin', 'cos', 'tan', 'abs', 'exp', 'ln', 'log', 'pi', 'grad', 'div', 'curl', 'inf'];
 
 /** What to show while typing. Unfinished input is completed with □ where something is still to
  *  come (x + □, d/dx(□), ∫ □ dx), brackets close themselves, and a word being typed is left out
@@ -54,19 +54,26 @@ export function livePreview(src: string): { eq: Eq; partial: boolean; exact: boo
   let t = src;
   const tail = /(?:^|[^a-zA-Z])([a-zA-Z]{2,}|d\/d?|∂\/∂?)$/.exec(t);
   if (tail && (/[/]/.test(tail[1]) || (!WORDS.includes(tail[1]) && WORDS.some(w => w.startsWith(tail[1]))))) t = t.slice(0, t.length - tail[1].length);
-  else if (/(?:^|[^a-zA-Z])d$/.test(t) && /int|∫/.test(t)) t = t.slice(0, -1);
+  // in an integral, a lone d is a dx on its way, and a lone i another ∫
+  else if (/(?:^|[^a-zA-Z])[di]$/.test(t) && /int|∫/.test(t)) t = t.slice(0, -1);
   if (t === src) {
     const exact = parse(src);
     if (exact) return { eq: exact, partial: false, exact: true, whole: true };
   }
-  const ENDS = ['', '□', ' □', ' □ □', ' x->□ □', ' dx', ' □ dx', '_{n=□}^{□} □', ' □)'];
+  // the first integral closes with dx; once a d-letter is typed, the next one waits as d□
+  const dv = /(?:^|[^a-zA-Z])d[a-zA-Z](?![a-zA-Z(])/.test(t) ? ' d□' : ' dx';
+  const ENDS = ['', '□', ' □', ' □ □', ' x->□ □', dv, ' □' + dv, '_{n=□}^{□} □', ' □)'];
   for (let i = 0; i < 16; i++) {
     const base = t.trimEnd();
     if (!base) return null;
-    for (const end of ENDS) {
-      for (const cand of [close(base + end), close(base) + end]) {
-        const eq = parse(cand);
-        if (eq) return { eq, partial: true, exact: false, whole: i === 0 && t === src && !cand.includes('□') };
+    // stacked integrals each wait for their own d□
+    const outer = /int|∫/.test(base) ? ['', ' d□', ' d□ d□'] : [''];
+    for (const more of outer) {
+      for (const end of ENDS) {
+        for (const cand of [close(base + end) + more, close(base) + end + more]) {
+          const eq = parse(cand);
+          if (eq) return { eq, partial: true, exact: false, whole: i === 0 && t === src && !cand.includes('□') };
+        }
       }
     }
     t = base.slice(0, -1);

@@ -115,6 +115,7 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
   if (holdsCalc(T)) return { error: 'Work out what is inside the integral first.' };
+  if (!(T.lo && T.hi) && findPath(e, T.id)?.some(n => n !== T && n.k === 'int' && n.lo && n.hi)) return { error: 'The inside integral has no bounds, so its + C would end up inside the outer one. Give it bounds too.' };
   const v = T.v, def = !!(T.lo && T.hi);
   const wrap = (F: Node): Node => (def ? at(v, F, fresh(T.lo!), fresh(T.hi!)) : F);
   const piece = (w: Node): Node => { const q = quick(w, v); return q ? wrap(q.F) : int(v, fresh(w), T.lo && fresh(T.lo), T.hi && fresh(T.hi)); };
@@ -274,6 +275,7 @@ function ratio(a: Node, n: string): Node | null {
 export function geometric(e: Eq, sel: string | null): MoveResult {
   const S = target(e, sel, 'sum') as Sum | null;
   if (!S) return { error: 'No sum here.' };
+  if (S.prod) return { error: 'That is a product, not a sum.' };
   const env: Env = {};
   symbols(S).forEach((s, i) => (env[s] = 0.3 + 0.1 * i));
   if (evaluate(S.hi, env) !== Infinity) return { error: 'The geometric series formula is for a sum to ∞.' };
@@ -290,10 +292,34 @@ export function geometric(e: Eq, sel: string | null): MoveResult {
   });
 }
 
+/** a Σ or ∏ with whole-number bounds and at most 12 terms: how many, or why not */
+export function finiteTerms(S: Sum): number[] | string {
+  const env: Env = {};
+  symbols(S).forEach((s, i) => (env[s] = 0.3 + 0.1 * i));
+  const lo = evaluate(S.lo, env), hi = evaluate(S.hi, env);
+  if (hi === Infinity) return 'It goes on forever, so it can’t be written out.';
+  if (!Number.isInteger(lo) || !Number.isInteger(hi)) return 'The bounds must be whole numbers to write it out.';
+  if (hi - lo > 11) return `That is ${hi - lo + 1} terms: too many to write out.`;
+  return Array.from({ length: Math.max(0, hi - lo + 1) }, (_, i) => lo + i);
+}
+
+/** C + x: a finite Σ or ∏ written out, term by term */
+export function writeOut(e: Eq, sel: string | null): MoveResult {
+  const S = target(e, sel, 'sum') as Sum | null;
+  if (!S) return { error: 'No sum or product here.' };
+  const ks = finiteTerms(S);
+  if (typeof ks === 'string') return { error: ks };
+  const terms = ks.map(k => cloneFresh(substitute(S.arg, S.v, num(k))));
+  const next = terms.length === 0 ? num(S.prod ? 1 : 0) : terms.length === 1 ? terms[0] : S.prod ? mul(terms) : add(terms);
+  const label = S.prod ? 'write out the product' : 'write out the sum';
+  return checked(e, { eq: replace(e, S.id, next), label, hints: newHints(), factor: one, select: null, rule: label });
+}
+
 /** C + r on a series: the ratio test, as a verdict for the bar */
 export function ratioTest(e: Eq, sel: string | null): string {
   const S = target(e, sel, 'sum') as Sum | null;
   if (!S) return 'No sum here.';
+  if (S.prod) return 'The ratio test is for sums.';
   const env: Env = {};
   symbols(S).forEach((s, i) => (env[s] = 0.5 + 0.1 * i));
   const a = (k: number) => Math.abs(evaluate(S.arg, { ...env, [S.v]: k }));

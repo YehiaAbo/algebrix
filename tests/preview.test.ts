@@ -27,6 +27,15 @@ describe('typing calculus', () => {
   });
   it('a definite integral', () => expect(show('int_0^1 x^2')).toBe('∫_{0}^{1} x^2 dx …'));
   it('sum', () => expect(show('sum')).toMatch(/^Σ/));
+  it('product', () => expect(show('prod')).toMatch(/^∏/));
+  it('stacked integrals: the second int never shows as i·n, and the outer dx waits as d□', () => {
+    const s = steps('int int x y dx dy');
+    expect(s.every(t => !/\bin\b|∫ i dx|i·n/.test(t))).toBe(true);
+    expect(show('int int')).toBe('∫ ∫ □ dx d□ …');
+    expect(show('int int x y dx')).toBe('∫ ∫ xy dx d□ …');
+    expect(show('int int x y dx dy')).toBe('∫ ∫ xy dx dy');
+    expect(show('int_0^1 int')).toBe('∫_{0}^{1} ∫ □ dx d□ …');
+  });
 });
 
 describe('typing algebra', () => {

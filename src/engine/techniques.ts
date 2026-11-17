@@ -489,6 +489,8 @@ export function splitAbs(e: Eq): { a: MoveOk; b: Eq } | { error: string } {
 export interface Spot { node: string; marks: string[]; move: MoveOk }
 
 /** The smallest piece that would simplify, the parts that would change, and the move that does it. */
+const hasCalcNode = (n: Node) => { let f = false; walk(n, m => { if (['deriv', 'lim', 'int', 'at', 'sum', 'grad'].includes(m.k)) f = true; }); return f; };
+
 export function simplifySpot(e: Eq): Spot | null {
   let hit: { n: Node; r: Node; h: ReturnType<typeof newHints> } | null = null;
   const visit = (n: Node) => {
@@ -496,10 +498,20 @@ export function simplifySpot(e: Eq): Spot | null {
     if (hit || n.k === 'eq') return;
     const h = newHints();
     const r = simplify(n, h);
-    if (key(r) !== key(n)) hit = { n, r, h };
+    // a change you couldn't see isn't worth a press
+    if (key(r) !== key(n) && toText(r) !== toText(n)) hit = { n, r, h };
   };
   visit(e);
   if (!hit) return null;
+  // plain arithmetic goes all the way in one press: the largest piece with no letters around it
+  const found = hit as { n: Node; r: Node; h: ReturnType<typeof newHints> };
+  if (!symbols(found.n).length) {
+    const top = findPath(e, found.n.id)?.find(m => m.k !== 'eq' && !symbols(m).length && !hasCalcNode(m));
+    if (top && top !== found.n) {
+      const h = newHints(), r = simplify(top, h);
+      if (key(r) !== key(top) && toText(r) !== toText(top)) hit = { n: top, r, h };
+    }
+  }
   const { n, r, h } = hit as { n: Node; r: Node; h: ReturnType<typeof newHints> };
   const move = checked(e, { eq: replace(e, n.id, r), label: 'simplify', hints: h, factor: one, select: null });
   if (isErr(move)) return null;

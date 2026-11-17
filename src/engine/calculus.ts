@@ -3,7 +3,7 @@
 // differentiation, kept apart from the step-by-step rules in calcmoves.ts (and fuzzed against
 // finite differences in the tests), so a slip in one is caught by the other. Limits are
 // estimated numerically, and give NaN (can't check) when the estimate isn't clean.
-import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, vec, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh } from './ast';
+import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, vec, int, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh } from './ast';
 
 /** does n change with v (directly, or through a variable that depends on v)? */
 export function dependsOn(n: Node, v: string, dep: string[] = []): boolean {
@@ -36,6 +36,8 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       return add(parts);
     }
     case 'frac': {
+      // over a constant: just the top (and an indefinite ∫ on top is never evaluated bare)
+      if (!dependsOn(n.den, v, dep)) { const a = d(n.num); return a && frac(a, n.den); }
       const a = d(n.num), b = d(n.den);
       if (!a || !b) return null;
       return frac(add([mul([a, n.den]), neg(mul([n.num, b]))]), pow(n.den, num(2)));
@@ -72,8 +74,14 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       return inner && d(inner);
     }
     case 'int': {
-      // indefinite: the integrand back (that is what an antiderivative is)
-      if (!n.lo || !n.hi) return n.v === v && !dep.length ? n.arg : null;
+      // indefinite: the integrand back (that is what an antiderivative is); in another letter,
+      // under the sign (both sides are only known up to what doesn't change with n.v)
+      if (!n.lo || !n.hi) {
+        if (dep.length) return null;
+        if (n.v === v) return n.arg;
+        const a = d(n.arg);
+        return a && int(n.v, a);
+      }
       // definite, the bounds moving (the fundamental theorem): f(hi)·hi′ − f(lo)·lo′
       if (dependsOn(n.arg, v, dep) && n.v !== v) return null;
       const lo = d(n.lo), hi = d(n.hi);
@@ -85,7 +93,8 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       return d(whole);
     }
     case 'sum': {
-      // term by term
+      // term by term (a product has no such rule here)
+      if (n.prod) return null;
       if (dependsOn(n.lo, v, dep) || dependsOn(n.hi, v, dep)) return null;
       const a = d(n.arg);
       return a && sum(n.v, n.lo, n.hi, a);
@@ -218,6 +227,7 @@ function integral(n: Int, env: Env): number {
 function series(n: Sum, env: Env): number {
   const lo = evaluate(n.lo, env), hi = evaluate(n.hi, env);
   if (!Number.isInteger(lo) || !(Number.isInteger(hi) || hi === Infinity)) return NaN;
+  if (n.prod) return product(n, env, lo, hi);
   const a = (k: number) => evaluate(n.arg, { ...env, [n.v]: k });
   if (hi !== Infinity) {
     if (hi - lo > 1e6) return NaN;
@@ -258,6 +268,24 @@ function series(n: Sum, env: Env): number {
   };
   const e1 = em(lo + 200), e2 = em(lo + 400);
   return Math.abs(e1 - e2) <= 1e-8 * (1 + Math.abs(e2)) ? e2 : NaN;
+}
+
+/** ∏ a(k): exact when finite. An infinite one from its partial products P(N), which settle like
+ *  P + c/N + d/N²: Richardson's extrapolation, trusted only when two runs of it agree. */
+function product(n: Sum, env: Env, lo: number, hi: number): number {
+  const a = (k: number) => evaluate(n.arg, { ...env, [n.v]: k });
+  if (hi !== Infinity) {
+    if (hi - lo > 1e6) return NaN;
+    let p = 1;
+    for (let k = lo; k <= hi; k++) p *= a(k);
+    return p;
+  }
+  const P: Record<number, number> = {};
+  let p = 1;
+  for (let N = 1; N <= 2000; N++) { p *= a(lo + N - 1); if (!Number.isFinite(p)) return NaN; if (N % 250 === 0) P[N] = p; }
+  const rich = (N: number) => (8 * P[4 * N] - 6 * P[2 * N] + P[N]) / 3;
+  const r1 = rich(250), r2 = rich(500);
+  return Math.abs(r1 - r2) <= 1e-8 * (1 + Math.abs(r2)) ? r2 : NaN;
 }
 
 /** Γ(x) by Lanczos, for n! of a non-integer */

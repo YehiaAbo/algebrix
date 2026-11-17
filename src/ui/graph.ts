@@ -4,13 +4,42 @@
 // surface stay the same at every step: visual proof that no move broke anything.
 // Desmos-style handling: drag to pan (or turn, in 3D), scroll to zoom at the cursor,
 // double-click to reset, hover a curve or a point to read its coordinates.
-import { Eq, Node, evaluate, symbols, relOf, isIneq, holds, walk } from '../engine/ast';
+import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num } from '../engine/ast';
+import { toText } from '../engine/print';
+import { substitute } from '../engine/calculus';
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
 type View = { cx: number; cy: number; span: number };
 type Quad = { p: [number, number, number][]; n: number[] };
+
+/** a number to picture: ∫ₐᵇ f dx as the area under f, lim x→a f as the point f heads for */
+function calcPicture(eq: Eq): Int | Lim | null {
+  if (relOf(eq) !== 'expr') return null;
+  let pic: Int | Lim | null = null;
+  walk(eq.lhs, n => {
+    if (pic) return;
+    if (n.k === 'int' && n.lo && n.hi && symbols(n.arg).every(s => s === n.v) && !Number.isNaN(evaluate(n.lo, {})) && !Number.isNaN(evaluate(n.hi, {}))) pic = n;
+    if (n.k === 'lim' && symbols(n.arg).every(s => s === n.v)) pic = n;
+  });
+  return pic;
+}
+
+/** + C and C₁, C₂: constants of integration, not axes */
+const isConst = (v: string) => /^C(_\d+)?$/.test(v);
+/** the letters to graph against */
+const plotVars = (eq: Eq) => symbols(eq).filter(v => !isConst(v));
+/** y′ = f(x, y): the letters x, y and y′, when it is a first-order differential equation */
+function odeVars(vars: string[]): { x: string; y: string; p: string } | null {
+  const p = vars.find(v => v.endsWith('′'));
+  if (!p || vars.some(v => v.endsWith('″')) || vars.length !== 3) return null;
+  const y = p.slice(0, -1);
+  const x = vars.find(v => v !== p && v !== y);
+  return vars.includes(y) && x ? { x, y, p } : null;
+}
+/** eq with every constant of integration set to c */
+const withConst = (eq: Eq, c: number): Eq => { const cs = symbols(eq).filter(isConst); return cs.reduce<Eq>((e, v) => substitute(e, v, num(c)) as Eq, eq); };
 
 const hasVector = (eq: Eq) => { let f = false; walk(eq, n => { if (n.k === 'vec' || n.k === 'grad') f = true; }); return f; };
 
@@ -25,6 +54,10 @@ export class Graph {
   private morph: { l: number[]; r: number[]; t: number } | null = null;
   private last: { l: number[]; r: number[] } | null = null;
   private fade = 1;
+  /** said under the graph after its own note (the app's warnings, like an answer that fails the original) */
+  extra = '';
+  /** the view was moved to frame an area or a limit */
+  private framed = false;
   private mouse: { x: number; y: number } | null = null;
   private drag: { x: number; y: number; moved: boolean } | null = null;
   // 3D
@@ -103,6 +136,45 @@ export class Graph {
     this.animateView({ cx: 0, cy: 0, span: 10 });
   }
 
+  /** a new picture of an area or a limit: bring its part of the curve into view */
+  private frame(eq: Eq) {
+    const p = plotVars(eq).length === 0 ? calcPicture(eq) : null;
+    if (!p) {
+      // one letter: make sure where the sides cross is in view (3x + 7 = 22 meets at y = 22)
+      const vs = plotVars(eq);
+      if (vs.length === 1 && relOf(eq) === '=') {
+        const v = vs[0], f = (x: number) => evaluate(eq.lhs, { [v]: x }) - evaluate(eq.rhs, { [v]: x });
+        for (let i = 0; i < 400; i++) {
+          const a = -10 + i / 20, b = a + 1 / 20;
+          if (!(f(a) * f(b) <= 0) || !Number.isFinite(f(a) + f(b))) continue;
+          const y = evaluate(eq.lhs, { [v]: (a + b) / 2 });
+          const halfH = 10 * (this.H || 1) / (this.W || 1);
+          if (Number.isFinite(y) && Math.abs(y) > 0.85 * halfH) {
+            this.framed = true;
+            this.animateView({ cx: 0, cy: y / 2, span: Math.max(10, (Math.abs(y) / 2 + 2) * (this.W || 1) / (this.H || 1)) });
+            return;
+          }
+          break;
+        }
+      }
+      // back from a framed view to an ordinary graph: the usual view again
+      if (this.framed) { this.framed = false; this.animateView({ cx: 0, cy: 0, span: 10 }); }
+      return;
+    }
+    this.framed = true;
+    const f = (x: number) => evaluate(p.arg, { [p.v]: x });
+    let a: number, b: number;
+    if (p.k === 'int') { a = evaluate(p.lo!, {}); b = evaluate(p.hi!, {}); if (!Number.isFinite(a) || !Number.isFinite(b)) return; }
+    else { const t = evaluate(p.to, {}); if (!Number.isFinite(t)) return; a = t - 2; b = t + 2; }
+    if (a > b) [a, b] = [b, a];
+    const ys = Array.from({ length: 41 }, (_, i) => f(a + (b - a) * i / 40)).filter(Number.isFinite);
+    const span = Math.max(0.5, (b - a) * 0.8);
+    const lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+    const halfH = span * (this.H || 1) / (this.W || 1);
+    const cy = hi - lo < 2 * halfH ? (lo + hi) / 2 : clamp((lo + hi) / 2, lo + halfH * 0.8, hi - halfH * 0.8);
+    this.animateView({ cx: (a + b) / 2, cy, span });
+  }
+
   private animateView(to: View) {
     cancelAnimationFrame(this.viewRaf);
     const from = { ...this.view }, t0 = performance.now();
@@ -120,10 +192,12 @@ export class Graph {
     const fresh = !this.eq || symbols(this.eq).join() !== symbols(eq).join();
     this.eq = eq;
     this.others = others;
+    const morph = animate && this.last ? { ...this.last, t: 0 } : null;
+    // nothing new to animate: draw, and let a fade or morph already under way finish
+    if (!morph && !fresh) return this.render();
     cancelAnimationFrame(this.raf);
-    this.morph = animate && this.last ? { ...this.last, t: 0 } : null;
-    if (fresh) this.fade = 0;
-    if (!this.morph && !fresh) return this.render();
+    this.morph = morph;
+    if (fresh) { this.fade = 0; this.frame(eq); }
     const t0 = performance.now();
     const tick = () => {
       const t = Math.min(1, (performance.now() - t0) / 300);
@@ -136,7 +210,7 @@ export class Graph {
     tick();
   }
 
-  private is3d() { return !!this.eq && symbols(this.eq).length === 3; }
+  private is3d() { return !!this.eq && plotVars(this.eq).length === 3 && !odeVars(plotVars(this.eq)); }
   private scale() { return this.W / (2 * this.view.span); }
   private toUnits(px: number, py: number): [number, number] {
     const s = this.scale();
@@ -144,7 +218,7 @@ export class Graph {
   }
 
   private render() {
-    const eq = this.eq;
+    let eq = this.eq;
     if (!eq) return;
     const dpr = window.devicePixelRatio || 1;
     const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
@@ -156,21 +230,34 @@ export class Graph {
     const c = this.ctx;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     c.clearRect(0, 0, W, H);
-    const vars = symbols(eq);
+    const full = eq;
+    const vars = plotVars(eq);
+    const family = symbols(eq).some(isConst);
+    // + C: a whole family of curves; drawn with C = 0 where one curve is wanted
+    if (family) eq = withConst(eq, vars.length === 2 ? 1 : 0);
+    const ode = odeVars(vars);
+    if (ode) return this.renderSlopes(eq, ode);
     if (vars.length === 3 && !hasVector(eq)) return this.render3d(eq, vars);
     this.last = null;
     const s = this.scale();
     const X = (x: number) => W / 2 + (x - this.view.cx) * s, Y = (y: number) => H / 2 - (y - this.view.cy) * s;
     const ux = (px: number) => this.toUnits(px, 0)[0], uy = (py: number) => this.toUnits(0, py)[1];
     const vector = hasVector(eq);
+    const pic = vars.length === 0 && !vector ? calcPicture(eq) : null;
+    if (pic) {
+      c.globalAlpha = this.fade;
+      this.renderPicture(pic, X, Y, ux, uy);
+      c.globalAlpha = 1;
+      return;
+    }
     if (vars.length === 0 || vars.length > 3 || vector) {
       this.grid(X, Y, ux, uy, 'x', 'y');
-      this.note.textContent = vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? 'No variables to graph.' : `${vars.length} variables. The graph shows up to three.`;
+      this.note.textContent = vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? 'No variables to graph.' : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
       return;
     }
     c.globalAlpha = this.fade;
     if (vars.length === 1) this.render1(eq, vars[0], X, Y, ux);
-    else this.render2(eq, vars, X, Y, ux, uy);
+    else this.render2(eq, vars, X, Y, ux, uy, family ? full : null);
     c.globalAlpha = 1;
   }
 
@@ -195,12 +282,13 @@ export class Graph {
     const single = rel === 'expr' ? 'l' : rel === 'def' ? 'r' : null;
     const blank = single && (single === 'l' ? l : r).every(y => !Number.isFinite(y));
     this.note.innerHTML = blank ? 'Nothing to draw yet: an indefinite integral is only known up to + C. Work it out (e) and its curve appears.'
-      : single ? `The graph of <b>y = ${rel === 'def' ? (eq.lhs.k === 'call' ? eq.lhs.name + '(' + v + ')' : 'it') : 'it'}</b>. Rewriting never changes it.`
-      : isIneq(eq) ? `Shaded where it holds. The boundary is where the sides meet${roots.length ? `, <b>${v} ≈ ${roots.slice(0, 3).map(fmt).join(', ')}</b>` : ''}.`
+      : single ? `The graph of <b>y = ${rel === 'def' ? (eq.lhs.k === 'call' ? eq.lhs.name + '(' + v + ')' : 'it') : toText(eq.lhs).length <= 28 ? escapeText(eq.lhs) : 'it'}</b>. Rewriting never changes it. Grey dots: zeros, peaks and dips (hover one).`
+      : isIneq(eq) ? `Shaded where it holds. The boundary is where the sides meet${roots.length ? `, <b>${v} ${roots.every(exact) ? '=' : '≈'} ${roots.slice(0, 3).map(fmt).join(', ')}</b>` : ''}.`
       : rel === '≟' ? 'The two sides are the same curve everywhere. That is what you are proving.'
       : roots.length
-      ? `Sides cross at <b>${v} ≈ ${roots.slice(0, 3).map(fmt).join(', ')}</b>${roots.length > 3 ? '…' : ''}. That point never moves.`
+      ? `Sides cross at <b>${v} ${roots.every(exact) ? '=' : '≈'} ${roots.slice(0, 3).map(fmt).join(', ')}</b>${roots.length > 3 ? '…' : ''}. ${roots.length > 1 ? 'Those points never move' : 'That point never moves'} while the steps are reversible.`
       : 'The two sides never cross in view. Drag or scroll to look around.';
+    if (this.extra) this.note.innerHTML += ` <span class="graph-warn">${this.extra}</span>`;
     this.grid(X, Y, ux, (py: number) => this.toUnits(0, py)[1], v, '');
     if (isIneq(eq)) {
       c.fillStyle = css('--graph-a'); c.globalAlpha = 0.14 * this.fade;
@@ -215,7 +303,9 @@ export class Graph {
     if (m && m.t < 1) return;
     if (single) roots.length = 0;
     const pts = roots.map(x0 => ({ x: x0, y: evaluate(eq.lhs, { [v]: x0 }) })).filter(p => Number.isFinite(p.y));
-    for (const p of pts) this.dot(X(p.x), Y(p.y), css('--ink'));
+    // one curve: its points of interest in grey, like Desmos (zeros, the y-intercept, peaks and dips)
+    if (single) pts.push(...interesting((x: number) => evaluate(single === 'l' ? eq.lhs : eq.rhs, { [v]: x }), xs, single === 'l' ? l : r));
+    for (const p of pts) this.dot(X(p.x), Y(p.y), single ? css('--faint') : css('--ink'));
     // hover: a point near the cursor, else trace the nearest curve
     const ms = this.mouse;
     if (!ms || this.drag?.moved) return;
@@ -233,10 +323,107 @@ export class Graph {
     void c;
   }
 
-  private render2(eq: Eq, vars: string[], X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number) {
+  /** ∫ₐᵇ f dx: f with the area shaded. lim x→a f: f, and a ring where it heads. */
+  private renderPicture(p: Int | Lim, X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number) {
+    const { W } = this, c = this.ctx;
+    this.grid(X, Y, ux, uy, p.v, '');
+    const N = Math.ceil(W / 1.5);
+    const xs = Array.from({ length: N + 1 }, (_, i) => ux((i / N) * W));
+    const f = (x: number) => evaluate(p.arg, { [p.v]: x });
+    const ys = xs.map(f);
+    const A = css('--graph-a');
+    const value = evaluate(p, {});
+    if (p.k === 'int') {
+      const a = evaluate(p.lo!, {}), b = evaluate(p.hi!, {});
+      const lo = Math.max(Math.min(a, b), ux(0)), hi = Math.min(Math.max(a, b), ux(W));
+      if (hi > lo) {
+        c.fillStyle = A; c.globalAlpha = 0.18 * this.fade;
+        c.beginPath(); c.moveTo(X(lo), Y(0));
+        const n = Math.max(2, Math.ceil((X(hi) - X(lo)) / 2));
+        for (let i = 0; i <= n; i++) { const x = lo + (hi - lo) * i / n, y = f(x); c.lineTo(X(x), Number.isFinite(y) ? Y(y) : Y(0)); }
+        c.lineTo(X(hi), Y(0)); c.closePath(); c.fill();
+        c.globalAlpha = this.fade;
+      }
+      this.curve(ys, N, Y, A);
+      this.note.innerHTML = `The shaded area under <b>y = ${escapeText(p.arg)}</b> from ${fmt(a)} to ${fmt(b)}${Number.isFinite(value) ? `: <b>${exact(value) ? '=' : '≈'} ${fmt(value)}</b>` : ''}. Area below the axis counts as negative.`;
+    } else {
+      this.curve(ys, N, Y, A);
+      const to = evaluate(p.to, {});
+      if (Number.isFinite(to) && Number.isFinite(value)) this.dot(X(to), Y(value), A, true);
+      if (!Number.isFinite(to) && Number.isFinite(value)) {
+        c.strokeStyle = A; c.setLineDash([6, 5]); c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(0, Y(value)); c.lineTo(W, Y(value)); c.stroke(); c.setLineDash([]);
+      }
+      this.note.innerHTML = Number.isFinite(value)
+        ? `As ${p.v} → ${Number.isFinite(to) ? fmt(to) : to > 0 ? '∞' : '−∞'}, <b>y = ${escapeText(p.arg)}</b> heads for <b>${fmt(value)}</b>${Number.isFinite(to) ? ' (the ring), whether or not it gets there' : ' (the dashed line)'}.`
+        : `As ${p.v} → ${Number.isFinite(to) ? fmt(to) : '∞'}, the curve doesn't settle on one value.`;
+    }
+    const ms = this.mouse;
+    if (ms && !this.drag?.moved) {
+      const x = ux(ms.x), y = f(x);
+      if (Number.isFinite(y) && Math.abs(Y(y) - ms.y) < 24) { this.dot(X(x), Y(y), A, true); this.label(X(x), Y(y), `(${fmt(x)}, ${fmt(y)})`); }
+    }
+  }
+
+  /** y′ = f(x, y): a dash of slope f at each grid point; hover draws the solution through it */
+  private renderSlopes(eq: Eq, o: { x: string; y: string; p: string }) {
+    const { W, H } = this, c = this.ctx;
+    const s = this.scale();
+    const X = (x: number) => W / 2 + (x - this.view.cx) * s, Y = (y: number) => H / 2 - (y - this.view.cy) * s;
+    const ux = (px: number) => this.toUnits(px, 0)[0], uy = (py: number) => this.toUnits(0, py)[1];
+    this.grid(X, Y, ux, uy, o.x, o.y);
+    // y′ from the equation as typed: it is linear in y′, so two looks give it
+    const F = (x: number, y: number, p: number) => evaluate(eq, { [o.x]: x, [o.y]: y, [o.p]: p });
+    const slope = (x: number, y: number) => {
+      const f0 = F(x, y, 0), f1 = F(x, y, 1);
+      const p = -f0 / (f1 - f0);
+      return Number.isFinite(p) && Math.abs(F(x, y, 2) - (2 * f1 - f0)) < 1e-6 * (1 + Math.abs(f0) + Math.abs(f1)) ? p : NaN;
+    };
+    c.globalAlpha = this.fade;
+    c.strokeStyle = css('--muted'); c.lineWidth = 1.4; c.lineCap = 'round';
+    c.beginPath();
+    const gap = 26, len = 8;
+    for (let py = gap / 2; py < H; py += gap) for (let px = gap / 2; px < W; px += gap) {
+      const m = slope(ux(px), uy(py));
+      if (!Number.isFinite(m)) continue;
+      const a = Math.atan(m), dx = Math.cos(a) * len, dy = -Math.sin(a) * len;
+      c.moveTo(px - dx, py - dy); c.lineTo(px + dx, py + dy);
+    }
+    c.globalAlpha = 0.55 * this.fade; c.stroke(); c.globalAlpha = this.fade;
+    this.note.innerHTML = `The slope field of the equation: each dash has the slope ${o.p} has there. Hover to draw the solution through a point; solving (e) gives all of them.`;
+    const ms = this.mouse;
+    if (!ms || this.drag?.moved) return;
+    // the solution through the cursor, both ways, by Runge-Kutta
+    const h = (2 * this.view.span) / 300;
+    const A = css('--graph-a');
+    c.strokeStyle = A; c.lineWidth = 2.5; c.lineJoin = 'round';
+    for (const dir of [1, -1]) {
+      let x = ux(ms.x), y = uy(ms.y);
+      c.beginPath(); c.moveTo(X(x), Y(y));
+      for (let i = 0; i < 400; i++) {
+        const k1 = slope(x, y), k2 = slope(x + dir * h / 2, y + dir * h / 2 * k1), k3 = slope(x + dir * h / 2, y + dir * h / 2 * k2), k4 = slope(x + dir * h, y + dir * h * k3);
+        const dy = dir * h * (k1 + 2 * k2 + 2 * k3 + k4) / 6;
+        if (!Number.isFinite(dy)) break;
+        x += dir * h; y += dy;
+        if (Math.abs(Y(y)) > 3 * H || X(x) < -10 || X(x) > W + 10) break;
+        c.lineTo(X(x), Y(y));
+      }
+      c.stroke();
+    }
+    this.dot(ms.x, ms.y, A, true);
+  }
+
+  private render2(eq: Eq, vars: string[], X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number, family: Eq | null = null) {
     const hx = vars.includes('x') ? 'x' : vars[0];
     const vy = vars.includes('y') && hx !== 'y' ? 'y' : vars.find(n => n !== hx)!;
     this.grid(X, Y, ux, uy, hx, vy);
+    // a general solution: one faint curve for each C, the bold one is C = 1
+    if (family) {
+      for (const k of [-2, -1, 0, 2, 3]) this.implicit(withConst(family, k), hx, vy, ux, uy, css('--graph-a'), 0.3);
+      this.implicit(eq, hx, vy, ux, uy, css('--graph-a'), 1);
+      this.note.innerHTML = 'A whole family: one curve for each value of the constant. The bold one is C = 1; the faint ones C = −2, −1, 0, 2, 3.';
+      return;
+    }
     const extra = this.others.filter(o => symbols(o).every(v => v === hx || v === vy) && symbols(o).length > 0);
     for (const o of extra) this.implicit(o, hx, vy, ux, uy, css('--graph-b'), 0.75);
     if (isIneq(eq)) {
@@ -558,8 +745,46 @@ function hexRgb(h: string): number[] {
   return v.map(x => parseInt(x, 16));
 }
 
+/** a whole number, or a short decimal, that fmt shows exactly */
+const exact = (x: number) => Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-9;
+
 const fmt = (x: number) => {
   const a = Math.abs(x);
   const r = a >= 100 ? Math.round(x * 10) / 10 : a >= 1 ? Math.round(x * 1000) / 1000 : Math.round(x * 10000) / 10000;
   return (r < 0 ? '−' : '') + Math.abs(r).toString();
 };
+
+/** where one curve is worth a look: zeros, the y-intercept, and peaks and dips (at most a dozen) */
+function interesting(f: (x: number) => number, xs: number[], ys: number[]): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  const N = xs.length - 1;
+  const push = (x: number) => { const y = f(x); if (Number.isFinite(y) && !out.some(p => Math.abs(p.x - x) < (xs[1] - xs[0]) * 3)) out.push({ x: Math.round(x * 1e9) / 1e9, y }); };
+  for (const i of findRoots(i => ys[i], N)) {
+    let a = xs[Math.floor(i)], b = xs[Math.min(N, Math.ceil(i + 1e-9))];
+    if (f(a) === 0) b = a;
+    for (let k = 0; k < 60 && b - a > 1e-13; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
+    push((a + b) / 2);
+  }
+  if (xs[0] < 0 && xs[N] > 0) push(0);
+  for (let i = 1; i < N; i++) {
+    const d0 = ys[i] - ys[i - 1], d1 = ys[i + 1] - ys[i];
+    if (!Number.isFinite(d0) || !Number.isFinite(d1) || d0 === 0 || (d0 > 0) === (d1 > 0)) continue;
+    // a smooth turn, not a pole or a corner jump: golden-section search on the bracket
+    if (Math.abs(d0) + Math.abs(d1) > Math.abs(ys[i]) + 1e3) continue;
+    let a = xs[i - 1], b = xs[i + 1];
+    const peak = d0 > 0, g = (Math.sqrt(5) - 1) / 2;
+    for (let k = 0; k < 50; k++) {
+      const m1 = b - g * (b - a), m2 = a + g * (b - a);
+      (peak ? f(m1) > f(m2) : f(m1) < f(m2)) ? (b = m2) : (a = m1);
+    }
+    push((a + b) / 2);
+  }
+  return out.slice(0, 12);
+}
+
+/** an expression as plain text for a note */
+function escapeText(n: Node) {
+  const sup = (d: string) => [...d].map(ch => '⁰¹²³⁴⁵⁶⁷⁸⁹'[+ch]).join('');
+  return toText(n).replace(/\^(\d+)/g, (_, d) => sup(d)).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]!));
+}
+

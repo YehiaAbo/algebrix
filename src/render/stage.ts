@@ -206,13 +206,21 @@ function sig(g: Glyph): string {
   return g.kind;
 }
 
-/** ∫ from the Computer Modern large operators (as MathJax ships it, Apache 2.0), in font units */
+/** ∫, Σ and ∏ from the Computer Modern large operators (as MathJax ships them, Apache 2.0), in font
+ *  units with y up. The ∫ is set a little more upright than TeX's (skewed back by 0.1). */
+const BIG_OPS: Record<string, { box: string; d: string; skew?: number }> = {
+  int: { box: '120 -1366 712 2234', d: '', skew: 0.1 },
+  sum: { box: '50 -955 1343 1410', d: 'M60 948Q63 950 665 950H1267L1325 815Q1384 677 1388 669H1348L1341 683Q1320 724 1285 761Q1235 809 1174 838T1033 881T882 898T699 902H574H543H251L259 891Q722 258 724 252Q725 250 724 246Q721 243 460 -56L196 -356Q196 -357 407 -357Q459 -357 548 -357T676 -358Q812 -358 896 -353T1063 -332T1204 -283T1307 -196Q1328 -170 1348 -124H1388Q1388 -125 1381 -145T1356 -210T1325 -294L1267 -449L666 -450Q64 -450 61 -448Q55 -446 55 -439Q55 -437 57 -433L590 177Q590 178 557 222T452 366T322 544L56 909L55 924Q55 945 60 948Z' },
+  prod: { box: '50 -955 1177 1410', d: 'M220 812Q220 813 218 819T214 829T208 840T199 853T185 866T166 878T140 887T107 893T66 896H56V950H1221V896H1211Q1080 896 1058 812V-311Q1076 -396 1211 -396H1221V-450H725V-396H735Q864 -396 888 -314Q889 -312 889 -311V896H388V292L389 -311Q405 -396 542 -396H552V-450H56V-396H66Q195 -396 219 -314Q220 -312 220 -311V812Z' },
+};
 const TEX_INTEGRAL = 'M114 -798Q132 -824 165 -824H167Q195 -824 223 -764T275 -600T320 -391T362 -164Q365 -143 367 -133Q439 292 523 655T645 1127Q651 1145 655 1157T672 1201T699 1257T733 1306T777 1346T828 1360Q884 1360 912 1325T944 1245Q944 1220 932 1205T909 1186T887 1183Q866 1183 849 1198T832 1239Q832 1287 885 1296L882 1300Q879 1303 874 1307T866 1313Q851 1323 833 1323Q819 1323 807 1311T775 1255T736 1139T689 936T633 628Q574 293 510 -5T410 -437T355 -629Q278 -862 165 -862Q125 -862 92 -831T55 -746Q55 -711 74 -698T112 -685Q133 -685 150 -700T167 -741Q167 -789 114 -798Z';
+BIG_OPS.int.d = TEX_INTEGRAL;
+const isSvg = (g: Glyph) => g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int' || g.kind === 'sum' || g.kind === 'prod';
 
-function elTag(g: Glyph) { return g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int' ? 'svg' : 'DIV'; }
+function elTag(g: Glyph) { return isSvg(g) ? 'svg' : 'DIV'; }
 
 function create(g: Glyph): HTMLElement | SVGSVGElement {
-  if (g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int') {
+  if (isSvg(g)) {
     const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('class', 'g ' + g.kind);
     svg.appendChild(document.createElementNS(SVGNS, 'path'));
@@ -260,18 +268,19 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     (el as HTMLElement).dataset.rel = g.rel ?? '=';
   } else if (g.kind === 'sign') {
     el.classList.toggle('minus', !!g.minus);
-  } else if (g.kind === 'paren' || g.kind === 'rad' || g.kind === 'int') {
+  } else if (isSvg(g)) {
     const svg = el as SVGSVGElement;
     svg.setAttribute('viewBox', `0 0 ${g.w} ${g.h}`);
     const sw = Math.max(1.1, 0.044 * g.s);
     const path = svg.firstChild as SVGPathElement;
     path.setAttribute('stroke-width', String(g.kind === 'rad' ? sw * 0.95 : sw));
-    if (g.kind === 'int') {
-      // the display-size ∫ of Computer Modern (TeX), drawn to the box: font units, y up
-      svg.setAttribute('viewBox', '50 -1366 900 2234');
+    const big = BIG_OPS[g.kind];
+    if (big) {
+      // the display-size operator of Computer Modern (TeX), drawn to the box
+      svg.setAttribute('viewBox', big.box);
       svg.setAttribute('preserveAspectRatio', 'none');
-      path.setAttribute('transform', 'scale(1,-1)');
-      path.setAttribute('d', TEX_INTEGRAL);
+      path.setAttribute('transform', big.skew ? `scale(1,-1) matrix(1,0,${-big.skew},1,0,0)` : 'scale(1,-1)');
+      path.setAttribute('d', big.d);
     } else if (g.kind === 'paren' && g.straight) {
       path.setAttribute('d', `M ${g.w / 2} ${sw} L ${g.w / 2} ${g.h - sw}`);
     } else if (g.kind === 'paren') {

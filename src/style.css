@@ -78,8 +78,8 @@ button { font: inherit; color: inherit; }
 .conds li { font: 16px/1.3 var(--math-font); padding: 5px 8px; border-radius: 7px; background: var(--desk); }
 .empty { margin: 0; color: var(--faint); font-size: 12.5px; }
 .rail-foot { margin-top: auto; display: grid; gap: 10px; }
-.progress { display: grid; gap: 2px; font-size: 13px; }
-.progress #step-count { font-weight: 600; }
+.progress { display: grid; gap: 2px; font-size: 12.5px; color: var(--muted); padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.progress #step-count { font-weight: 500; }
 .progress #redo-count { color: var(--muted); font-size: 12px; }
 .sound {
   display: inline-flex; align-items: center; gap: 7px; justify-self: start;
@@ -167,7 +167,7 @@ body[data-mode="write"] .original { display: none; }
 .g.eq[data-rel="≟"]::after { content: '?'; position: absolute; left: 0; right: 0; bottom: calc(100% + var(--s) * 0.04); text-align: center; font: calc(var(--s) * 0.32) var(--ui-font); color: var(--sel); }
 svg.g { overflow: visible; }
 svg.g path { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-svg.g.int path { fill: currentColor; stroke: none; }
+svg.g.int path, svg.g.sum path, svg.g.prod path { fill: currentColor; stroke: none; }
 .mini .g { color: inherit; }
 
 .sel {
@@ -335,8 +335,9 @@ kbd.wide { padding: 0 7px; }
 .pal-tab { border: 0; background: transparent; color: var(--muted); font-size: 12.5px; padding: 6px 10px 7px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .pal-tab.on { color: var(--ink); border-bottom-color: var(--sel); font-weight: 600; }
 .pal-items { padding-top: 4px; }
-.forms.calc { min-width: 560px; max-width: 760px; }
-.forms.calc .pal-tab:not(.live) { opacity: .55; }
+.forms.calc { min-width: min(560px, calc(100% - 24px)); max-width: min(760px, calc(100% - 24px)); }
+.forms.calc .pal-tabs { flex-wrap: wrap; }
+.forms.calc .pal-tab:not(.live) { opacity: .4; }
 .forms.calc .pal-tab.live::after { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--sel); margin-left: 5px; vertical-align: 2px; }
 .calc-items { padding-top: 6px; flex-wrap: wrap; }
 .calc-empty { color: var(--muted); font-size: 12.5px; padding: 6px 4px; }
@@ -406,6 +407,9 @@ body:not([data-mode="solve"]) .spots { display: none; }
 /* answers, goals, domains */
 .answer { position: absolute; left: 0; right: 0; text-align: center; font-family: var(--math-font); font-size: 22px; color: var(--good); pointer-events: none; animation: rise .3s var(--ease); }
 .answer[hidden] { display: none; }
+.answer.bad { color: var(--bad); font: 600 14px var(--ui-font); }
+.stage.extraneous .g:not(.trail .g) { color: var(--bad); opacity: .8; }
+.vars .solved.no { color: var(--bad); white-space: nowrap; }
 .eq-slot .solved.ans { font-family: var(--math-font); font-size: 11px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eq-slot .goal { margin-left: auto; font-size: 10.5px; color: var(--sel); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
 .vars .dom { border: 0; background: none; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; padding: 2px 6px; margin: -2px -6px; border-radius: 5px; transition: background .15s, color .15s; }
@@ -609,3 +613,17 @@ body[data-mode="write"] .input-keys { display: flex; }
 
 .vars .var sub { font-size: .65em; font-style: normal; }
 #tours .panel-card { width: min(860px, calc(100% - 32px)); }
+
+/* the notation cards under the typing box */
+.notation { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 30; display: flex; gap: 6px; align-items: stretch; padding: 6px; border-radius: 12px; background: var(--desk, var(--bg)); box-shadow: 0 0 0 1px var(--line), 0 10px 28px rgba(0, 0, 0, .14); animation: nota-in .12s var(--ease, ease-out); }
+.notation[hidden] { display: none; }
+.nota { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 74px; padding: 8px 10px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; box-shadow: 0 0 0 1px var(--line) inset; transition: box-shadow .1s, background .1s, transform .1s; }
+.nota b { font: 22px/1.1 var(--math-font); font-weight: 400; white-space: nowrap; }
+.nota span { font: 11px var(--ui-font); color: var(--muted); white-space: nowrap; }
+.nota:hover { box-shadow: 0 0 0 1px var(--sel) inset; }
+.nota.on { background: var(--sel-fill); box-shadow: 0 0 0 1.5px var(--sel) inset; transform: translateY(-1px); }
+.nota-tip { align-self: center; padding: 0 6px; font: 11px var(--ui-font); color: var(--faint); white-space: nowrap; }
+@keyframes nota-in { from { opacity: 0; transform: translateY(4px); } }
+
+.graph-warn { color: var(--bad); }
+.vars .dom { white-space: nowrap; }

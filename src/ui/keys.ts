@@ -6,10 +6,12 @@ import { sound } from './sound';
 import { cycleGraph } from './panels';
 import { $, MOVE_KEYS, OP_KEYS, escapeHtml } from './shared';
 import type { App } from './app';
+import { notationFor, insertNotation } from './notation';
 
 export function bind(this: App) {
   const input = $<HTMLInputElement>('input');
-  input.addEventListener('input', () => this.onType());
+  input.addEventListener('input', () => { this.onType(); this.showNotation(); });
+  input.addEventListener('blur', () => this.closeNotation());
   // quick inserts under the box, for what's awkward to type
   const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', ''], ['d/dx', 'd/dx(', ''], ['lim', 'lim x->0 ', ''], ['∫', 'int ', ''], ['Σ', 'sum_{n=1}^∞ ', ''], ['∂', '∂/∂x(', ''], ['∇', '∇(', ''], ['⟨ ⟩', '⟨', 'vector']];
   for (const [label, ins, hint] of KEYS) {
@@ -28,6 +30,11 @@ export function bind(this: App) {
   input.addEventListener('focus', () => { if (this.mode !== 'write') { this.writing = 'edit'; this.setMode('write'); this.sel = null; this.renderAll(null); } });
   input.addEventListener('keydown', e => {
     e.stopPropagation();
+    // the notation cards, while they're up: ↓ ↑ pick, Tab takes, Esc puts them away
+    const N = this.nota;
+    if (N && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); N.i = (N.i + (e.key === 'ArrowDown' ? 1 : -1) + N.items.length) % N.items.length; sound.tick(2); this.renderNotation(); return; }
+    if (N && e.key === 'Tab') { e.preventDefault(); this.takeNotation(N.i); return; }
+    if (N && e.key === 'Escape') { e.preventDefault(); this.closeNotation(); return; }
     if (e.key === 'Enter') { e.preventDefault(); this.commit(input.value); }
     if (e.key === 'Escape') { e.preventDefault(); this.cancelEdit(); }
   });
@@ -223,3 +230,49 @@ export function key(this: App, e: KeyboardEvent) {
     case ']': handled(); return this.graph.zoom(0.8);
   }
 }
+
+/* ---------- the notation cards under the typing box ---------- */
+
+export function showNotation(this: App) {
+  const input = $<HTMLInputElement>('input');
+  const got = notationFor(input.value, input.selectionStart ?? input.value.length);
+  const same = got && this.nota && got.items.map(n => n.name).join() === this.nota.items.map(n => n.name).join();
+  this.nota = got ? { ...got, i: same ? this.nota!.i : 0 } : null;
+  this.renderNotation();
+}
+
+export function closeNotation(this: App) {
+  this.nota = null;
+  this.renderNotation();
+}
+
+export function takeNotation(this: App, i: number) {
+  const N = this.nota;
+  if (!N) return;
+  const input = $<HTMLInputElement>('input');
+  const r = insertNotation(input.value, N, N.items[i]);
+  input.value = r.text;
+  input.setSelectionRange(r.caret, r.caret);
+  this.nota = null;
+  this.renderNotation();
+  sound.tick(3);
+  this.onType();
+}
+
+export function renderNotation(this: App) {
+  const host = $('notation');
+  const N = this.nota;
+  host.hidden = !N;
+  if (!N) return;
+  host.innerHTML = N.items.map((n, i) => `<button type="button" class="nota${i === N.i ? ' on' : ''}" data-i="${i}"><b>${escapeHtml(n.look)}</b><span>${escapeHtml(n.name)}</span></button>`).join('')
+    + '<span class="nota-tip"><kbd>↓</kbd><kbd>↑</kbd> pick <kbd>Tab</kbd> take</span>';
+  host.querySelectorAll<HTMLButtonElement>('.nota').forEach(b => b.addEventListener('mousedown', ev => { ev.preventDefault(); this.takeNotation(Number(b.dataset.i)); }));
+  // under the word being typed
+  const input = $<HTMLInputElement>('input');
+  const ctx = document.createElement('canvas').getContext('2d')!;
+  const cs = getComputedStyle(input);
+  ctx.font = `${cs.fontSize} ${cs.fontFamily}`;
+  const x = parseFloat(cs.paddingLeft) + ctx.measureText(input.value.slice(0, N.from)).width - input.scrollLeft;
+  host.style.left = `${Math.max(0, Math.min(x - 8, input.clientWidth - host.offsetWidth))}px`;
+}
+

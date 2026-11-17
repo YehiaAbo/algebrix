@@ -67,6 +67,7 @@ export function askVar(this: App) {
   this.hub.sticky = true;
   sound.tick(2);
   this.renderHub();
+  this.renderHints();
 }
 
 export function hubKey(this: App, e: KeyboardEvent) {
@@ -244,7 +245,7 @@ export function renderHub(this: App) {
   if (h.awaitVar) {
     const row = document.createElement('div');
     row.className = 'hub-row';
-    row.innerHTML = `<span class="hub-title">Solve for</span>` + symbols(this.eq).map(v => `<button class="chip var" data-k="${v}"><kbd>${v}</kbd></button>`).join('');
+    row.innerHTML = `<span class="hub-title">Solve for</span>` + [...symbols(this.eq)].sort((a, b) => Number(/^C(_\d+)?$/.test(a)) - Number(/^C(_\d+)?$/.test(b))).map(v => `<button class="chip var" data-k="${v}"><kbd>${v}</kbd></button>`).join('');
     host.append(row);
   } else {
     const row = document.createElement('div');

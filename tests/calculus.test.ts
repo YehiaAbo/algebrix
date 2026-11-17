@@ -9,6 +9,10 @@ const val = (src: string, env: Record<string, number> = {}) => evaluate(parseExp
 
 describe('typing calculus', () => {
   it.each([
+    ['lim x->0+ 1/x', 'lim_{x->0+} 1/x'],
+    ['lim x->0- 1/x', 'lim_{x->0-} 1/x'],
+    ['lim x->0 + 1/x', 'lim_{x->0} 1/x'],
+    ['x - 1 = 2', 'x - 1 = 2'],
     ['d/dx(x^2)', 'd/dx(x^2)'],
     ['d/dx x^3 sin x', 'd/dx(x^3 sin(x))'],
     ['\\frac{d}{dx}(x^2+1)', 'd/dx(x^2 + 1)'],

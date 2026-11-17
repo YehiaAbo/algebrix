@@ -7,7 +7,7 @@ import { dependsOn, derivative } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
-import { intStep, uSub, byParts, plugBounds, geometric, backSub, ratNode } from './integrate';
+import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode } from './integrate';
 import { toText } from './print';
 
 const one = () => 1;
@@ -294,7 +294,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       r = plugIn(cur, t.id);
       if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }
     } else if (t.k === 'at') r = plugBounds(cur, t.id);
-    else if (t.k === 'sum') r = geometric(cur, t.id);
+    else if (t.k === 'sum') r = typeof finiteTerms(t) === 'string' ? geometric(cur, t.id) : writeOut(cur, t.id);
     else if (t.k === 'grad') r = gradStep(cur, t.id);
     else if (t.k === 'mul') r = dotStep(cur, t.id);
     else {
@@ -309,7 +309,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     steps.push(r);
     cur = r.eq;
     // an inner integral just worked out: tidy what the outer one now holds
-    if (t?.k === 'at') { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
+    if (t?.k === 'at' || t?.k === 'int') { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
   }
   return { steps };
 }

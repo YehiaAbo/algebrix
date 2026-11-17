@@ -7,7 +7,7 @@ import { isErr, MoveOk } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { tidy } from '../engine/techniques';
 import { derivStep, plugIn, lhopital, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
-import { intStep, uSub, byParts, plugBounds, geometric, ratioTest, taylor } from '../engine/integrate';
+import { intStep, uSub, byParts, plugBounds, geometric, ratioTest, taylor, writeOut } from '../engine/integrate';
 import { sound } from './sound';
 import * as sheet from './sheet';
 import { Tech } from './shared';
@@ -18,9 +18,9 @@ export const CALC_GROUPS: { name: string; example: string }[] = [
   { name: 'Derivatives', example: 'an expression like x^2 sin(x), or d/dx (…)' },
   { name: 'Limits', example: 'lim x->0 sin(x)/x' },
   { name: 'Integrals', example: 'int x^2 dx, or int_0^1 x^2 dx' },
-  { name: 'Series', example: 'sum_{n=1}^∞ 1/n^2' },
+  { name: 'Series', example: 'sum_{n=1}^∞ 1/n^2 or prod_{k=1}^5 k' },
   { name: 'Several variables', example: 'an expression in x and y, like x^2 y + y^3' },
-  { name: 'Differential equations', example: "y' = x y, or y'' + 4y = 0" },
+  { name: 'Differential equations', example: "y' = x y, or y'' + 4y = cos(x)" },
   { name: 'Vector fields', example: '(-y, x, 0)' },
 ];
 
@@ -83,8 +83,9 @@ export function calcTechniques(this: App): Tech[] {
 
   // Series
   if (has(eq, 'sum')) {
-    const g = geometric(eq, this.sel);
-    add('Series', { lead: true, key: 'g', label: 'geometric series', ok: !isErr(g), run: () => this.apply(geometric(this.eq, this.sel), 1.1) });
+    const g = geometric(eq, this.sel), w = writeOut(eq, this.sel);
+    if (!isErr(w)) add('Series', { lead: true, key: 'x', label: 'write out the terms', ok: true, run: () => this.apply(writeOut(this.eq, this.sel), 1.1) });
+    add('Series', { lead: isErr(w), key: 'g', label: 'geometric series', ok: !isErr(g), run: () => this.apply(geometric(this.eq, this.sel), 1.1) });
     add('Series', { key: 'r', label: 'ratio test', ok: true, run: () => { this.say(ratioTest(this.eq, this.sel)); this.tour.check(); } });
   }
   if (fresh) add('Series', { key: 't', label: 'Taylor polynomial', ok: true, run: () => { const t = taylor(this.eq, v!); if ('error' in t) return this.refuse(t.error); this.addWork(t.poly, `Taylor polynomial of degree 5 about ${v} = ${t.about}`); } });
@@ -160,7 +161,7 @@ export function integratingFactor(this: App) {
 /** e on a differential equation: the method that fits, then solve */
 export function solveOde(this: App) {
   const k = odeKind(this.eq);
-  if (k === 'second') return this.addWork(generalSolution(this.eq), 'general solution, checked in the equation');
+  if (k === 'second') return this.addWork(generalSolution(this.eq), 'general solution (with a particular solution when the right side isn’t 0), checked in the equation');
   if (k === 'separable') { const r = separate(this.eq); if (isErr(r)) return this.refuse(r.error); return this.play([r], () => this.finishCalculus()); }
   const s = linearSteps(this.eq);
   if (!Array.isArray(s)) return this.refuse(s.error);

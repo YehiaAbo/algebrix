@@ -15,7 +15,8 @@ export function toText(n: Node, ascii = false): string {
       const shown = rel === '≟' || rel === 'def' ? '=' : ascii ? ({ '≤': '<=', '≥': '>=' } as Record<string, string>)[rel] ?? rel : rel;
       return `${toText(n.lhs, ascii)} ${shown} ${toText(n.rhs, ascii)}`;
     }
-    case 'neg': return minus + p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg');
+    // −(−1), never −−1
+    case 'neg': return minus + p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg' || (n.arg.k === 'num' && n.arg.v < 0));
     case 'add':
       // a group (sum inside a sum) reads as part of the same sum
       return n.terms.flatMap(t => (t.k === 'add' ? t.terms : [t])).map((t, i) => {
@@ -55,7 +56,7 @@ export function toText(n: Node, ascii = false): string {
       return `${ascii ? 'int' : '∫'}${b} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')} d${n.v}`;
     }
     case 'at': return `[${toText(n.arg, ascii)}]_{${n.v}=${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}}`;
-    case 'sum': return `${ascii ? 'sum' : 'Σ'}_{${n.v}=${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')}`;
+    case 'sum': return `${n.prod ? (ascii ? 'prod' : '∏') : ascii ? 'sum' : 'Σ'}_{${n.v}=${toText(n.lo, ascii)}}^{${toText(n.hi, ascii)}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg')}`;
     case 'lim': {
       const side = n.side ? (ascii ? n.side : n.side === '+' ? '⁺' : '⁻') : '';
       return `lim_{${n.v}${ascii ? '->' : '→'}${toText(n.to, ascii)}${side}} ${p(n.arg, n.arg.k === 'add' || n.arg.k === 'neg' || n.arg.k === 'lim')}`;

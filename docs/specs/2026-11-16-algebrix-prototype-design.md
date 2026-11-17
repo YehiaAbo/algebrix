@@ -255,3 +255,16 @@ User: typing `int x dx` or `d/dx` glitched on the way (stray i·n, d/d), the int
 - New items that work on any expression: l, a limit as x → (asks where), and a, a definite integral (asks for the bounds, like `0, pi`). Like f′, each starts a new piece of work beside the old one.
 - An indefinite integral has no graph until it is worked out (+ C), and the graph says so instead of staying blank.
 
+### Round 15: typeset Σ ∏, stacked integrals, notation cards, calculus graphs, a blind critique
+
+User: the ∫ sits at an odd slant; stacked integrals don't work; Σ and ∏ should look like LaTeX; finish calculus; graph more like Desmos; a way to pick odd notation from cards; and a blind critique of whether features serve the purpose.
+
+- Big operators: ∫ is the TeX glyph skewed back by 0.1 (more upright) and centred on the math axis; Σ and ∏ are the TeX display glyphs, 1.4 em tall on the axis, limits centred above and below.
+- Products: `prod_{k=1}^5 k`, `∏`, `\prod`. Finite products are exact; infinite ones by Richardson extrapolation of the partial products, trusted only when two runs agree. C + x writes out a finite Σ or ∏ (at most 12 terms); e does so for finite ones.
+- Stacked indefinite integrals: checked by the mixed slope ∂/∂x ∂/∂y … when the integrals are nested (each constant drops out), never when they sit side by side. d/dx of ∫ f dy is ∫ ∂f/∂x dy. An indefinite integral inside a definite one is refused (its + C would be integrated).
+- Typing: the outer integral of a stack waits as d□; a lone i or d inside an integral is a word on its way. `lim x->0+ f` is one-sided.
+- Notation cards (src/ui/notation.ts, pure and unit tested): 2+ letters or a \command bring up to six cards; ↓ ↑ pick, Tab takes, the caret lands where you type next. Every card's notation is checked to parse.
+- Second-order ODEs with a right side: undetermined coefficients, done numerically. Each term of g is read as xʲ e^(kx) (cos|sin)(wx); trial terms go up to xʲ⁺², solved by least squares with modified Gram-Schmidt (a trial term that solves the homogeneous equation has a zero column and drops out, so x e^(kx) takes its place), re-solved with only the terms that matter, and kept only if every coefficient is a simple number and the whole solution checks in the equation.
+- Graph: grey points of interest on one curve (zeros, y-intercept, peaks and dips); ∫ₐᵇ f shades the area and frames it; lim shows a ring where f heads (a dashed line at ∞); y′ = f(x, y) draws a slope field, and hover traces the solution through the cursor (Runge-Kutta); + C draws a family of curves; the crossing of a one-letter equation is brought into view; ≈ only for inexact values.
+- From the blind critique: a root that fails the original is drawn in red with "not a solution" (stage, rail and graph note), never green; the other case of a split goes on the shelf at once; + C, C₁, C₂ and y′ are not listed as variables; −(−1) instead of −−1; s does plain arithmetic in one press (the largest piece with no letters) and never takes a step that looks the same; bar text matches the mode (solve-for picker, Tab opened by Enter); C sections wrap on narrow screens; no NaN transforms when switching equations; move labels read "move 2x across".
+
