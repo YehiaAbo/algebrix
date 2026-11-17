@@ -22,6 +22,7 @@ import { Settings } from './settings';
 import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml } from './shared';
 import * as nav from './nav';
 import * as sheet from './sheet';
+import { hasDeriv, hasLim } from '../engine/calcmoves';
 import { renderShelf, ShelfItem } from './shelf';
 import type { NavView } from './nav';
 import * as opsPart from './ops';
@@ -30,6 +31,7 @@ import * as fnpalPart from './fnpal';
 import * as solvingPart from './solving';
 import * as keysPart from './keys';
 import * as persistPart from './persist';
+import * as calcPart from './calc';
 
 export type { Slot };
 
@@ -353,7 +355,7 @@ export class App {
       return;
     }
     if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
-    if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>Tab</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
+    if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>${this.hub?.calc ? 'C' : 'Tab'}</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
     if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`; return; }
     if (this.mode === 'fnask') { host.innerHTML = `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`; return; }
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
@@ -369,7 +371,7 @@ export class App {
         if (k.name !== 'any' && !isErr(applyMove(k.name, this.eq, this.sel))) parts.push(`<span class="hint"><kbd>${k.key}</kbd> ${k.verb}</span>`);
       }
     }
-    parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>Tab</kbd> algebra</span><span class="hint"><kbd>e</kbd> solve</span><span class="hint"><kbd>f</kbd> functions</span>`);
+    parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>Tab</kbd> algebra</span><span class="hint"><kbd>C</kbd> calculus</span><span class="hint"><kbd>e</kbd> solve</span><span class="hint"><kbd>f</kbd> functions</span>`);
     parts.push(`<span class="spacer"></span><span class="hint dim"><kbd>u</kbd> undo</span><span class="hint dim"><kbd>?</kbd> manual</span>`);
     host.innerHTML = parts.join('');
   }
@@ -684,6 +686,7 @@ export class App {
 
   /** e: solve. Aimed at a variable (or only one variable): straight to the answer; otherwise pick one */
   solveKey() {
+    if (hasDeriv(this.eq) || hasLim(this.eq)) return this.finishCalculus();
     if (relOf(this.eq) === 'expr') {
       // nothing to solve in a lone expression: e tidies it as far as it goes instead
       const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');
@@ -938,5 +941,5 @@ export class App {
 
 /** the methods that live in their own files */
 type Part<M> = { [K in keyof M]: M[K] };
-export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart> {}
-for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart]) Object.assign(App.prototype, part);
+export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart>, Part<typeof calcPart> {}
+for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart, calcPart]) Object.assign(App.prototype, part);

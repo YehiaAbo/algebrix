@@ -28,6 +28,9 @@ const allSolved = (a: App) => a.slots.every(s => !!solvedFor(s.steps[s.at].eq));
 const kb = (...keys: string[]) => keys.map(k => `<kbd>${k}</kbd>`).join(' + ');
 const tab = (key: string) => `hold ${kb('Tab')} and press ${kb(key)}`;
 const Tab = (key: string) => `Hold ${kb('Tab')} and press ${kb(key)}`;
+const C = (key: string) => `Hold ${kb('C')} and press ${kb(key)}`;
+/** derivatives or limits still to work out */
+const calcLeft = (a: App) => /d\/d|lim/.test(text(a));
 
 export const TOURS: TourDef[] = [
   {
@@ -216,6 +219,49 @@ export const TOURS: TourDef[] = [
       { say: 'Aim at <b>−3(x − 1)</b> and press <kbd>d</kbd>.', done: t => !text(t.app).includes('(') },
       { say: 'With nothing to solve, <kbd>e</kbd> tidies an expression all the way. Press it.', done: t => text(t.app) === '3x + 3' },
       { say: `${Tab('f')} to factor it back.`, done: t => text(t.app) === '3(x + 1)' },
+    ],
+  },
+  {
+    id: 'derivatives', group: 'Calculus 1', name: 'Derivatives, rule by rule', blurb: 'Hold C: power, sum, product, chain.',
+    steps: [
+      { load: 'd/dx x^5', say: `Calculus lives on ${kb('C')}. ${C('d')} to take the derivative one rule at a time.`, done: t => text(t.app) === '5x^4' },
+      { load: 'd/dx (x^3 + 2x - 7)', say: `A sum: each term on its own. ${C('d')}.`, done: t => text(t.app) === '3x^2 + 2' },
+      { load: 'd/dx x^2 sin(x)', say: `A product of two things that change: the product rule. ${C('d')}.`, done: t => !calcLeft(t.app) },
+      { load: 'd/dx sin(x^3)', say: `A function of a function: the chain rule. The inside’s derivative comes out front. ${C('d')}.`, done: t => !calcLeft(t.app) },
+      { load: 'd/dx (x^2 + 1)^3 cos(x)', say: 'Several rules deep. Press <kbd>e</kbd>: every rule plays, each one checked, then it tidies.', done: t => !calcLeft(t.app) },
+    ],
+  },
+  {
+    id: 'limits', group: 'Calculus 1', name: 'Limits', blurb: 'Plug in, and L’Hôpital when it’s 0/0.',
+    steps: [
+      { load: 'lim x->3 (x^2 + 1)', say: `Where the function is smooth, the limit is its value. ${C('p')} to plug in.`, done: t => !calcLeft(t.app) },
+      { say: 'Press <kbd>s</kbd> until it’s a number.', done: t => text(t.app) === '10' },
+      { load: 'lim x->0 sin(x)/x', say: `Try ${C('p')} again here.`, setup: t => { t.refused = false; }, done: t => t.refused },
+      { say: `It resisted: 0/0. ${C('l')} for L’Hôpital: the limit of the top’s derivative over the bottom’s.`, done: t => text(t.app).includes('cos') },
+      { say: `Now ${C('p')} works.`, done: t => !calcLeft(t.app) },
+      { load: 'lim x->0 (e^x - 1)/x', say: 'Press <kbd>e</kbd> and it picks the steps itself.', done: t => text(t.app) === '1' },
+    ],
+  },
+  {
+    id: 'implicit', group: 'Calculus 1', name: 'Implicit differentiation', blurb: 'd/dx both sides; y′ appears.',
+    steps: [
+      { load: 'x^2 + y^2 = 25', say: `A circle: y isn’t on its own. ${C('d')} takes d/dx of both sides, with y depending on x.`, done: t => calcLeft(t.app) },
+      { say: 'The arrow ⇒ in the trail says this step follows from the circle but isn’t the same equation. Press <kbd>e</kbd>: the derivatives, then it solves for y′.', done: t => lhs(t.app) === 'y′' },
+    ],
+  },
+  {
+    id: 'maxmin', group: 'Calculus 1', name: 'Max and min', blurb: 'Where the slope is 0.',
+    steps: [
+      { load: 'f(x) = x^3 - 3x', say: `${C('m')}: a new equation, f’s slope = 0.`, done: t => t.app.slots.length === 2 },
+      { say: 'Press <kbd>e</kbd>: the derivative, then it solves. Two answers, so two equations.', done: t => t.app.slots.length === 3 && solved(t.app) },
+      { say: `${C('d')} on the function itself gives f′ as an equation of its own. Press <kbd>1</kbd> first to go back to f.`, done: t => t.app.slots.some(s => toText(s.steps[s.at].eq).startsWith('f′(x) = d/dx')) },
+    ],
+  },
+  {
+    id: 'definition', group: 'Calculus 1', name: 'The definition', blurb: 'The derivative as a limit, h → 0.',
+    steps: [
+      { load: 'd/dx x^2', say: `Every rule comes from one limit. Hold ${kb('C')} and press ${kb('h')} for the definition.`, done: t => text(t.app).startsWith('lim') },
+      { say: 'Press <kbd>e</kbd>. It is 0/0 at h = 0, so L’Hôpital steps in.', done: t => text(t.app) === '2x' },
     ],
   },
 ];

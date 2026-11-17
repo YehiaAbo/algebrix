@@ -1,7 +1,7 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES } from './ast';
+import { Node, Eq, num, sym, add, mul, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, primed } from './ast';
 import { negate, gcd } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
@@ -19,6 +19,22 @@ function tokenize(s: string): Tok[] {
   while (i < s.length) {
     const c = s[i];
     if (/\s/.test(c)) { i++; continue; }
+    // calculus: d/dx, d²/dx², dy/dx (= y′), \frac{d}{dx}, lim, →, ∞
+    const rest = s.slice(i), prevLetter = i > 0 && /[a-zA-Zα-ω]/.test(s[i - 1]);
+    const cal = prevLetter ? null
+      : /^(?:d\/d|\\frac\{d\}\{d)([a-zA-Zα-ω])\}?/.exec(rest) ?? /^(?:d\^2\/d|d²\/d|\\frac\{d\^\{?2\}?\}\{d)([a-zA-Zα-ω])(?:\^\{?2\}?|²)\}?/.exec(rest);
+    if (cal) { out.push({ t: 'cmd', v: `${/2|²/.test(cal[0]) ? 'deriv2' : 'deriv'}:${cal[1]}` }); i += cal[0].length; continue; }
+    const leib = prevLetter ? null : /^(?:d([a-zA-Z])\/d([a-zA-Z])|\\frac\{d([a-zA-Z])\}\{d([a-zA-Z])\})(?![a-zA-Z])/.exec(rest);
+    if (leib) { out.push({ t: 'id', v: primed(leib[1] ?? leib[3]) }); i += leib[0].length; continue; }
+    if (/^\\?lim(?![a-zA-Z])/.test(rest)) { out.push({ t: 'cmd', v: 'lim' }); i += rest[0] === '\\' ? 4 : 3; if (s[i] === '_') i++; continue; }
+    const arrow = /^(?:->|→|\\to(?![a-zA-Z])|\\rightarrow)/.exec(rest);
+    if (arrow) { out.push({ t: 'op', v: '→' }); i += arrow[0].length; continue; }
+    const inf = prevLetter ? null : /^(?:∞|\\infty|infinity|inf(?![a-zA-Z]))/.exec(rest);
+    if (inf) { out.push({ t: 'id', v: '∞' }); i += inf[0].length; continue; }
+    if (c === '⁺' || c === '⁻') { out.push({ t: 'op', v: c }); i++; continue; }
+    // a one-sided limit in LaTeX: 0^+ or 0^{-} (but not x^-1)
+    const sideMark = /^\^(?:\{([+-])\}|([+-]))(?=\s*[})]|\s|$)/.exec(rest);
+    if (sideMark) { out.push({ t: 'op', v: (sideMark[1] ?? sideMark[2]) === '+' ? '⁺' : '⁻' }); i += sideMark[0].length; continue; }
     if (/[0-9.]/.test(c)) {
       let j = i;
       while (j < s.length && /[0-9.]/.test(s[j])) j++;
@@ -53,8 +69,11 @@ function tokenize(s: string): Tok[] {
     if (/[a-zA-Zα-ω]/.test(c)) {
       // a subscript makes a new name: x_1, v_0, x_12, a_n, x_{max}
       const sub = /^_(?:\{([a-zA-Z0-9]+)\}|([0-9]+|[a-zA-Z]))/.exec(s.slice(i + 1));
-      if (sub) { out.push({ t: 'id', v: `${c}_${sub[1] ?? sub[2]}` }); i += 1 + sub[0].length; continue; }
-      out.push({ t: 'id', v: c }); i++; continue;
+      let name = sub ? `${c}_${sub[1] ?? sub[2]}` : c;
+      i += sub ? 1 + sub[0].length : 1;
+      // primes: y′, f'(x), y''
+      while (s[i] === "'" || s[i] === '′' || s[i] === '″') { name += s[i] === '″' ? '′′' : '′'; i++; }
+      out.push({ t: 'id', v: name.replace(/′′/g, '″').replace(/″′/g, '‴') }); continue;
     }
     if ((c === '<' || c === '>') && s[i + 1] === '=') { out.push({ t: 'op', v: c === '<' ? '≤' : '≥' }); i += 2; continue; }
     const map: Record<string, string> = { '−': '-', '×': '*', '·': '*', '÷': '/', '√': 'sqrt', '⩽': '≤', '⩾': '≥' };
@@ -136,10 +155,15 @@ class Parser {
     this.i++;
     if (t.t === 'num') return number(t.v);
     if (t.t === 'id') {
-      if (FUNC_NAMES.includes(t.v) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
+      if (FUNC_NAMES.includes(t.v.replace(/[′″‴]+$/, '')) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
       return sym(t.v);
     }
     if (t.t === 'cmd') {
+      if (t.v.startsWith('deriv')) {
+        const v = t.v.slice(t.v.indexOf(':') + 1), a = this.term();
+        return t.v.startsWith('deriv2') ? deriv(v, deriv(v, a)) : deriv(v, a);
+      }
+      if (t.v === 'lim') return this.limit();
       if (t.v === 'frac' || t.v === 'dfrac' || t.v === 'tfrac') {
         const a = this.braced(), b = this.braced();
         return frac(a, b);
@@ -165,6 +189,25 @@ class Parser {
     const close = ({ '(': ')', '{': '}', '[': ']' } as Record<string, string>)[t.v];
     if (close) { const outer = this.abs; this.abs = 0; const e = this.expr(); this.abs = outer; this.eat(close); return e; }
     throw new ParseError(`Unexpected “${t.v}”.`);
+  }
+
+  /** lim x→a f, lim_{x→a} f, lim_(x→0+) f: the variable, where it goes, from which side, then f */
+  limit(): Node {
+    const open = this.isOp('{') || this.isOp('(') ? this.peek()!.v : null;
+    if (open) this.i++;
+    const v = this.peek();
+    if (!v || v.t !== 'id') throw new ParseError('Write the limit like lim x→0 (…).');
+    this.i++;
+    this.eat('→');
+    const minus = this.isOp('-') ? (this.i++, true) : false;
+    let to = open ? this.term() : this.power();
+    if (minus) to = negate(to);
+    let side: '+' | '-' | undefined;
+    if (this.isOp('⁺') || this.isOp('⁻')) { side = this.peek()!.v === '⁺' ? '+' : '-'; this.i++; }
+    else if (open && (this.isOp('+') || this.isOp('-'))) { side = this.peek()!.v as '+' | '-'; this.i++; }
+    if (open) this.eat(open === '{' ? '}' : ')');
+    if (!this.peek()) throw new ParseError('Unfinished: what is the limit of?');
+    return lim(v.v, to, this.term(), side);
   }
 
   /** argument of a function: braced/parenthesised, or the next power like "ln x²" */
