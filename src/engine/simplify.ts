@@ -97,7 +97,9 @@ function rule(n: Node, h: Hints): Node | null {
       }
       if (base.k === 'pow' && base.exp.k === 'num' && exp.k === 'num') {
         h.absorbs.set(exp.id, base.exp.id);
-        return pow(base.base, num(base.exp.v * exp.v, base.exp.id), n.id);
+        // (y⁻²)^(1/2) is 1/|y|: an even power forgets the sign, and a root can't bring it back
+        const even = !Number.isInteger(exp.v) && Number.isInteger(base.exp.v) && base.exp.v % 2 === 0;
+        return pow(even ? fn('abs', base.base) : base.base, num(base.exp.v * exp.v, base.exp.id), n.id);
       }
       return null;
     }

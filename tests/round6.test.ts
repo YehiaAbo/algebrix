@@ -185,8 +185,8 @@ describe('inequalities', () => {
     ['2x + 3 < 7', 'x ∈ (−∞, 2)'],
     ['x^2 <= 4', 'x ∈ [−2, 2]'],
     ['x^3 - x > 0', 'x ∈ (−1, 0) ∪ (1, ∞)'],
-    ['ln(x) < 1', 'x ∈ (0, 2.718)'],
-    ['x^2 < 2', 'x ∈ (−1.414, 1.414)'],
+    ['ln(x) < 1', 'x ∈ (0, e)'],
+    ['x^2 < 2', 'x ∈ (−√2, √2)'],
   ])('sign chart %s', (src, want) => expect(ok(solveInequality(parseEquation(src), 'x')).text).toBe(want));
 });
 

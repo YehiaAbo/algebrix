@@ -12,6 +12,7 @@ import { evaluate } from '../src/engine/ast';
 import { finishCalc } from '../src/engine/calcmoves';
 import { separate } from '../src/engine/ode';
 import { isErr } from '../src/engine/moves';
+import { solveInequality } from '../src/engine/inequality';
 
 const P = (s: string) => parseEquation(s, true);
 const steps = (s: string, v = 'x') => { const r = isolate(P(s), v); if (!Array.isArray(r)) throw new Error(r.error); return r.map(m => m.label); };
@@ -86,6 +87,10 @@ describe('powers with the same base', () => {
       expect(evaluate(simplify(n, newHints()), { x: -0.7 })).toBeCloseTo(evaluate(n, { x: -0.7 }), 9);
     }
   });
+  it('keeps the sign an even power forgot: (y⁻²)^(1/2) is 1/|y|', () => {
+    const n = parseExpr('(y^(-2))^(1/2)');
+    expect(evaluate(simplify(n, newHints()), { y: -0.8 })).toBeCloseTo(1.25, 9);
+  });
   it('keeps eˣ·eʸ apart, as separating needs it', () => {
     expect(S('e^x e^y')).toBe('e^xe^y');
   });
@@ -106,5 +111,29 @@ describe('calculus read-outs', () => {
   it('separates e^(x + y) as eˣ·eʸ', () => {
     expect(isErr(separate(P("y' = e^(x+y)")))).toBe(false);
     expect(isErr(separate(P("y' = x e^(x-y)")))).toBe(false);
+  });
+});
+
+describe('sign charts', () => {
+  const chart = (s: string) => { const r = solveInequality(P(s), 'x'); return 'error' in r ? r.error : r.text; };
+  it('names e, ln 2, √2 and log ratios', () => {
+    expect(chart('e^x > 2')).toBe('x ∈ (ln 2, ∞)');
+    expect(chart('ln(x) < 1')).toBe('x ∈ (0, e)');
+    expect(chart('x^2 >= 3')).toBe('x ∈ (−∞, −√3] ∪ [√3, ∞)');
+    expect(chart('2^x <= 10')).toBe('x ∈ (−∞, ln 10/ln 2]');
+  });
+  it("doesn't take a float overflow for an end (eˣ past 709)", () => {
+    expect(chart('e^x > 2')).not.toContain('709');
+  });
+  it('gives a repeating answer once, with + 2kπ', () => {
+    expect(chart('sin(x) > 0')).toBe('x ∈ (2kπ, π + 2kπ), for any whole number k');
+    expect(chart('2sin(x) + 1 > 0')).toBe('x ∈ (−π/6 + 2kπ, 7π/6 + 2kπ), for any whole number k');
+    expect(chart('tan(x) > 1')).toBe('x ∈ (π/4 + kπ, π/2 + kπ), for any whole number k');
+    expect(chart('sin(x) >= 1')).toBe('x = π/2 + 2kπ, for any whole number k');
+    expect(chart('sin(x) > 2')).toBe('no solution');
+    expect(chart('sin(x) <= 1')).toBe('every real x');
+  });
+  it('charts a mix of trig and x the usual way', () => {
+    expect(chart('sin(x) > x/10')).toContain('∪');
   });
 });

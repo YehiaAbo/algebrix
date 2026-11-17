@@ -102,4 +102,10 @@ export const tests = {
     await load('d/dx (e^x/(1+e^x))');
     await key('e'); await until(s => s.eq === 'e^x/((1 + e^x)^2)', 'the bottom stays squared', 12000);
   },
+  async 'a trig inequality answers once, with + 2kπ'({ load, key, p, assert, wait }) {
+    await load('sin(x) > 0');
+    await key('e'); await wait(1500);
+    const ans = await p.evaluate(() => document.getElementById('answer').textContent);
+    assert(ans.includes('2kπ') && !ans.includes('∪'), `one period: ${ans}`);
+  },
 };
