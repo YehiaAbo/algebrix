@@ -57,7 +57,7 @@
 
     <main class="desk">
       <div id="board" class="board">
-        <div id="dock" class="dock" hidden><div class="dock-brace"></div><div id="dock-row" class="dock-row"></div><div id="dock-hint" class="dock-hint"></div></div>
+        <div id="dock" class="dock" hidden><div id="dock-row" class="dock-row"></div></div>
       <div id="stage" class="stage">
         <div id="trail" class="trail"></div>
         <div id="hover" class="hover"></div>
@@ -122,7 +122,7 @@
           <section><h3>4. Simplify when you want</h3><p>Nothing tidies itself. A dashed box marks what could simplify; press <kbd>s</kbd> to take it, or leave it if you want that form.</p></section>
           <section><h3>5. Hold Tab for algebra</h3><p>Factor, expand, combine fractions, clear denominators, split into cases, solve for a variable (<kbd>i</kbd>), substitute from another equation (<kbd>1</kbd>–<kbd>9</kbd>). Arrows browse; release <kbd>Tab</kbd> (or tap it again) to apply. <kbd>e</kbd> on its own solves straight away.</p></section>
           <section><h3>6. Hold f for functions</h3><p>Put a function on both sides, or press <kbd>i</kbd> to undo the outer one. <kbd>←</kbd> <kbd>→</kbd> pick a family (powers, roots, exp and log, trig), <kbd>↓</kbd> steps in, release <kbd>f</kbd> to apply.</p></section>
-          <section><h3>7. Many equations</h3><p>The equation you work on gets the room; the others wait small at the top right (click one to swap). <kbd>n</kbd> adds one; <kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd> or <kbd>1</kbd>–<kbd>9</kbd> move between them. Aim at a variable and the equations that share it light up: hold <kbd>Tab</kbd> + their number to bring it in. Extraneous answers are flagged.</p></section>
+          <section><h3>7. Many equations</h3><p>The equation you work on gets the room; the others sit open on the shelf across the top, each saying what it shares with this one (click one to swap). <kbd>n</kbd> adds one; <kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd> or <kbd>1</kbd>–<kbd>9</kbd> move between them. Aim at a variable and the equations that share it light up: hold <kbd>Tab</kbd> + their number to bring it in. Extraneous answers are flagged.</p></section>
           <section><h3>8. The graph</h3><p>One variable: both sides as curves, and the answers are where they cross. Two: the solution curve, or the shaded region for an inequality. Three: the solution surface in 3D. Drag, scroll, double-click to reset.</p></section>
           <section><h3>9. Pick part of a side</h3><p>Drag a box with the mouse around the pieces you want, or hold <kbd>Ctrl</kbd> and tap <kbd>←</kbd> <kbd>→</kbd> to grow it left or right. <i>3 + 5</i> out of <i>2x + 3 + 5 + y</i> works like any single piece: <kbd>s</kbd>, <kbd>m</kbd>, and the rest.</p></section>
           <section><h3>10. More than equations</h3><p>Type <i>x^2 − 4 &lt; 0</i> for an inequality (moves flip the sign when they must; <kbd>e</kbd> solves it with a sign chart). Type just an expression to rewrite it. An identity like <i>(a+b)^2 = a^2+2ab+b^2</i> becomes a proof. <i>f(x) = x^2 + 1</i> defines a function.</p></section>
@@ -137,7 +137,7 @@
           <dl>
             <dt><kbd class="wide">Space</kbd> then a letter</dt><dd>jump to any piece</dd>
             <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>previous / next piece</dd>
-            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>grow / shrink the aim</dd>
+            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>grow / shrink the aim. In a fraction, ↓ goes from top to bottom and ↑ back; → walks into the top or bottom</dd>
             <dt><kbd>Shift</kbd>+<kbd>Tab</kbd></dt><dd>other side</dd>
             <dt>hold <kbd>Ctrl</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>grow the highlight left / right</dd>
             <dt>drag a box</dt><dd>aim at whatever it covers</dd>

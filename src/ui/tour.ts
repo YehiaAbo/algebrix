@@ -62,7 +62,7 @@ export const TOURS: TourDef[] = [
       { load: 'x^2 - 5x + 6 = 0', say: 'Tap <kbd>Tab</kbd> to open the algebra menu. It shows the forms this equation can take.', done: t => t.app.mode === 'hub' },
       { say: 'Browse with <kbd>←</kbd> <kbd>→</kbd> (the equation previews each one). Highlight <b>factored</b> and tap <kbd>Tab</kbd> again to apply it.', done: t => text(t.app).includes(')(') },
       { say: 'A product is zero when one factor is. Hold <kbd>Tab</kbd> and press <kbd>a</kbd> to split into cases.', done: t => t.app.slots.length >= 2 },
-      { say: 'The other case waits at the top right. Press <kbd>e</kbd> to solve this one.', done: t => solved(t.app) },
+      { say: 'The other case waits on the shelf at the top. Press <kbd>e</kbd> to solve this one.', done: t => solved(t.app) },
       { say: 'Press <kbd>Alt</kbd> + <kbd>→</kbd> (or <kbd>2</kbd>) to move to the other case, then <kbd>e</kbd>.', done: t => t.app.cur === 1 && solved(t.app) },
       { load: 'x^2 = 9', say: 'Functions work on both sides too. Hold <kbd>f</kbd> and press <kbd>i</kbd> to undo the square.', done: t => !lhs(t.app).includes('^') },
       { say: 'The square cancelled into <b>|x|</b>, so nothing was lost. Press <kbd>s</kbd> for the √9.', done: t => rhs(t.app) === '3' },
@@ -146,7 +146,7 @@ export const TOURS: TourDef[] = [
     id: 'formula', group: 'Algebra pack', name: 'The quadratic formula', blurb: 'x = (−b ± √(b² − 4ac)) / 2a, as two cases.',
     steps: [
       { load: 'x^2 + 4x + 1 = 0', say: `This one doesn’t factor. ${Tab('g')} for the quadratic formula, with a, b and c plugged in.`, done: t => t.app.slots.length >= 2 },
-      { say: `± means two cases: + is here, − waits at the top right. ${Tab('s')} to work out the numbers (or tap <kbd>s</kbd> a few times to watch each step).`, done: t => text(t.app) === 'x = −2 + sqrt(3)' },
+      { say: `± means two cases: + is here, − waits on the shelf at the top. ${Tab('s')} to work out the numbers (or tap <kbd>s</kbd> a few times to watch each step).`, done: t => text(t.app) === 'x = −2 + sqrt(3)' },
       { say: `<kbd>Alt</kbd> + <kbd>→</kbd> for the other root, then ${tab('s')}.`, done: t => t.app.cur === 1 && text(t.app) === 'x = −2 − sqrt(3)' },
       { load: '2x^2 = 3 - 5x', say: `Terms on both sides are fine: the formula gathers them first. ${Tab('g')}.`, done: t => t.app.slots.length >= 2 },
       { say: `${Tab('s')}. Whole-number answers mean factoring would have worked too.`, done: t => solved(t.app) && !text(t.app).includes('sqrt') },
@@ -279,6 +279,7 @@ export class Tour {
       }
       const b = document.createElement('button');
       b.className = 'tour-pick' + (k === this.pick ? ' focus' : '') + (done.includes(t.id) ? ' done' : '');
+      b.dataset.id = t.id;
       b.innerHTML = `<kbd>${MENU_KEYS[k]}</kbd><span class="tp-name">${t.name}</span><span class="tp-blurb">${t.blurb}</span><span class="tp-len">${t.steps.length} steps</span>`;
       b.addEventListener('click', () => this.start(t.id));
       b.addEventListener('mouseenter', () => { this.pick = k; this.renderMenu(); });

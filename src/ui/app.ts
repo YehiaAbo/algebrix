@@ -21,6 +21,9 @@ import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
 import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml } from './shared';
+import * as nav from './nav';
+import { renderShelf, ShelfItem } from './shelf';
+import type { NavView } from './nav';
 import * as opsPart from './ops';
 import * as hubPart from './hub';
 import * as fnpalPart from './fnpal';
@@ -179,14 +182,10 @@ export class App {
     return null;
   }
 
-  /** The sheet: the equation you work on gets the room; every other one sits small in a
-   *  dock at the top right, in order, one key (or click, or Alt + ← →) away. */
+  /** The sheet: the equation you work on gets the room; the others sit open on the shelf
+   *  across the top, each saying what it can give this one, one key (or click, or Alt + ← →) away. */
   renderLanes() {
     const board = $('board'), dock = $('dock');
-    const before = new Map<string, DOMRect>();
-    dock.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => before.set(el.dataset.lane!, el.getBoundingClientRect()));
-    const row = $('dock-row');
-    row.replaceChildren();
     const adding = this.mode === 'write' && this.writing === 'new' && this.slots.length > 0;
     const active = adding ? this.slots.length : this.cur;
     const n = this.slots.length + (adding ? 1 : 0);
@@ -194,53 +193,23 @@ export class App {
     $('stage').dataset.n = String(active + 1);
     dock.hidden = n < 2;
     if (n < 2) return;
-    // variables the aimed piece (or the whole equation) uses: equations that share them are linked
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
-    const mine = this.shown ? symbols(aimed ?? this.shown) : [];
-    let linkedHint = '';
+    const mine = this.shown ? symbols(this.shown) : [];
+    const items: ShelfItem[] = [];
     for (let i = 0; i < this.slots.length; i++) {
       if (i === active) continue;
       const e = this.eqOf(i);
-      const card = document.createElement('button');
-      card.className = 'lane';
-      card.dataset.lane = String(i);
-      card.title = `Equation ${i + 1} (Alt + ← →, or ${i + 1})`;
-      const head = document.createElement('span');
-      head.className = 'lane-head';
-      head.innerHTML = `<kbd>${i + 1}</kbd>`;
-      const tag = this.slotTag(i, e);
-      if (tag) { const t = document.createElement('span'); t.className = 'lane-tag ' + tag.cls; t.textContent = tag.text; head.append(t); }
-      const math = document.createElement('span');
-      math.className = 'lane-math';
-      const shared = symbols(e).filter(v => mine.includes(v));
-      // links show only while the algebra menu is open (Tab), when you'd use them
-      if (shared.length && !adding && this.mode === 'hub') {
-        card.classList.add('linked');
-        if (aimed?.k === 'sym' && !linkedHint) linkedHint = `<kbd>Tab</kbd>+<kbd>${i + 1}</kbd> puts in <i>${varHtml(aimed.name)}</i> from (${i + 1})`;
-      }
-      card.append(head, math);
-      card.addEventListener('mousedown', ev => { ev.stopPropagation(); ev.preventDefault(); this.switchTo(i); });
-      row.append(card);
-      let lay = layout(e, 19);
-      const f = Math.min(1, 190 / lay.w, 40 / (lay.asc + lay.desc));
-      if (f < 1) lay = layout(e, Math.max(8, 19 * f));
-      const box = document.createElement('span');
-      box.className = 'mini';
-      box.style.width = lay.w + 'px';
-      box.style.height = lay.asc + lay.desc + 'px';
-      math.append(box);
-      new Stage(box).show(lay, 0, 0, null);
+      const shared = adding ? [] : symbols(e).filter(v => mine.includes(v));
+      const solved = solvedFor(e);
+      const keys = `<span class="sep">·</span><kbd>Tab</kbd>+<kbd>${i + 1}</kbd>`;
+      let offer = '';
+      if (aimed?.k === 'sym' && shared.includes(aimed.name)) offer = `puts in <i>${varHtml(aimed.name)}</i>${keys}`;
+      else if (solved && shared.includes(solved)) offer = `gives <i>${varHtml(solved)}</i>${keys}`;
+      else if (shared.length) offer = `shares <span>${shared.map(v => `<i>${varHtml(v)}</i>`).join(", ")}</span>${keys}`;
+      // links light up only while the algebra menu is open (Tab), when you'd use them
+      items.push({ i, eq: e, tag: this.slotTag(i, e), offer, linked: shared.length > 0 && this.mode === 'hub' });
     }
-    $('dock-hint').innerHTML = linkedHint;
-    board.style.setProperty('--dock-w', `${dock.offsetWidth}px`);
-    // cards slide to their new places (FLIP)
-    dock.querySelectorAll<HTMLElement>('[data-lane]').forEach(el => {
-      const was = before.get(el.dataset.lane!);
-      if (!was) return;
-      const now = el.getBoundingClientRect();
-      const dx = was.left - now.left, dy = was.top - now.top;
-      if (Math.abs(dx) + Math.abs(dy) > 1) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: ms(260), easing: 'cubic-bezier(.2,.8,.16,1)' });
-    });
+    renderShelf($('dock-row'), items, i => this.switchTo(i));
   }
 
   /** a copy of another equation flies into this one (substitute, add an equation) */
@@ -662,38 +631,20 @@ export class App {
     return ks.filter(k => this.stage.box(k.id));
   }
 
-  parentOf(id: string): Node | null {
-    const p = findPath(this.eq, id);
-    return p && p.length > 1 ? p[p.length - 2] : null;
-  }
-
   sameBox(a: string, b: string) {
     const r1 = this.stage.box(a), r2 = this.stage.box(b);
     return !!r1 && !!r2 && Math.abs(r1.x - r2.x) < 0.5 && Math.abs(r1.w - r2.w) < 0.5 && Math.abs(r1.y - r2.y) < 0.5 && Math.abs(r1.h - r2.h) < 0.5;
   }
 
-  grow() {
-    if (!this.sel) return this.select('eq');
-    let id = this.sel;
-    let p = this.parentOf(id);
-    while (p && this.sameBox(p.id, id)) { this.memory.set(p.id, id); id = p.id; p = this.parentOf(id); }
-    if (!p) return this.select('eq');
-    this.memory.set(p.id, id);
-    this.select(p.id);
+  /** what the arrow keys see: the drawn tree */
+  get nav(): NavView {
+    return { root: this.eq, kids: n => this.visibleKids(n), same: (a, b) => this.sameBox(a, b), memory: this.memory };
   }
 
-  shrink() {
-    if (!this.sel) return this.select(this.eq.lhs.id);
-    let n = find(this.eq, this.sel)!;
-    for (;;) {
-      const kids = this.visibleKids(n);
-      if (!kids.length) return this.refuse('Already at the smallest piece.');
-      const remembered = this.memory.get(n.id);
-      const next = kids.find(k => k.id === remembered) ?? kids[0];
-      if (this.sameBox(next.id, n.id)) { n = next; continue; }
-      return this.select(next.id);
-    }
-  }
+  grow() { this.select(nav.up(this.nav, this.sel)); }
+
+  /** at an edge nothing happens: it isn't a mistake */
+  shrink() { const id = nav.down(this.nav, this.sel); if (id) this.select(id); }
 
   /** pick the run of neighbours from anchor to head (one sum or product) */
   selectRange(anchor: string, head: string, quiet = false) {
@@ -711,7 +662,7 @@ export class App {
   stepEquation(d: -1 | 1) {
     if (this.slots.length < 2) return this.refuse('Only one equation. Press n to add another.');
     const j = this.cur + d;
-    if (j < 0 || j >= this.slots.length) return this.refuse(d < 0 ? 'This is the first equation.' : 'This is the last equation. Press n to add one.');
+    if (j < 0 || j >= this.slots.length) return; // already the first or last
     this.switchTo(j);
   }
 
@@ -740,7 +691,7 @@ export class App {
     const ends = (g ? [g.anchor, g.head] : [this.sel]).map(id => sibs.findIndex(k => k.id === id));
     let lo = Math.min(...ends), hi = Math.max(...ends);
     if (dir < 0) lo--; else hi++;
-    if (lo < 0 || hi >= sibs.length) return this.refuse(dir > 0 ? 'Nothing further right in this sum.' : 'Nothing further left in this sum.');
+    if (lo < 0 || hi >= sibs.length) return; // the end of the sum: nothing to add, and not a mistake
     sound.tick(2 + (hi - lo));
     this.selectRange(sibs[lo].id, sibs[hi].id);
     $('sel').animate([{ boxShadow: `${dir < 0 ? '-6px' : '6px'} 0 0 -1px var(--sel), 0 0 0 1.5px var(--sel)` }, { boxShadow: '0 0 0 1.5px var(--sel)' }], { duration: ms(260), easing: 'ease-out' });
@@ -829,53 +780,10 @@ export class App {
     if (this.mode !== 'solve') this.setMode('solve');
   }
 
-  sideways(dir: -1 | 1) {
-    if (!this.sel || this.sel === 'eq') {
-      const firstOrLast = (n: Node): Node => { const k = this.visibleKids(n); return n.k === 'add' && k.length ? (dir > 0 ? k[0] : k[k.length - 1]) : n; };
-      return this.select(firstOrLast(dir > 0 ? this.eq.lhs : this.eq.rhs).id);
-    }
-    let id = this.sel;
-    let climbed = 0;
-    for (;;) {
-      const p = this.parentOf(id);
-      if (!p) return this.refuse(dir > 0 ? 'Nothing further right.' : 'Nothing further left.');
-      const sibs = this.visibleKids(p);
-      const i = sibs.findIndex(s => s.id === id);
-      const j = i + dir;
-      // top and bottom of a fraction aren't left/right of each other: step out instead (Tab flips between them)
-      if (p.k !== 'frac' && j >= 0 && j < sibs.length) {
-        let n = sibs[j];
-        for (let d = 0; d < climbed; d++) {
-          const ks = this.visibleKids(n);
-          if (!ks.length || ['frac', 'pow', 'sqrt', 'fn'].includes(n.k)) break;
-          n = dir > 0 ? ks[0] : ks[ks.length - 1];
-        }
-        return this.select(n.id);
-      }
-      id = p.id;
-      // leaving a fraction, power, root or function lands on the next piece itself, not deep inside it
-      climbed = ['frac', 'pow', 'sqrt', 'fn'].includes(p.k) ? 0 : climbed + 1;
-    }
-  }
+  sideways(dir: -1 | 1) { const id = nav.side(this.nav, this.sel, dir); if (id) this.select(id); }
 
-  toggleSide() {
-    // inside a fraction, Tab flips between its top and bottom; otherwise between the two sides
-    const path = this.sel && this.sel !== 'eq' ? findPath(this.eq, this.sel) : null;
-    if (path) {
-      for (let i = path.length - 2; i >= 1; i--) {
-        const f = path[i];
-        if (f.k !== 'frac') continue;
-        const inTop = path[i + 1] === f.num;
-        const target = inTop ? f.den : f.num;
-        this.memory.set(f.id, target.id);
-        return this.select(this.dive(target).id);
-      }
-    }
-    const onLeft = this.sel && this.sel !== 'eq' && findPath(this.eq, this.sel)?.[1] === this.eq.lhs;
-    this.select(onLeft ? this.eq.rhs.id : this.eq.lhs.id);
-  }
+  toggleSide() { this.select(nav.flip(this.nav, this.sel, n => this.dive(n))); }
 
-  /** the outermost piece with its own box (a number in a product with a hidden 1 etc.) */
   dive(n: Node): Node {
     let cur = n;
     while (!this.stage.box(cur.id)) { const k = children(cur)[0]; if (!k) break; cur = k; }

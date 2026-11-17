@@ -185,3 +185,11 @@ App:
 - Bug fixes: factoring with nothing aimed, the whole equation aimed, or a piece inside the sum aimed (key, Tab, and clicking the card); distribute dropped a minus when a term had two numbers; forms no longer offer the original back; one space after a minus before a root.
 - Tours: the menu is grouped (Getting started, Algebra pack) in two columns, with keys 1-9 then letters. Twelve algebra tours: linear equations, fractions, factoring, completing the square, the quadratic formula, algebraic identities, trig identities, inequalities, absolute value, roots and powers, exponentials and logs, expressions. A script plays each one end to end.
 - Code: app.ts was split with no change in behaviour. The hub (Tab), function palette (f), both-sides operations, solving, keys and persistence are now their own files under src/ui, as methods put on App.prototype; shared types and helpers live in src/ui/shared.ts. Every moved line was checked to be verbatim.
+
+### Round 9: fractions by keyboard, the shelf, browser tests
+
+- A fraction is vertical: ↓ on a fraction goes to its top (always, not wherever you last were), ↓ on the top goes to the bottom, ↑ on the bottom goes back to the top, ↑ on the top goes to the whole fraction. → or ← on the top or bottom walks into it.
+- Edges do nothing: walking past the end, ↓ on the smallest piece, Ctrl past the end of a sum, Alt past the first or last equation. No shake, no message; an edge isn't a mistake.
+- The shelf replaces the dock cards: the other equations sit open across the top of the board as columns, larger than the cards were, each with its number, status, and what it offers the current equation ("gives y", "shares x, y", "puts in x" when x is aimed) with the Tab key for it. They light up while Tab is held.
+- Code: arrow-key aiming moved to src/ui/nav.ts as pure functions with unit tests; the shelf renders in src/ui/shelf.ts from plain data. Browser tests live in e2e/ (`npm run e2e`): aiming, the shelf and systems, and all 18 tours played end to end.
+- Inverse trig shows as sin⁻¹, cos⁻¹, tan⁻¹ (typed as sin^-1 or sin⁻¹; arcsin still parses). sin⁻¹(sin u) → u is a form that carries its range (−π/2 ≤ u ≤ π/2) as a condition and is checked only inside it.
