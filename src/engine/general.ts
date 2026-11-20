@@ -40,6 +40,13 @@ function swapAll(n: Node, at: Node[], make: () => Node): Node {
 
 const isLetterName = (s: string) => /^[a-zA-Zα-ω](?:_[a-zA-Z0-9]+)?$/.test(s) && !(s in CONSTS) && !isDiff(s);
 
+/** a piece as text for a step's label: itself when short, else what kind of thing it is */
+export function brief(n: Node): string {
+  const s = t(n);
+  if (s.length <= 18) return s;
+  return n.k === 'int' ? 'the integral' : n.k === 'sum' ? (n.prod ? 'the product' : 'the sum') : n.k === 'lim' ? 'the limit' : n.k === 'frac' ? 'the fraction' : 'the piece';
+}
+
 export interface Named { step: MoveOk; def: Eq; letter: string | null }
 
 /** b: let a new letter, a function of a letter, or an expression stand for the aimed piece.
@@ -67,7 +74,7 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
     const next = replace(e, P.id, I()) as Eq;
     const def = eq(I(), fresh(P), 'def');
     // nothing to check by number: putting the definition back gives exactly what was there
-    return { step: { eq: next, label: `let ${F}(${p}) = ${t(P)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null };
+    return { step: { eq: next, label: `let ${F}(${p}) = ${brief(P)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null };
   }
 
   // a new letter
@@ -79,7 +86,7 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
     const next = swapAll(e, at, () => sym(src)) as Eq;
     const def = eq(sym(src), fresh(P));
     const step = checked(e, {
-      eq: next, label: constant ? `let ${src} = ${t(P)}, a parameter` : `let ${src} = ${t(P)}`, hints: newHints(), factor: one, select: null, rule: 'name it',
+      eq: next, label: constant ? `let ${src} = ${t(P)}, a parameter` : `let ${src} = ${brief(P)}`, hints: newHints(), factor: one, select: null, rule: 'name it',
       ties: { [src]: fresh(P) },
     });
     if (isErr(step)) return step;
@@ -110,7 +117,7 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
     ties[P.name] = E;
   }
   const def = eq(fresh(P), fresh(E));
-  const step = checked(e, { eq: next, label: `let ${t(P)} = ${t(E)}`, hints: newHints(), factor: one, select: null, rule: 'name it', ties: P.k === 'sym' ? ties : tieFrom(def) });
+  const step = checked(e, { eq: next, label: `let ${brief(P)} = ${brief(E)}`, hints: newHints(), factor: one, select: null, rule: 'name it', ties: P.k === 'sym' ? ties : tieFrom(def) });
   if (isErr(step)) return step;
   return { step, def, letter: P.k === 'sym' ? P.name : null };
 }

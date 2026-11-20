@@ -280,6 +280,14 @@ export class TreeView {
       const dir = b.x >= a.x ? 1 : -1;
       const x1 = a.x + dir * (a.w / 2 + 6), x2 = b.x - dir * (b.w / 2 + 8);
       const dx = Math.max(24, Math.abs(x2 - x1) * 0.45) * dir;
+      // a step in the way (an equation between the two): pass under it instead of through it
+      const lo = Math.min(x1, x2), hi = Math.max(x1, x2), top = Math.min(a.y, b.y) - 4, bot = Math.max(a.y, b.y) + 4;
+      const inWay = [...pos.values()].filter(q => q !== a && q !== b && q.x + q.w / 2 > lo && q.x - q.w / 2 < hi && q.y + q.h / 2 > top && q.y - q.h / 2 < bot);
+      if (inWay.length) {
+        const yl = Math.max(...inWay.map(q => q.y + q.h / 2)) + 10, r = 10;
+        path(`a:${A.from}>${A.to}`, 'tarrow', `M${x1} ${a.y}C${x1 + dir * r} ${a.y} ${x1 + dir * r} ${yl} ${x1 + dir * 2 * r} ${yl}H${x2 - dir * 2 * r}C${x2 - dir * r} ${yl} ${x2 - dir * r} ${b.y} ${x2} ${b.y}`, b.draw, '', 0, 0, 'start');
+        continue;
+      }
       path(`a:${A.from}>${A.to}`, 'tarrow', `M${x1} ${a.y}C${x1 + dx} ${a.y} ${x2 - dx} ${b.y} ${x2} ${b.y}`, b.draw, '', 0, 0, 'start');
     }
     for (const [k, e] of this.paths) if (!keep.has(k)) { e.p.remove(); e.t?.remove(); this.paths.delete(k); }

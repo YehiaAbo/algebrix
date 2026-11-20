@@ -5,7 +5,7 @@
 import { find, symbols, LETS, isDiff, Node } from '../engine/ast';
 import { toText } from '../engine/print';
 import { isErr, MoveOk } from '../engine/moves';
-import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain } from '../engine/general';
+import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
 import { ms } from './prefs';
@@ -69,7 +69,7 @@ export function addName(this: App, r: Named) {
   this.renderAll(null);
   this.save();
   const n = this.slots.length;
-  const what = toText(r.def);
+  const what = `${brief(r.def.lhs)} = ${brief(r.def.rhs)}`;
   this.say(kind === 'param'
     ? `Equation ${n}: ${what}, the value you want in the end. This one now holds for every ${toText(r.def.lhs)}.`
     : kind === 'fn' ? `Equation ${n}: ${what}. C d differentiates both sides; p puts in a value.`
@@ -119,7 +119,7 @@ export function onNameType(this: App) {
     const r = this.nameResult();
     symEl.textContent = 'name it';
     $('op').classList.toggle('bad', 'error' in r);
-    note.textContent = 'error' in r ? r.error : `new equation: ${toText(r.def)} · Enter`;
+    note.textContent = 'error' in r ? r.error : `new equation: ${brief(r.def.lhs)} = ${brief(r.def.rhs)} · Enter`;
     this.peek = 'error' in r ? null : r.step.eq;
   } else {
     const text = $<HTMLInputElement>('op-input').value;

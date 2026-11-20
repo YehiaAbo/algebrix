@@ -284,7 +284,10 @@ export class Graph {
     this.last = { l, r };
     const f = (x: number) => evaluate(eq.lhs, { [v]: x }) - evaluate(eq.rhs, { [v]: x });
     const roots: number[] = [];
-    for (const i of findRoots(i => l[i] - r[i], N)) {
+    // the same curve on both sides (I′(t) = 1/(t + 1)): it holds for every value, no crossings to mark
+    const both = l.map((y, i) => [y, r[i]]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
+    const same = relOf(eq) === '=' && both.length > 20 && both.filter(([a, b]) => Math.abs(a - b) <= 1e-6 * (1 + Math.abs(a))).length >= 0.9 * both.length;
+    if (!same) for (const i of findRoots(i => l[i] - r[i], N)) {
       let a = xs[Math.floor(i)], b = xs[Math.min(N, Math.ceil(i + 1e-9))];
       if (f(a) === 0) b = a;
       for (let k = 0; k < 60 && b - a > 1e-13; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
@@ -299,6 +302,7 @@ export class Graph {
       : single ? `The graph of <b>y = ${rel === 'def' ? (eq.lhs.k === 'call' ? eq.lhs.name + '(' + v + ')' : 'it') : toText(eq.lhs).length <= 28 ? escapeText(eq.lhs) : 'it'}</b>. Rewriting never changes it. Grey dots: zeros, peaks and dips (hover one).`
       : isIneq(eq) ? `Shaded where it holds. The boundary is where the sides meet${roots.length ? `, <b>${v} ${roots.every(exact) ? '=' : '≈'} ${roots.slice(0, 3).map(fmt).join(', ')}</b>` : ''}.`
       : rel === '≟' ? 'The two sides are the same curve everywhere. That is what you are proving.'
+      : same ? `The two sides are the same curve: it holds for every ${v} where both are defined.`
       : roots.length
       ? `Sides cross at <b>${v} ${roots.every(exact) ? '=' : '≈'} ${roots.slice(0, 3).map(fmt).join(', ')}</b>${roots.length > 3 ? '…' : ''}. ${roots.length > 1 ? 'Those points never move' : 'That point never moves'} while the steps are reversible.`
       : 'The two sides never cross in view. Drag or scroll to look around.';
