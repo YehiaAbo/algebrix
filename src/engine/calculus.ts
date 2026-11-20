@@ -77,16 +77,19 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       // indefinite: the integrand back (that is what an antiderivative is); in another letter,
       // under the sign (both sides are only known up to what doesn't change with n.v)
       if (!n.lo || !n.hi) {
-        if (dep.length) return null;
         if (n.v === v) return n.arg;
+        if (dep.length) return null;
         const a = d(n.arg);
         return a && int(n.v, a);
       }
-      // definite, the bounds moving (the fundamental theorem): f(hi)·hi′ − f(lo)·lo′
-      if (dependsOn(n.arg, v, dep) && n.v !== v) return null;
-      const lo = d(n.lo), hi = d(n.hi);
-      if (!lo || !hi) return null;
-      return add([mul([substitute(n.arg, n.v, n.hi), hi]), neg(mul([substitute(n.arg, n.v, n.lo), lo]))]);
+      // definite: Leibniz's rule. The bounds moving give f(hi)·hi′ − f(lo)·lo′ (the fundamental
+      // theorem), and a letter inside gives ∫ ∂f/∂v under the sign
+      const parts: Node[] = [];
+      // only the ends that move (f at a fixed end may not even be defined)
+      if (dependsOn(n.hi, v, dep)) { const hi = d(n.hi); if (!hi) return null; parts.push(mul([substitute(n.arg, n.v, n.hi), hi])); }
+      if (dependsOn(n.lo, v, dep)) { const lo = d(n.lo); if (!lo) return null; parts.push(neg(mul([substitute(n.arg, n.v, n.lo), lo]))); }
+      if (n.v !== v && dependsOn(n.arg, v, dep)) { const a = d(n.arg); if (!a) return null; parts.push(int(n.v, a, n.lo, n.hi)); }
+      return parts.length ? add(parts) : num(0);
     }
     case 'at': {
       const whole = add([substitute(n.arg, n.v, n.hi), neg(substitute(n.arg, n.v, n.lo))]);

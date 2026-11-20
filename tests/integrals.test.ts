@@ -54,7 +54,7 @@ describe('a rule at a time', () => {
     ['int_0^2 x^2 dx', '[x^3/3]_{x=0}^{2}'],
   ])('%s', (src, want) => expect(txt(intStep(ex(src), null))).toBe(want));
 
-  it('no rule fits: it says what to try', () => expect(txt(intStep(ex('int x cos(x^2) dx'), null))).toMatch(/u-substitution/));
+  it('no rule fits: it says what to try', () => expect(txt(intStep(ex('int x cos(x^2) dx'), null))).toMatch(/Name a piece \(b\)/));
 
   it('u-substitution finds the inside and its derivative', () => {
     const r = uSub(ex('int 2x cos(x^2) dx'), null);

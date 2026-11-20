@@ -2,8 +2,8 @@
 // limits (plug in, L'Hôpital), differentiating both sides, and the definition of the
 // derivative. Every step goes through the same numeric check as an algebra move: the kernel
 // in calculus.ts says what a derivative or limit is worth.
-import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
-import { dependsOn, derivative, limit2 } from './calculus';
+import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
+import { dependsOn, derivative, limit2, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
@@ -147,6 +147,19 @@ function rule(u: Node, c: Ctx): { d: Node; label: string } | { error: string } {
     case 'sqrt': return { d: frac(inner(u.arg, c), mul([num(2), fresh(u)])), label: 'chain rule (√)' };
     case 'fn': return { d: times(outer(u.name, u.arg), inner(u.arg, c)), label: u.name === 'abs' ? 'derivative of |u|' : `chain rule (${FN_NAME[u.name] ?? u.name})` };
     case 'call': return { d: times(call(primed(u.name), fresh(u.arg)), inner(u.arg, c)), label: u.arg.k === 'sym' && u.arg.name === c.v ? `${u.name}′` : `chain rule (${u.name})` };
+    case 'int': {
+      // an antiderivative's slope is what was integrated (the fundamental theorem)
+      if (!(u.lo && u.hi) && u.v === c.v) return { d: fresh(u.arg), label: 'fundamental theorem' };
+      // Leibniz's rule: d/dt ∫ₐᵇ f dx = ∫ₐᵇ ∂f/∂t dx + f(b)·b′ − f(a)·a′
+      const under = u.v !== c.v && dep(u.arg, c) ? [int(u.v, quick(u.arg, c)?.d ?? partial(c.v, fresh(u.arg)), u.lo && fresh(u.lo), u.hi && fresh(u.hi))] : [];
+      const ends = u.lo && u.hi ? [[u.hi, 1], [u.lo, -1]].filter(([b]) => dep(b as Node, c)).map(([b, s]) => times(num(s as number), substitute(fresh(u.arg), u.v, b as Node), inner(b as Node, c))) : [];
+      if (!under.length && !ends.length) return { d: num(0), label: 'constant rule' };
+      return { d: plus(...under, ...ends), label: under.length ? 'Leibniz rule: d/d' + c.v + ' under the ∫' : 'fundamental theorem' };
+    }
+    case 'sum': {
+      if (u.prod || dep(u.lo, c) || dep(u.hi, c)) return { error: 'No rule for that: the bounds move, or it is a product.' };
+      return { d: sum(u.v, fresh(u.lo), fresh(u.hi), inner(u.arg, c)), label: 'term by term' };
+    }
     default: return { error: 'There is no derivative rule for that yet.' };
   }
 }
@@ -354,6 +367,8 @@ const CALC = ['deriv', 'lim', 'int', 'at', 'sum', 'grad'];
 
 /** the innermost piece of calculus: children before parents, left to right */
 function nextCalc(n: Node): Node | null {
+  // d/dt of an integral with t inside: Leibniz first, so the integral that is left is the easier one
+  if (n.k === 'deriv' && n.arg.k === 'int' && n.arg.lo && n.arg.v !== n.v && dependsOn(n.arg.arg, n.v, n.dep)) return n;
   for (const c of children(n)) { const t = nextCalc(c); if (t) return t; }
   return CALC.includes(n.k) || isDot(n) ? n : null;
 }
@@ -396,6 +411,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     else {
       const back = origin && t.k === 'int' ? cameBack(cur, origin.side, origin.f, origin.v, t) : null;
       r = back ?? intStep(cur, t.id);
+      // an indefinite one inside a definite one: nothing else will fix that, it needs bounds
+      if (isErr(r) && /has no bounds/.test(r.error)) return { steps, stuck: r.error };
       if (isErr(r)) {
         const s = uSub(cur, t.id);
         if (!isErr(s.move) && s.u && s.g) { r = s.move; if (s.side) active[s.u] = s.g; }
@@ -413,9 +430,11 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     if (isErr(r)) return { steps, stuck: r.error };
     steps.push(r);
     cur = r.eq;
+    // F(b) − F(a) just written: tidy it (1^(t+1)/(t+1) − 0/(t+1) is 1/(t+1))
+    if (t?.k === 'at' && r.select) { const s = tidyAt(cur, r.select); if (s) { steps.push(s); cur = s.eq; } }
     // an inner integral just worked out: tidy what the outer one now holds
     // and a derivative just taken inside a limit (L'Hôpital): tidy the quotient before plugging in
-    if (t?.k === 'at' || t?.k === 'int' || (t?.k === 'deriv' && inLim(cur))) { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
+    if (t?.k === 'at' || t?.k === 'int' || (t?.k === 'deriv' && (inLim(cur) || inInt(cur)))) { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
   }
   return { steps };
 }
@@ -440,6 +459,8 @@ function cameBack(e: Eq, side: 'lhs' | 'rhs', f: Node, v: string, t: Node): Move
   return isErr(r) ? null : r;
 }
 
+/** an integral whose inside has no derivatives left to take (after Leibniz's rule) */
+const inInt = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'int' && !hasCalc(n.arg)) f = true; }); return f; };
 /** a limit whose inside has no derivatives left to take */
 const inLim = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'lim' && !hasCalc(n.arg)) f = true; }); return f; };
 
@@ -450,6 +471,16 @@ function expandInside(e: Eq, t: Node): MoveOk | null {
   const a = distributeNode(t.arg, h);
   if (!a || a.k !== 'add') return null;
   const r = checked(e, { eq: replace(e, t.arg.id, simplify(a, h)) as Eq, label: 'multiply out the inside', hints: h, factor: one, select: null });
+  return isErr(r) ? null : r;
+}
+
+/** simplify one piece, when that changes it (no calculus left in it) */
+function tidyAt(e: Eq, id: string): MoveOk | null {
+  const n = find(e, id);
+  if (!n || hasCalc(n)) return null;
+  const h = newHints(), a = simplify(n, h);
+  if (toText(a) === toText(n)) return null;
+  const r = checked(e, { eq: replace(e, id, a), label: 'tidy', hints: h, factor: one, select: null, auto: true });
   return isErr(r) ? null : r;
 }
 
@@ -508,6 +539,8 @@ export function criticalOf(e: Eq, v: string): Eq | { error: string } {
 /** C + d on an equation: d/dv both sides. The other variables depend on v (implicit
  *  differentiation), so y becomes y′. Not reversible: it is marked ⇒. */
 export function bothSides(e: Eq, v: string): MoveResult {
+  // a definition holds for every value, so its sides' slopes are equal too: I(t) = … gives I′(t) = …
+  if (relOf(e) === 'def') e = eq(e.lhs, e.rhs);
   if (relOf(e) !== '=') return { error: 'Differentiate both sides of an equation (=). An inequality may not keep its order.' };
   const others = symbols(e).filter(w => w !== v && !w.endsWith('′'));
   const D = (s: Node) => deriv(v, s, others);

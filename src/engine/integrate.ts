@@ -2,7 +2,7 @@
 // the bounds of a definite integral, and series (geometric sums, Taylor polynomials, the ratio
 // test). Checked like everything else: a definite integral by its value, an indefinite one by
 // its slope (calculus.ts and verify in moves.ts).
-import { Node, Eq, Int, At, Sum, num, sym, add, mul, neg, frac, pow, fn, int, at, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env, children, withChildren, sqrt as sqrtN } from './ast';
+import { Node, Eq, Int, At, Sum, num, sym, add, mul, neg, frac, pow, fn, call, int, at, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env, children, withChildren, sqrt as sqrtN, linkedTo, LETS } from './ast';
 import { toText } from './print';
 import { dependsOn, derivative, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
@@ -70,10 +70,14 @@ function arcRule(kind: 'atan' | 'asin', k: number, m: number, V: () => Node, v: 
 
 /** the antiderivatives you'd just write down: xⁿ, 1/x, eˣ, sin, cos, sec², 1/(1+x²)…, with a
  *  linear inside (reverse chain), constant multiples and sums of them */
-function quick(u: Node, v: string): { F: Node; label: string } | null {
+function quick(u: Node, v: string): { F: Node; label: string; conditions?: string[] } | null {
   const V = () => sym(v);
+  // what was differentiated comes back (the fundamental theorem): ∫ y′ dx = y, ∫ I′(t) dt = I(t), ∫ (uv)′ dx = uv
+  if (u.k === 'sym' && /^[a-zA-Zα-ω]′$/.test(u.name) && u.name[0] !== v) return { F: sym(u.name.slice(0, -1)), label: 'fundamental theorem' };
   if (!dependsOn(u, v)) return { F: isNum(u, 1) ? V() : times(fresh(u), V()), label: 'constant rule' };
-  if (u.k === 'sym') return { F: frac(pow(V(), num(2)), num(2)), label: 'power rule' };
+  if (u.k === 'sym' && u.name === v) return { F: frac(pow(V(), num(2)), num(2)), label: 'power rule' };
+  if (u.k === 'call' && u.name.endsWith('′') && u.arg.k === 'sym' && u.arg.name === v) return { F: call(u.name.slice(0, -1), V()), label: 'fundamental theorem' };
+  if (u.k === 'deriv' && u.v === v && !u.partial) return { F: fresh(u.arg), label: 'fundamental theorem' };
   if (u.k === 'neg') { const q = quick(u.arg, v); return q && { F: times(num(-1), q.F), label: q.label }; }
   if (u.k === 'mul') {
     const consts = u.factors.filter(f => !dependsOn(f, v)), vars = u.factors.filter(f => dependsOn(f, v));
@@ -103,7 +107,15 @@ function quick(u: Node, v: string): { F: Node; label: string } | null {
     const wave = over(frac(fn('sin', times(num(2), fresh(L))), num(4)), a);
     return { F: u.base.name === 'sin' ? plus(over(half, a), times(num(-1), wave)) : plus(over(half, a), wave), label: `half-angle: ${u.base.name}² = (1 ${u.base.name === 'sin' ? '−' : '+'} cos 2θ)/2` };
   }
-  if (u.k === 'pow' && !dependsOn(u.exp, v)) { const n = exponent(u.exp); if (n !== null) return powerOf(u.base, n); }
+  if (u.k === 'pow' && !dependsOn(u.exp, v)) {
+    const n = exponent(u.exp);
+    if (n !== null) return powerOf(u.base, n);
+    // a letter for the power: ∫ xᵗ dx = xᵗ⁺¹/(t + 1), for t ≠ −1
+    const a = slope(u.base, v);
+    if (a === null) return null;
+    const k = tidy(add([fresh(u.exp), num(1)]));
+    return { F: over(frac(pow(fresh(u.base), k), fresh(k)), a), label: 'power rule', conditions: [`${toText(k)} ≠ 0`] };
+  }
   if (u.k === 'sqrt') return powerOf(u.arg, 0.5);
   if (u.k === 'frac' && !dependsOn(u.num, v)) {
     // a constant below comes out first: 1/(2u) is ½ · 1/u, so ½ ln|u| and not ln|2u|/2
@@ -174,12 +186,15 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
   if (holdsCalc(T)) return { error: 'Work out what is inside the integral first.' };
   if (!(T.lo && T.hi) && findPath(e, T.id)?.some(n => n !== T && n.k === 'int' && n.lo && n.hi)) return { error: 'The inside integral has no bounds, so its + C would end up inside the outer one. Give it bounds too.' };
   const v = T.v, def = !!(T.lo && T.hi);
+  // a named letter tied to v (u = x² inside ∫ … dx) isn't a constant: finish the substitution first
+  const tied = linkedTo(v).filter(w => symbols(T.arg).includes(w));
+  if (tied.length) return { error: `${tied[0]} changes with ${v} (${letDef(tied[0], v)}), so it isn't a constant here. Sub in d${v} too, so the integral is all in one letter.` };
   const wrap = (F: Node): Node => (def ? at(v, F, fresh(T.lo!), fresh(T.hi!)) : F);
   const piece = (w: Node): Node => { const q = quick(w, v); return q ? wrap(q.F) : int(v, fresh(w), T.lo && fresh(T.lo), T.hi && fresh(T.hi)); };
   const u = T.arg;
   let next: Node, label: string;
   const q = quick(u, v);
-  if (q) { next = wrap(q.F); label = q.label; }
+  if (q) { next = wrap(q.F); label = q.label; if (q.conditions) return finish(e, T, next, label, { conditions: q.conditions }); }
   else if (u.k === 'add') { next = plus(...u.terms.map(piece)); label = 'sum rule'; }
   else if (u.k === 'neg') { next = times(num(-1), piece(u.arg)); label = 'constant multiple'; }
   else if (u.k === 'mul' && u.factors.some(f => !dependsOn(f, v))) {
@@ -202,9 +217,12 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
     const top = u.num.k === 'num' && u.num.v === 1 ? up : mul([fresh(u.num), up]);
     return checked(e, { eq: replace(e, T.arg.id, top), label: '1/aᵘ = a⁻ᵘ', hints: newHints(), factor: one, select: null, rule: 'simplify' });
   }
-  else return { error: 'No rule fits as it stands. Try u-substitution (C + u), by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions).' };
+  else return { error: 'No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions).' };
   return finish(e, T, next, label);
 }
+
+/** how u and v are tied, for messages: u = x² */
+const letDef = (u: string, v: string) => (LETS.has(u) ? `${u} = ${toText(LETS.get(u)!)}` : LETS.has(v) ? `${v} = ${toText(LETS.get(v)!)}` : `${u} depends on ${v}`);
 
 /** replace the integral, add + C when it was the last indefinite one, and check */
 function finish(e: Eq, T: Int, next: Node, label: string, extra: Partial<MoveOk> = {}): MoveResult {
@@ -310,8 +328,15 @@ export function plugBounds(e: Eq, sel: string | null): MoveResult {
   const env: Env = {};
   symbols(A).forEach((s, i) => (env[s] = 1.3 + i));
   const side = (b: Node, keep: boolean) => (Number.isFinite(evaluate(b, env)) ? substitute(keep ? A.arg : fresh(A.arg), A.v, b) : limOf(A, b));
-  const next = plus(side(A.hi, true), times(num(-1), side(A.lo, false)));
-  return checked(e, { eq: replace(e, A.id, next), label: 'plug in the bounds', hints: newHints(), factor: one, select: null, rule: 'fundamental theorem' });
+  // 0 to a power with a letter in it (x^(t+1) at x = 0) is 0 where the integral is defined: say where
+  const conditions: string[] = [];
+  const zeroPow = (n: Node): Node => {
+    if (n.k === 'pow' && isNum(n.base, 0) && symbols(n.exp).length) { conditions.push(`${toText(n.exp)} > 0`); return num(0); }
+    const ks = children(n);
+    return ks.length ? withChildren(n, ks.map(zeroPow)) : n;
+  };
+  const next = plus(zeroPow(side(A.hi, true)), times(num(-1), zeroPow(side(A.lo, false))));
+  return checked(e, { eq: replace(e, A.id, next), label: 'plug in the bounds', hints: newHints(), factor: one, select: next.id, rule: 'fundamental theorem', conditions });
 }
 const limOf = (A: At, b: Node): Node => lim(A.v, fresh(b), fresh(A.arg));
 

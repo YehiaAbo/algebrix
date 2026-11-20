@@ -3,11 +3,11 @@
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
-  isDiff,
+  isDiff, linkedTo,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
-import { derivative } from './calculus';
+import { derivative, substitute } from './calculus';
 import { distributeNode, factorize } from './rewrite';
 import { toText } from './print';
 import { parseExpr } from './parse';
@@ -33,6 +33,8 @@ export interface MoveOk {
   rule?: string;
   /** a final answer that isn't an equation, like x ∈ (−∞, 2) ∪ (3, ∞) */
   answer?: string;
+  /** checked as if these letters stood for these expressions: u = x² when x² was just named u */
+  ties?: Record<string, Node>;
   /** text renamed in the conditions carried forward: 2C is called C from here on */
   rename?: [string, string][];
 }
@@ -288,12 +290,20 @@ function stacked(n: Node): boolean {
 export function verify(before: Eq, r: MoveOk): string | null {
   const ids = allIds(r.eq);
   if (new Set(ids).size !== ids.length) return 'duplicate ids';
+  // a name or a substitution: both sides read with the letters put back
+  if (r.ties) {
+    const put = (n: Eq) => Object.entries(r.ties!).reduce<Node>((a, [u, w]) => substitute(a, u, w), n) as Eq;
+    return verify(put(before), { ...r, eq: put(r.eq), ties: undefined });
+  }
   // an indefinite integral is only known up to a constant: compare slopes instead of values
   const ivs = r.check ? [] : [...new Set([...indefiniteVars(before), ...indefiniteVars(r.eq)])];
   if (ivs.length) {
     // stacked ones (∫ ∫ f dx dy): the mixed slope ∂/∂x ∂/∂y …, which every one's constant drops out of
     const by = ivs.length > 1 && (stacked(before) || stacked(r.eq)) ? [ivs] : ivs.map(v => [v]);
-    const d = (n: Node, vs: string[]) => vs.reduce<Node | null>((a, v) => a && derivative(a, v), n);
+    // y′ in sight: y is a function (of the letter it is differentiated by), so its slope is y′
+    const names = new Set([...symbols(before), ...symbols(r.eq)]);
+    const dep = [...names].filter(s => names.has(s + '′')).concat([...names].filter(s => s.endsWith('′') && names.has(s + '′')));
+    const d = (n: Node, vs: string[]) => vs.reduce<Node | null>((a, v) => a && derivative(a, v, [...dep, ...linkedTo(v)].filter(s => s !== v)), n);
     const pairs = by.map(vs => [d(add([r.eq.lhs, neg(r.eq.rhs)]), vs), d(add([before.lhs, neg(before.rhs)]), vs)] as const);
     if (pairs.some(([a, b]) => !a || !b)) return 'could not check: no derivative';
     const slope: MoveOk = { ...r, check: env => { const f = r.factor(env); return pairs.map(([a, b]) => [evaluate(a!, env), f * evaluate(b!, env)]); } };

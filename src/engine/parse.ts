@@ -1,7 +1,10 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
+import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
+
+/** f, g, h, and any function you named (b, then I(t)) read as calls when a bracket follows */
+const isFnName = (name: string) => FUNC_NAMES.includes(name) || DEFS.has(name);
 import { negate, gcd, isNeg } from './terms';
 
 type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
@@ -268,7 +271,7 @@ class Parser {
     if (t.t === 'id') {
       if (t.v.startsWith('leib2:')) { const [, y, x] = t.v.split(':'); return frac(sym('d²' + y), pow(sym('d' + x), num(2))); }
       if (t.v.startsWith('leib:')) { const [, y, x] = t.v.split(':'); return frac(sym('d' + y), sym('d' + x)); }
-      if (FUNC_NAMES.includes(t.v.replace(/[′″‴]+$/, '')) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
+      if (isFnName(t.v.replace(/[′″‴]+$/, '')) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
       return sym(t.v);
     }
     if (t.t === 'cmd') {
@@ -445,7 +448,7 @@ class Parser {
     // sin 2x is sin(2x): a number takes the letters written straight after it (sin x cos x stays two)
     if (first.k !== 'num' && !(first.k === 'frac' && first.num.k === 'num')) return first;
     const fs: Node[] = [first];
-    while (this.peek()?.t === 'id' && !FUNC_NAMES.includes(this.peek()!.v)) fs.push(this.power());
+    while (this.peek()?.t === 'id' && !isFnName(this.peek()!.v)) fs.push(this.power());
     return mulOf(fs);
   }
 

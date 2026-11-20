@@ -51,6 +51,8 @@ function rule(n: Node, h: Hints): Node | null {
       const { base, exp } = n;
       if (exp.k === 'num' && exp.v === 1) return base;
       if (exp.k === 'num' && exp.v === 0) return num(1, exp.id);
+      // 1 to any power is 1
+      if (base.k === 'num' && base.v === 1) { h.absorbs.set(exp.id, base.id); return base; }
       if (base.k === 'num' && exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 0 && exp.v <= 12) {
         const v = base.v ** exp.v;
         if (safe(v)) { h.absorbs.set(exp.id, base.id); return num(v, base.id); }

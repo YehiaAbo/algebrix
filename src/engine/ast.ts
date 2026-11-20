@@ -86,6 +86,20 @@ export const isLeibniz2 = (n: Node): boolean =>
 export const FUNC_NAMES = ['f', 'g', 'h'];
 /** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */
 export const DEFS = new Map<string, { param: string; body: Node }>();
+/** the letters you named (b): u → x², x → sin θ. A named letter is tied to the letters it was
+ *  made from, so calculus treats it as changing with them (∫ cos u dx is not cos u · x) */
+export const LETS = new Map<string, Node>();
+/** the letters that change with v through a name: u when u = x², θ when x = sin θ */
+export function linkedTo(v: string): string[] {
+  const out = new Set<string>();
+  for (const [u, e] of LETS) {
+    const vs = symbols(e);
+    if (vs.includes(v)) out.add(u);
+    if (u === v) vs.forEach(w => out.add(w));
+  }
+  out.delete(v);
+  return [...out];
+}
 let callDepth = 0;
 export const eq = (lhs: Node, rhs: Node, rel?: Rel): Eq => (rel && rel !== '=' ? { k: 'eq', id: 'eq', lhs, rhs, rel } : { k: 'eq', id: 'eq', lhs, rhs });
 export const relOf = (e: Eq): Rel => e.rel ?? '=';
