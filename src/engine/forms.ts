@@ -12,7 +12,7 @@ import { isLeibniz, toLeibniz, toPrime, toDifferentials, letters } from './leibn
 import { gcd } from './terms';
 import { combineLogs } from './techniques';
 import { sumForms } from './sums';
-import { longDivide, partialFractions, rationalize, trigForms, completeSquare, Range, factorFully } from './polytools';
+import { longDivide, partialFractions, rationalize, rationalizeTop, trigForms, completeSquare, Range, factorFully } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
 
@@ -30,13 +30,15 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   const out: Form[] = [];
   const sides = (q: Eq) => key(q.lhs) + '|' + key(q.rhs);
   const seen = new Set<string>([sides(e)]);
-  const push = (name: string, next: Eq, h: Hints, factor: (env: Env) => number = one, select: string | null = sel, range?: Range) => {
+  const push = (name: string, next: Eq, h: Hints, factor: (env: Env) => number = one, select: string | null = sel, range?: Range, pieces?: [Node, Node]) => {
     if (seen.has(sides(next))) return;
     const f: Form = { name, chord: CHORDS[name] ?? (name.startsWith('clear') ? 'd' : ''), eq: next, label: name, hints: h, factor, select: select && find(next, select) ? select : null };
     if (range) {
       // true only on a range: say so, and check only there
       f.conditions = [range.text];
-      f.check = env => { const u = evaluate(range.u, env); return u >= range.lo && u <= range.hi ? [[evaluate(next, env), evaluate(e, env)]] : [[NaN, NaN]]; };
+      // a piece rewritten (|cos θ| → cos θ inside ∫ … dθ): the piece and its new form agree on the range
+      const [a, b] = pieces ?? [next, e];
+      f.check = env => { const u = evaluate(range.u, env); return u >= range.lo && u <= range.hi ? [[evaluate(b, env), evaluate(a, env)]] : [[NaN, NaN]]; };
     }
     if (verify(e, f)) return;
     // cancelling a bottom away (x²−1)/(x−1) → x + 1 keeps x − 1 ≠ 0 from the original
@@ -101,7 +103,7 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   const at = (name: string, build: (h: Hints) => Node | null, range?: Range) => {
     const h = newHints();
     const r = build(h);
-    if (r) push(name, replace(e, target.id, r), h, one, sel ? r.id : null, range);
+    if (r) push(name, replace(e, target.id, r), h, one, sel ? r.id : null, range, range ? [target, r] : undefined);
   };
   at('one fraction', h => combineFractions(target, h));
   // a fraction factors top and bottom, so a common factor shows: (x − 1)(x + 1)/(x − 1)
@@ -138,10 +140,32 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   at('long division', () => longDivide(target));
   at('partial fractions', () => partialFractions(target));
   at('rationalized', () => rationalize(target));
+  at('top rationalized', () => rationalizeTop(target));
+  // a trig function of an inverse trig function: draw the triangle (cos(sin⁻¹ x) = √(1 − x²))
+  if (target.k === 'fn' && target.arg.k === 'fn' && ['asin', 'acos', 'atan'].includes(target.arg.name) && ['sin', 'cos', 'tan'].includes(target.name)) {
+    const x = () => cloneFresh((target.arg as Extract<Node, { k: 'fn' }>).arg);
+    const r1 = () => sqrt(add([num(1), negate(pow(x(), num(2)))])), r2 = () => sqrt(add([num(1), pow(x(), num(2))]));
+    const table: Record<string, () => Node> = {
+      'sin asin': x, 'cos acos': x, 'tan atan': x,
+      'cos asin': r1, 'sin acos': r1, 'tan asin': () => frac(x(), r1()), 'tan acos': () => frac(r1(), x()),
+      'sin atan': () => frac(x(), r2()), 'cos atan': () => frac(num(1), r2()),
+    };
+    const make = table[`${target.name} ${target.arg.name}`];
+    if (make) at('from the triangle', () => make());
+  }
+  // |u| on a range where u keeps one sign (|cos θ| with −π/2 ≤ θ ≤ π/2, after x = sin θ)
+  if (target.k === 'fn' && target.name === 'abs') {
+    const u = target.arg, txt = toText(u);
+    at('without | |, where ≥ 0', () => cloneFresh(u), { u, lo: 0, hi: Infinity, text: `${txt} ≥ 0` });
+    at('without | |, where ≤ 0', () => negate(cloneFresh(u)), { u, lo: -Infinity, hi: 0, text: `${txt} ≤ 0` });
+  }
   for (const f of trigForms(target)) at(`trig: ${f.name}`, () => f.node, f.range);
   // f·g′ + f′·g is the product rule read backwards: d/dx(f·g) (the step in an integrating factor)
   const back = productBackwards(target, e);
   if (back) at('product rule backwards', () => back);
+  // ∫ is linear: split it over a sum, take constants out (where aimed, or around the aim)
+  const I = target.k === 'int' ? target : [...(findPath(e, target.id) ?? [])].reverse().find(n => n.k === 'int');
+  if (I && I.k === 'int') for (const f of intLinear(I)) push(f.name, replace(e, I.id, f.node), newHints(), one, null);
   // Σ and ∏: on the aimed one, or the one the aimed piece sits in
   const path = findPath(e, target.id) ?? [];
   const up = path[path.length - 2];
@@ -244,4 +268,16 @@ function productBackwards(n: Node, e: Eq): Node | null {
     }
   }
   return null;
+}
+
+/** ∫(f + g) = ∫f + ∫g, and ∫ c·f = c ∫ f (c without the letter) */
+function intLinear(I: Extract<Node, { k: 'int' }>): { name: string; node: Node }[] {
+  const out: { name: string; node: Node }[] = [];
+  const again = (arg: Node) => ({ ...cloneFresh(I), arg });
+  const a = I.arg;
+  if (a.k === 'add') out.push({ name: 'split the integral', node: add(a.terms.map(t => again(cloneFresh(t)))) });
+  const fs = a.k === 'mul' ? a.factors : a.k === 'neg' ? [num(-1), a.arg] : a.k === 'frac' && !dependsOn(a.den, I.v) ? [frac(num(1), a.den), a.num] : [];
+  const cs = fs.filter(f => !dependsOn(f, I.v)), vs = fs.filter(f => dependsOn(f, I.v));
+  if (cs.length && vs.length) out.push({ name: 'constant out', node: mul([...cs.map(c => cloneFresh(c)), again(vs.length === 1 ? cloneFresh(vs[0]) : mul(vs.map(v => cloneFresh(v))))]) });
+  return out;
 }

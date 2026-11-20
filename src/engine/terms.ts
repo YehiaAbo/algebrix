@@ -69,6 +69,14 @@ export function termInfo(n: Node): TermInfo {
     else if (m.k === 'neg') { coef = rmul(coef, rat(-1)); visit(m.arg); }
     else if (m.k === 'mul') m.factors.forEach(visit);
     else if (m.k === 'frac' && m.den.k === 'num' && m.den.v !== 0) { visit(m.num); coef = rdiv(coef, rat(m.den.v)); }
+    else if (m.k === 'frac') {
+      // a number on top of a fraction with letters below is the coefficient: −1/k is −1 × 1/k, so it
+      // meets 1/k as a like term
+      const top = termInfo(m.num);
+      if (top.coef.p === top.coef.q || !Number.isFinite(top.coef.p)) { mono.push(m); return; }
+      coef = rmul(coef, top.coef);
+      mono.push({ ...m, num: top.mono.length === 0 ? num(1, m.num.id) : top.mono.length === 1 ? top.mono[0] : mul(top.mono, m.num.id) });
+    }
     else mono.push(m);
   };
   visit(n);

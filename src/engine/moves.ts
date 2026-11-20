@@ -148,7 +148,10 @@ export function multiplyBoth(e: Eq, sel: string | null): MoveResult {
 
 /* ---------- distribute / split a fraction ---------- */
 function distribute(e: Eq, sel: string | null): MoveResult {
-  const n = sel && sel !== 'eq' ? find(e, sel) : null;
+  let n = sel && sel !== 'eq' ? find(e, sel) : null;
+  // aimed at the bracket of −(5 − x): the minus goes through it
+  const up = n && n.k === 'add' ? findPath(e, n.id)?.slice(-2)[0] : null;
+  if (up && up.k === 'neg') n = up;
   const h = newHints();
   const out = n ? distributeNode(n, h) : null;
   if (!n || !out) return { error: 'Nothing to distribute. Select a product with a bracket, like 2(x + 3), or a sum over a denominator.' };

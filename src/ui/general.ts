@@ -2,7 +2,7 @@
 // holds for every value, hold Tab + n subs a piece in from equation n, and C does calculus to both
 // sides. Each is one step in the tree; the shortcuts in C are chains of these.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, LETS, isDiff, Node } from '../engine/ast';
+import { find, symbols, LETS, isDiff, Node, key } from '../engine/ast';
 import { toText } from '../engine/print';
 import { isErr, MoveOk } from '../engine/moves';
 import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief } from '../engine/general';
@@ -62,7 +62,8 @@ export function commitName(this: App) {
 
 /** a name taken: the step in this equation, then the name as an equation of its own beside it */
 export function addName(this: App, r: Named) {
-  if (!this.apply(r.step, 1.05)) return;
+  // a bound letter (x in ∫₀¹ … dx) stays as it is here: only the name is new
+  if (key(r.step.eq) !== key(this.eq) && !this.apply(r.step, 1.05)) return;
   const kind = r.def.rel === 'def' ? 'fn' : r.letter ? 'letter' : r.def.lhs.k === 'sym' && symbols(r.def.rhs).length === 0 ? 'param' : 'expr';
   this.slots.push({ steps: [{ eq: r.def, label: 'name', conditions: [] }], at: 0, sel: null, from: here(this.slot!), named: kind });
   sound.commit();

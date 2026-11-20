@@ -146,6 +146,18 @@ export function rationalize(n: Node): Node | null {
   return null;
 }
 
+/** the top's root moved to the bottom: (√(x + 1) − 1)/x → x/(x(√(x + 1) + 1)), and on its own
+ *  √(x² + x) − x → (x² + x − x²)/(√(x² + x) + x): times the conjugate over itself */
+export function rationalizeTop(n: Node): Node | null {
+  const top = n.k === 'frac' ? n.num : n, bot = n.k === 'frac' ? n.den : null;
+  if (top.k !== 'add' || top.terms.length !== 2 || !top.terms.some(hasSqrt)) return null;
+  const h = hints();
+  const i = top.terms.findIndex(hasSqrt);
+  const conj = add(top.terms.map((t, j) => (j === i ? cloneFresh(t) : negate(cloneFresh(t)))));
+  const newTop = simplify(expandAll(mul([cloneFresh(top), cloneFresh(conj)]), h), h);
+  return frac(newTop, bot ? mul([cloneFresh(bot), conj]) : conj, n.k === 'frac' ? n.id : undefined);
+}
+
 /* ---------- trig identities ---------- */
 
 /** a v² + b v + c → a(v + b/2a)² + (c − b²/4a) */

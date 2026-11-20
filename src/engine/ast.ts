@@ -278,7 +278,11 @@ export function evaluate(n: Node, env: Env): number {
     case 'deriv': { const d = CALC.derive(n); return d ? evaluate(d, env) : NaN; }
     case 'lim': return CALC.limit(n, env);
     case 'int': return n.lo && n.hi ? CALC.integral(n, env) : NaN;
-    case 'at': return evaluate(n.arg, { ...env, [n.v]: evaluate(n.hi, env) }) - evaluate(n.arg, { ...env, [n.v]: evaluate(n.lo, env) });
+    case 'at': {
+      // an end at ±∞ is the limit there (−x e^(−x) at ∞ is 0)
+      const end = (b: Node) => { const x = evaluate(b, env); return Number.isFinite(x) ? evaluate(n.arg, { ...env, [n.v]: x }) : Number.isNaN(x) ? NaN : CALC.limit({ k: 'lim', id: n.id + ':lim', v: n.v, to: b, arg: n.arg }, env); };
+      return end(n.hi) - end(n.lo);
+    }
     case 'sum': return CALC.series(n, env);
     case 'grad': if (n.op && !isVector(n)) return fieldValue(n, env) as number;
     // falls through

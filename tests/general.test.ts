@@ -1,14 +1,14 @@
 // The general moves on their own, and the techniques done by hand with them (no shortcut).
 import { describe, it, expect, beforeEach } from 'vitest';
-import { parseEquation } from '../src/engine/parse';
+import { parseEquation, parseExpr } from '../src/engine/parse';
 import { Eq, Node, walk, key, LETS, DEFS } from '../src/engine/ast';
-import { isErr, MoveResult, applyBoth } from '../src/engine/moves';
+import { isErr, MoveResult, applyBoth, applyMove } from '../src/engine/moves';
 import { toText } from '../src/engine/print';
 import { nameIt, subIn, differentialsBoth, putValue, integrateBoth, separateChain, characteristicChain } from '../src/engine/general';
 import { bothSides, finishCalc } from '../src/engine/calcmoves';
 import { simplify, newHints } from '../src/engine/simplify';
 import { formsFor } from '../src/engine/forms';
-import { intStep } from '../src/engine/integrate';
+import { intStep, byParts } from '../src/engine/integrate';
 
 const T = (e: Eq) => toText(e);
 const idOf = (e: Eq, text: string): string => {
@@ -168,6 +168,54 @@ describe('both sides', () => {
   });
   it('putting a value into an equation to solve is refused', () => {
     expect('error' in putValue(parseEquation('x^2 = 4'), 'x', '3')).toBe(true);
+  });
+});
+describe('found by the blind review', () => {
+  it('u-sub where the inside takes every x: ∫ cos(3x) dx', () => {
+    const e = parseEquation('int cos(3x) dx', true);
+    const n = nameIt(e, idOf(e, '3x'), 'u');
+    if ('error' in n) throw new Error(n.error);
+    LETS.set('u', n.def.rhs);
+    const d = ok(differentialsBoth(n.def));
+    expect(T(ok(subIn(n.step.eq, d, null, 'Equation 2')))).toBe('∫ cos(u)/3 du');
+  });
+  it('by parts with a parameter, and over [0, ∞)', () => {
+    expect(isErr(byParts(parseEquation('int sin(x) e^(-t x) dx', true), null))).toBe(false);
+    expect(isErr(byParts(parseEquation('int_0^inf x e^(-x) dx', true), null))).toBe(false);
+  });
+  it('p on an identity with unknowns: partial fractions by putting in x = 1', () => {
+    const r = putValue(parseEquation('1 = A(x+1) + B(x-1)'), 'x', '1');
+    expect('error' in r ? r.error : T(r)).toBe('1 = A(1 + 1) + B(1 − 1)');
+  });
+  it('like terms inside a Σ cancel, and Σ 0 is 0', () => {
+    expect(toText(simplify(parseExpr('sum_{k=2}^{n} (1/k - 1/k) + 1'), newHints()))).toBe('1');
+    expect(toText(simplify(parseExpr('2/k + 3/k'), newHints()))).toBe('5/k');
+  });
+  it('definite trig substitution: x = sin θ moves the bounds to 0 and π/2', () => {
+    const e = parseEquation('int_0^1 sqrt(1 - x^2) dx', true);
+    const n = nameIt(e, idOf(e, 'x'), 'sin(θ)');
+    if ('error' in n) throw new Error(n.error);
+    expect(T(n.step.eq)).toBe(T(e));
+    LETS.set('x', n.def.rhs);
+    const c = ok(subIn(n.step.eq, ok(differentialsBoth(n.def)), null, 'Equation 2'));
+    expect(T(c)).toBe('∫_{0}^{π/2} sqrt(1 − x^2) cos(θ) dθ');
+    expect(T(ok(subIn(c, n.def, null, 'Equation 2')))).toBe('∫_{0}^{π/2} sqrt(1 − sin(θ)^2) cos(θ) dθ');
+  });
+  it('forms: |u| on a range, the triangle, the top rationalized, ∫ constant out', () => {
+    const names = (src: string, pick: (n: Node) => boolean) => { const q = parseEquation(src, true); let id: string | null = null; walk(q, m => { if (!id && pick(m)) id = m.id; }); return formsFor(q, id).map(f => f.name + ': ' + T(f.eq)); };
+    expect(names('abs(cos(θ))', n => n.k === 'fn' && n.name === 'abs')).toContain('without | |, where ≥ 0: cos(θ)');
+    expect(names('cos(asin(x))', n => n.k === 'fn' && n.name === 'cos')).toContain('from the triangle: sqrt(1 − x^2)');
+    expect(names('lim_(x->0) (sqrt(x+1) - 1)/x', n => n.k === 'frac').some(f => f.startsWith('top rationalized'))).toBe(true);
+    expect(names('int -e^x sin(x) dx', n => n.k === 'int')).toContain('constant out: −∫ e^x sin(x) dx');
+  });
+  it('a minus goes through a bracket; 4/3 π r³ reads as (4/3)·π r³', () => {
+    const q = parseEquation('2x - (5 - x) = 1');
+    expect(T(ok(applyMove('distribute', q, idOf(q, '5 − x'))))).toBe('2x − 5 + x = 1');
+    expect(toText(parseExpr('4/3 pi r^3'))).toBe('(4/3)πr^3');
+    expect(toText(parseExpr('1/2x'))).toBe('1/(2x)');
+  });
+  it('∫ both sides of differentials integrates each side in its own letter', () => {
+    expect(T(ok(integrateBoth(parseEquation('dy/y = x dx'), 'x')))).toBe('∫ 1/y dy = ∫ x dx');
   });
 });
 void key; void ({} as Node);

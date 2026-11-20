@@ -3,14 +3,14 @@
 // for every value, and ∫ both sides. With the facts (the derivative and integral rules, the
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
-import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS } from './ast';
+import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn } from './ast';
 import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
 import { solvedForm } from './techniques';
 import { parseExpr } from './parse';
 import { toText } from './print';
-import { letters, toDifferentials } from './leibniz';
+import { letters, toDifferentials, hasDifferentials, integrateDifferentials } from './leibniz';
 import { splitXY } from './ode';
 import { finishCalc } from './calcmoves';
 
@@ -97,7 +97,13 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
   let E: Node;
   try { E = parseExpr(src); } catch (err) { return { error: (err as Error).message }; }
   if (key(E) === key(P)) return { error: 'That is the same as what is there.' };
-  const at = copiesOf(e, P);
+  // the letter of a definite integral (x in ∫₀¹ … dx) is bound: the name is its own equation, and
+  // the integral changes all at once when you sub in its differentials (bounds and all)
+  const at = copiesOf(e, P).filter(m => !(P.k === 'sym' && boundAt(e, m, P.name)));
+  if (P.k === 'sym' && !at.length) {
+    const def = eq(fresh(P), fresh(E));
+    return { step: { eq: e, label: `let ${t(P)} = ${brief(E)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: P.name };
+  }
   let next = swapAll(e, at, () => fresh(E)) as Eq;
   const ties: Record<string, Node> = {};
   if (P.k === 'sym') {
@@ -214,26 +220,61 @@ function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: st
   const integrand = tidy(mul([fresh(T.arg), ratio]));
   let lo: Node | undefined, hi: Node | undefined;
   if (T.lo && T.hi) {
-    const g = LETS.get(W);
-    if (!g) return { error: `To change the bounds too, name ${W} from ${X} (like ${W} = …${X}…), or work out the integral first and put ${X} back.` };
-    lo = tidy(substitute(cloneFresh(g), X, T.lo)); hi = tidy(substitute(cloneFresh(g), X, T.hi));
+    const g = LETS.get(W), h = LETS.get(X);
+    if (g) { lo = tidy(substitute(cloneFresh(g), X, T.lo)); hi = tidy(substitute(cloneFresh(g), X, T.hi)); }
+    else if (h) {
+      // x = sin θ: the new bounds are the θ that give the old ones (θ = sin⁻¹ of each)
+      lo = invert(h, W, T.lo) ?? undefined; hi = invert(h, W, T.hi) ?? undefined;
+      if (!lo || !hi) return { error: `Couldn't work out which ${W} gives ${X} = ${t(T.lo)} and ${t(T.hi)}. Work out the integral first and put ${X} back.` };
+    }
+    else return { error: `To change the bounds too, name ${W} from ${X} (like ${W} = …${X}…), or work out the integral first and put ${X} back.` };
   }
   const next = replace(e, T.id, int(W, integrand, lo, hi)) as Eq;
   const label = `sub in d${X} = ${t(tidy(ratio))} d${W}`;
   // definite: the values match once the name is read back in (u = x² inside ∫ … dx)
-  if (lo && hi) return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', ties: { [W]: LETS.get(W)! } });
+  if (lo && hi) {
+    if (LETS.get(W)) return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', ties: { [W]: LETS.get(W)! } });
+    // x = h(θ): the new integral, with x read as h(θ), has the old one's value
+    const hx = LETS.get(X)!;
+    const after = substitute(next, X, hx) as Eq;
+    return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', check: env => [[evaluate(after, env), evaluate(e, env)]] });
+  }
   // indefinite: the integrands, read with the name, match: f(x) dx = g(u) du
   const g = LETS.get(W), h = LETS.get(X);
   const check = (env: Env): [number, number][] => {
     const at: Env = { ...env };
-    if (g) at[W] = evaluate(g, env);
-    else if (h) at[X] = evaluate(h, env);
+    // the old letter may be gone from both sides (∫ cos(u) dx with u = 3x): any value of it will do,
+    // since the other letter is read off it
+    const seed = Object.values(env)[0] ?? 0.53;
+    if (g) { if (!(X in at)) at[X] = 0.3 + 0.7 * seed; at[W] = evaluate(g, at); }
+    else if (h) { if (!(W in at)) at[W] = 0.3 + 0.7 * seed; at[X] = evaluate(h, at); }
     else return [[NaN, NaN]];
     // dX/dW along the name, the number the ratio should be
     const slope = g ? 1 / evaluate(derivative(g, X) ?? num(NaN), at) : evaluate(derivative(h!, W) ?? num(NaN), at);
     return [[evaluate(integrand, at), evaluate(T.arg, at) * slope], [evaluate(ratio, at), slope]];
   };
   return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', check });
+}
+
+/** the w with h(w) = value, peeling h one layer at a time: + c, × c, sin, cos, tan (principal values) */
+function invert(h: Node, w: string, value: Node): Node | null {
+  let f = h, v: Node = cloneFresh(value);
+  for (let i = 0; i < 8; i++) {
+    if (f.k === 'sym' && f.name === w) return tidy(v);
+    if (f.k === 'add') {
+      const keep = f.terms.filter(x => dependsOn(x, w)), rest = f.terms.filter(x => !dependsOn(x, w));
+      if (keep.length !== 1) return null;
+      v = add([v, ...rest.map(x => neg(cloneFresh(x)))]); f = keep[0]; continue;
+    }
+    if (f.k === 'mul') {
+      const keep = f.factors.filter(x => dependsOn(x, w)), rest = f.factors.filter(x => !dependsOn(x, w));
+      if (keep.length !== 1) return null;
+      v = frac(v, mul(rest.map(x => cloneFresh(x)))); f = keep[0]; continue;
+    }
+    if (f.k === 'fn' && (f.name === 'sin' || f.name === 'cos' || f.name === 'tan')) { v = fn(('a' + f.name) as 'asin', tidy(v)); f = f.arg; continue; }
+    return null;
+  }
+  return null;
 }
 
 /* ---------- put in a value ---------- */
@@ -249,9 +290,13 @@ export function putValue(e: Eq, v: string, text: string): Eq | { error: string }
   return eq(next.lhs, next.rhs);
 }
 
-/** a definition, or an equation about a function of v (I(t) = …, y(x) = …): true for every v */
+/** a definition, an equation about a function of v (I(t) = …), or a relation between v and other
+ *  letters: something to put a value of v into */
 export function holdsForEvery(e: Eq, v: string): boolean {
   if (relOf(e) === 'def') return true;
+  // a relation with other letters (1 = A(x + 1) + B(x − 1), x² + y² = 25): what follows at a value
+  // of v is a consequence (⇒), not a claim that v is that value
+  if (relOf(e) === '=' && symbols(e).some(w => w !== v && w !== 'C' && !isDiff(w))) return true;
   let fnOf = false;
   walk(e, n => { if (n.k === 'call' && symbols(n.arg).includes(v)) fnOf = true; });
   return fnOf;
@@ -274,6 +319,8 @@ export function valueVar(e: Eq, sel: string | null): string | null {
 /** C + i on an equation: ∫ … dv of both sides. One constant comes in when the last integral is done. */
 export function integrateBoth(e: Eq, v: string): MoveResult {
   if (relOf(e) !== '=') return { error: 'Integrate both sides of an equation (=).' };
+  // already in differentials (dy/y = x dx): each side carries its own d
+  if (hasDifferentials(e)) return integrateDifferentials(e);
   const next = eq(int(v, cloneFresh(e.lhs)), int(v, cloneFresh(e.rhs)));
   // the new sides' slope in v is what the old sides were
   const slope = derivative(add([next.lhs, neg(next.rhs)]), v);

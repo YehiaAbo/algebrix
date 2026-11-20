@@ -321,7 +321,7 @@ export function byParts(e: Eq, sel: string | null): MoveResult {
     const dv = rest.length === 0 ? num(1) : rest.length === 1 ? rest[0] : mul(rest);
     const V = quick(dv, v);
     if (!V) continue;
-    const du = prettyDerivative(U, v);
+    const du = fresh(prettyDerivative(U, v));
     const def = !!(T.lo && T.hi);
     const uv = times(fresh(U), fresh(V.F));
     const vdu = tidy(times(fresh(V.F), du));

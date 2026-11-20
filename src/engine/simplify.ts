@@ -46,6 +46,8 @@ function rule(n: Node, h: Hints): Node | null {
     }
     case 'mul': return mulRule(n.factors, n.id, h);
     case 'add': return addRule(n.terms, n.id, h);
+    // Σ 0 = 0 and ∏ 1 = 1, whatever the range
+    case 'sum': return n.arg.k === 'num' && n.arg.v === (n.prod ? 1 : 0) ? num(n.arg.v, n.id) : null;
     case 'frac': return fracRule(n.num, n.den, n.id, h);
     case 'pow': {
       const { base, exp } = n;

@@ -7,7 +7,7 @@ import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel
 const isFnName = (name: string) => FUNC_NAMES.includes(name) || DEFS.has(name);
 import { negate, gcd, isNeg } from './terms';
 
-type Tok = { t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string };
+type Tok = ({ t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string }) & { space?: boolean };
 
 const FNS = ['sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'abs', 'exp', 'ln', 'log'];
 /** functions that take a power before their argument: sin^2 x, ln² x */
@@ -53,7 +53,8 @@ function tokenize(src: string): Tok[] {
   const noInt = !/int|∫|∬|∭/.test(s);
   while (i < s.length) {
     const c = s[i];
-    if (/\s/.test(c)) { i++; continue; }
+    // a space after a token is remembered: 4/3 π r³ reads as (4/3)·π r³
+    if (/\s/.test(c)) { const last = out[out.length - 1]; if (last) last.space = true; i++; continue; }
     // calculus: d/dx, d²/dx², dy/dx (= y′), \frac{d}{dx}, lim, →, ∞
     const rest = s.slice(i), prevLetter = i > 0 && /[a-zA-Zα-ω]/.test(s[i - 1]);
     const cal = prevLetter ? null
@@ -209,6 +210,16 @@ class Parser {
     let left = this.signed();
     while (this.isOp('*') || this.isOp('/')) {
       const op = this.peek()!.v; this.i++;
+      // a number on the bottom with a space after it is the whole bottom: 1/2 x is x/2, 4/3 π r³
+      const n = this.peek();
+      const after = this.toks[this.i + 1];
+      if (op === '/' && n?.t === 'num' && n.space && after && (after.t !== 'op' || after.v === '(')) {
+        const bottom = this.atom();
+        const fs: Node[] = [frac(left, bottom)];
+        while (this.startsAtom()) fs.push(this.power());
+        left = mulOf(fs);
+        continue;
+      }
       const right = this.signed();
       left = op === '/' ? frac(left, right) : mulOf([left, right]);
     }
