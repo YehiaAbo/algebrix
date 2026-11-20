@@ -47,7 +47,7 @@ export function calcTechniques(this: App): Tech[] {
   const vs = isFn ? calcVars(eq) : [];
   const multi = vs.length >= 2 && !hasCalc(eq);
   const field = rel === 'expr' && eq.lhs.k === 'vec' && !hasCalc(eq);
-  const fresh = isFn && rel !== 'def' && !hasCalc(eq) && !!v && !multi && !field;
+  const fresh = isFn && !hasCalc(eq) && !!v && !multi && !field;
   const diffs = hasDifferentials(eq);
   const slopes = !!letters(eq) && !diffs;
   // dy/dx and dy = … dx are read as y′ for choosing a method
@@ -243,6 +243,9 @@ export function finishCalculus(this: App) {
       if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2);
       return;
     }
+    // already one function on its own (I′(t) = 1/(t + 1)): that is the answer
+    const L = this.eq.lhs;
+    if (L.k === 'call') { let again = false; walk(this.eq.rhs, n => { if (n.k === 'call' && n.name === L.name) again = true; }); if (!again) return; }
     // differentiated both sides: solve for the y′ that appeared
     const primed = symbols(this.eq).find(w => w.endsWith('′'));
     if (primed) return this.solveFor(primed);

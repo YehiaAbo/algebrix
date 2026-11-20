@@ -64,7 +64,7 @@ const PLAYS = {
   linear1: [calc('f'), keys('e')],
   second: [calc('r'), keys('e'), both(keys('1'), calc('g')), keys('e')],
   fields: [calc('w'), keys('e'), calc('v'), keys('e')],
-  series: [calc('g'), async h => { for (let i = 0; i < 4 && (await h.text()) !== '15/2'; i++) { await h.key('s'); await h.wait(250); } }, calc('r'), calc('t')],
+  series: [calc('k'), async h => { for (let i = 0; i < 4 && (await h.text()) !== '15/2'; i++) { await h.key('s'); await h.wait(250); } }, calc('r'), calc('t')],
 };
 
 export const tests = {};

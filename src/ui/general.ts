@@ -5,7 +5,7 @@
 import { find, symbols, LETS, isDiff, Node } from '../engine/ast';
 import { toText } from '../engine/print';
 import { isErr, MoveOk } from '../engine/moves';
-import { nameIt, subIn, putValue, valueVar, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain } from '../engine/general';
+import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
 import { ms } from './prefs';
@@ -80,6 +80,7 @@ export function addName(this: App, r: Named) {
 export function openValue(this: App) {
   const v = valueVar(this.eq, this.sel);
   if (!v) return this.refuse('Aim at the letter to put a value in for, then press p.');
+  if (!holdsForEvery(this.eq, v)) return this.refuse(`This says which ${v} works, not something true for every ${v}, so a value can't just be put in. To check a value, press e.`);
   this.opKind = 'value';
   this.valueOf = v;
   this.closeHub(false);
@@ -224,5 +225,17 @@ export function characteristicShortcut(this: App) {
   if (!L) return this.refuse('Needs y″, y′ and y.');
   const steps = characteristicChain(this.eq, L.y);
   if (!Array.isArray(steps)) return this.refuse(steps.error);
-  this.play(steps, () => this.say('The characteristic equation: e solves it for r. Each root r gives e^(rx); C g writes the general solution.'));
+  // the trial is a question of its own (when does e^(rx) solve it?), so it goes in a new equation
+  // and the differential equation stays as it is
+  const [trial, ...rest] = steps;
+  const problem = sheet.place(this, trial.eq, true, here(this.slot!));
+  if (problem) return this.refuse(problem);
+  this.slot!.steps[0].label = trial.label;
+  sound.commit();
+  this.sel = null;
+  this.stage.clear();
+  this.renderAll(null);
+  this.entrance();
+  this.save();
+  this.later(ms(420), () => this.play(rest, () => this.say(`Equation ${this.cur + 1}: when e^(rx) solves it. e solves for r; each root gives e^(rx), and C g on equation 1 writes the general solution.`)));
 }

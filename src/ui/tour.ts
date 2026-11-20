@@ -303,7 +303,7 @@ export const TOURS: TourDef[] = [
   {
     id: 'series', group: 'Calculus 2', name: 'Series', blurb: 'Geometric sums, the ratio test, Taylor.',
     steps: [
-      { load: 'sum_{n=0}^∞ 5(1/3)^n', say: `Each term is 1/3 of the last: geometric. ${C('g')}: first term over (1 − r).`, done: t => !calcLeft(t.app) },
+      { load: 'sum_{n=0}^∞ 5(1/3)^n', say: `Each term is 1/3 of the last: geometric. ${C('k')}, a known sum: first term over (1 − r). Tab on a Σ shows the general moves: split it, take a term out, shift it.`, done: t => !calcLeft(t.app) },
       { say: 'Press <kbd>s</kbd> until it’s a number.', done: t => text(t.app) === '15/2' },
       { load: 'sum_{n=1}^∞ n/2^n', say: `Not geometric, but does it add up? ${C('r')} for the ratio test.`, done: t => !!t.app.message?.text.includes('converges') },
       { load: 'e^x', say: `${C('t')}: the Taylor polynomial, a polynomial that hugs eˣ near 0. Switch between the two with <kbd>1</kbd> and <kbd>2</kbd> and watch the graph.`, done: t => t.app.slots.length === 2 },
@@ -352,8 +352,8 @@ export const TOURS: TourDef[] = [
   {
     id: 'separable', group: 'Calculus 4', name: 'Separable equations', blurb: 'y’s on one side, x’s on the other, integrate both.',
     steps: [
-      { load: "y' = x y", say: `A differential equation: the slope depends on x and y. ${C('s')}: the y’s go left, the x’s go right, each under an integral.`, done: t => text(t.app).startsWith('∫') },
-      { say: 'Press <kbd>e</kbd>: both integrals, one + C between them, then solved for y. The ± gives two equations.', done: t => solved(t.app) && !calcLeft(t.app) },
+      { load: "y' = x y", say: `A differential equation: the slope depends on x and y. ${C('s')} separates it in two moves you could make yourself: write it in differentials (dy = x y dx), then divide both sides by y.`, done: t => text(t.app) === 'dy/y = x dx' },
+      { say: 'Press <kbd>e</kbd>: ∫ both sides, one + C between them, then solved for y. The ± gives two equations.', done: t => solved(t.app) && !calcLeft(t.app) },
     ],
   },
   {
@@ -366,7 +366,7 @@ export const TOURS: TourDef[] = [
   {
     id: 'second', group: 'Calculus 4', name: 'Second order', blurb: 'y″ + b y′ + c y = 0: try y = e^(rx).',
     steps: [
-      { load: "y'' - 3y' + 2y = 0", say: `Guess y = e^(rx). ${C('r')}: every term has e^(rx), so what’s left is r² − 3r + 2 = 0.`, done: t => t.app.slots.length === 2 },
+      { load: "y'' - 3y' + 2y = 0", say: `Guess y = e^(rx). ${C('r')} tries it in a new equation: put it in for y, work out the slopes, take e^(rx) out and divide it away (it is never 0). What’s left is about r.`, done: t => t.app.slots.length === 2 && !calcLeft(t.app) && !text(t.app).includes('e^') },
       { say: 'Press <kbd>e</kbd>: the roots are 1 and 2.', done: t => t.app.slots.length === 3 },
       { say: `Back to equation 1 with <kbd>1</kbd>. ${C('g')}: the general solution, checked by putting it back in.`, done: t => t.app.slots.length === 4 },
       { load: "y'' + 2y' + 5y = 0", say: 'Here the roots are complex, −1 ± 2i: waves that shrink. Press <kbd>e</kbd>.', done: t => t.app.slots.length === 2 && text(t.app).includes('cos') },

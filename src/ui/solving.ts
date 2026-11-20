@@ -181,7 +181,10 @@ export function addInverse(this: App) {
 export function syncDefs(this: App) {
   DEFS.clear();
   for (let i = 0; i < this.slots.length; i++) {
-    const e = this.eqOf(i);
-    if (e.rel === 'def' && e.lhs.k === 'call' && e.lhs.arg.k === 'sym') DEFS.set(e.lhs.name, { param: e.lhs.arg.name, body: e.rhs });
+    // a definition stays in force while you work on it (I(t) = … then d/dt both sides): the last
+    // one on the way to the current step
+    const slot = this.slots[i];
+    const e = [...slot.steps.slice(0, slot.at + 1).map(st => st.eq)].reverse().find(q => q.rel === 'def');
+    if (e && e.lhs.k === 'call' && e.lhs.arg.k === 'sym') DEFS.set(e.lhs.name, { param: e.lhs.arg.name, body: e.rhs });
   }
 }
