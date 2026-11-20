@@ -243,7 +243,7 @@ export function factorize(n: Node, h: Hints): Node | null {
   try { return factorize(out, h) ?? out; } finally { depth--; }
 }
 
-function findExpandable(n: Node): Node | null {
+export function findExpandable(n: Node): Node | null {
   if (n.k === 'mul' && n.factors.some(f => f.k === 'add')) return n;
   if (n.k === 'neg' && n.arg.k === 'add') return n;
   if (n.k === 'pow' && n.base.k === 'add' && n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v >= 2 && n.exp.v <= 6) return n;

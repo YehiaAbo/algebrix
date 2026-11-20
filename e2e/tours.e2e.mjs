@@ -43,7 +43,7 @@ const PLAYS = {
   trig: [browse('trig: Pythagorean'), browse('trig: double angle'), tab('z'), tab('f'), browse('trig: angle difference'), browse('trig: even/odd')],
   inequalities: [aimThen('3', 'm'), keys('Escape', 's'), aimThen('−2x', 'ArrowDown', 'm'), keys('Escape', 's'), keys('e')],
   abs: [tab('a'), both(later(keys('e')), keys('Alt+ArrowRight'), keys('e')), tab('a')],
-  powers: [fn('i'), keys('e'), async h => { for (let i = 0; i < 4; i++) { await h.key('s'); await h.wait(300); } }, aimTab('x^(−1)', 'r')],
+  powers: [fn('i'), keys('e'), async h => { for (let i = 0; i < 4 && !(await h.text()).includes('x'); i++) { await h.key('s'); await h.wait(300); } }, aimTab('x^(−1)', 'r')],
   logs: [fn('i'), keys('e'), fn('l'), tab('l'), keys('e')],
   expressions: [keys('s'), aimThen('−3(x − 1)', 'd'), keys('Escape', 'e'), tab('f')],
   derivatives: [calc('d'), calc('d'), calc('d'), calc('d'), keys('e')],

@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -59,13 +59,32 @@ function rule(n: Node, h: Hints): Node | null {
         const v = base.v ** -exp.v;
         if (safe(v)) return frac(num(1), num(v, base.id), n.id);
       }
-      // integer roots of numbers: 8^(1/3) → 2
-      if (base.k === 'num' && base.v > 0 && exp.k === 'frac' && exp.num.k === 'num' && exp.num.v === 1 && exp.den.k === 'num' && exp.den.v > 1) {
-        const r = Math.round(base.v ** (1 / exp.den.v));
-        if (r ** exp.den.v === base.v) { h.absorbs.set(exp.id, base.id); return num(r, base.id); }
+      // (1/b)ⁿ = 1/bⁿ: sec² typed as (1/cos x)² is 1/cos² x
+      if (base.k === 'frac' && base.num.k === 'num' && base.num.v === 1 && exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 1) return frac(base.num, pow(base.den, exp), n.id);
+      // whole roots of numbers: 8^(1/3) → 2, 8^(2/3) → 4, 4^(−1/2) → 1/2, (−8)^(1/3) → −2
+      const pq = ratOf(exp.k === 'neg' ? exp.arg : exp);
+      if (base.k === 'num' && Number.isInteger(base.v) && base.v !== 0 && pq && pq.q > 1 && Math.abs(pq.p) <= 6 && (base.v > 0 || pq.q % 2 === 1)) {
+        const p = exp.k === 'neg' ? -pq.p : pq.p;
+        const r = Math.round(Math.abs(base.v) ** (1 / pq.q)) * Math.sign(base.v);
+        if (r ** pq.q === base.v) {
+          h.absorbs.set(exp.id, base.id);
+          const v = r ** Math.abs(p);
+          if (safe(v)) return p > 0 ? num(v, base.id) : frac(num(1), num(v, base.id), n.id);
+        }
+      }
+      // √3³ → 3√3: whole squares come out of a root's power
+      if (base.k === 'sqrt' && exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 2) {
+        const k = Math.floor(exp.v / 2);
+        return mul([pow(base.arg, num(k)), ...(exp.v % 2 ? [base] : [])], n.id);
       }
       // inverse pairs: e^(ln a) = a, 10^(log a) = a, (√a)² = a
       if (base.k === 'sym' && base.name === 'e' && exp.k === 'fn' && exp.name === 'ln') return exp.arg;
+      // e^(k ln a) = a^k: e^(5 ln 2) is 32
+      if (base.k === 'sym' && base.name === 'e' && exp.k === 'mul' && exp.factors.length === 2 && exp.factors[0].k === 'num' && exp.factors[1].k === 'fn' && exp.factors[1].name === 'ln') {
+        return pow(exp.factors[1].arg, exp.factors[0], n.id);
+      }
+      // e^(−ln a) = 1/a
+      if (base.k === 'sym' && base.name === 'e' && exp.k === 'neg' && exp.arg.k === 'fn' && exp.arg.name === 'ln') return frac(num(1), exp.arg.arg, n.id);
       // e^(ln a + b) = a·e^b
       if (base.k === 'sym' && base.name === 'e' && exp.k === 'add' && exp.terms.some(x => x.k === 'fn' && x.name === 'ln')) {
         const logs = exp.terms.filter(x => x.k === 'fn' && x.name === 'ln') as Extract<Node, { k: 'fn' }>[];
@@ -89,7 +108,9 @@ function rule(n: Node, h: Hints): Node | null {
       }
       if (base.k === 'pow' && base.exp.k === 'num' && exp.k === 'num') {
         h.absorbs.set(exp.id, base.exp.id);
-        return pow(base.base, num(base.exp.v * exp.v, base.exp.id), n.id);
+        // (y⁻²)^(1/2) is 1/|y|: an even power forgets the sign, and a root can't bring it back
+        const even = !Number.isInteger(exp.v) && Number.isInteger(base.exp.v) && base.exp.v % 2 === 0;
+        return pow(even ? fn('abs', base.base) : base.base, num(base.exp.v * exp.v, base.exp.id), n.id);
       }
       return null;
     }
@@ -104,8 +125,27 @@ function rule(n: Node, h: Hints): Node | null {
       }
       // √(a/b²) = √a / b
       if (a.k === 'frac' && a.den.k === 'num' && a.den.v > 1 && Number.isInteger(Math.sqrt(a.den.v))) return frac(sqrt(a.num, n.id), num(Math.sqrt(a.den.v), a.den.id));
+      // √(a/b) with numbers = √(ab)/b, no root left on the bottom: √(1/2) = √2/2
+      if (a.k === 'frac' && a.den.k === 'num' && a.den.v > 1 && Number.isInteger(a.den.v) && a.num.k === 'num' && a.num.v > 0 && Number.isInteger(a.num.v)) return frac(sqrt(num(a.num.v * a.den.v, a.num.id), n.id), num(a.den.v, a.den.id));
       // √(b²) = |b|
       if (a.k === 'pow' && a.exp.k === 'num' && a.exp.v === 2) { h.absorbs.set(a.exp.id, a.base.id); return fn('abs', a.base, n.id); }
+      // √(x⁴) = x², √(x⁶) = |x³|
+      if (a.k === 'pow' && a.exp.k === 'num' && Number.isInteger(a.exp.v) && a.exp.v > 2 && a.exp.v % 2 === 0) {
+        const half = pow(a.base, num(a.exp.v / 2, a.exp.id));
+        return (a.exp.v / 2) % 2 === 0 ? half : fn('abs', half, n.id);
+      }
+      // √(4x²) = 2|x|: the factors that are squares come out
+      if (a.k === 'mul') {
+        const out: Node[] = [], keep: Node[] = [];
+        for (const f of a.factors) {
+          if (f.k === 'num' && f.v > 0 && Number.isInteger(Math.sqrt(f.v))) out.push(num(Math.sqrt(f.v), f.id));
+          else if (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v % 2 === 0 && f.exp.v > 0) out.push(sqrt(f, f.id + 'r'));
+          else keep.push(f);
+        }
+        // the number, then what stays under the root, then the letters: 3√2·|x|
+        const nums = out.filter(f => f.k === 'num'), rest = out.filter(f => f.k !== 'num');
+        if (out.length && !(out.length === 1 && out[0].k === 'num' && out[0].v === 1 && !keep.length)) return mul([...nums, ...(keep.length ? [sqrt(keep.length === 1 ? keep[0] : mul(keep), n.id)] : []), ...rest]);
+      }
       return null;
     }
     case 'fn': return fnRule(n.name, n.arg, n.id, h);
@@ -115,6 +155,21 @@ function rule(n: Node, h: Hints): Node | null {
 
 const ratOf = (n: Node) => (n.k === 'num' ? rat(n.v) : n.k === 'frac' && n.num.k === 'num' && n.den.k === 'num' && n.den.v !== 0 ? rat(n.num.v, n.den.v) : null);
 
+/** never below 0, whatever the letters are: squares, exponentials, roots, and sums and products of them */
+export function nonneg(n: Node): boolean {
+  switch (n.k) {
+    case 'num': return n.v >= 0;
+    case 'sym': return n.name === 'e' || n.name === 'π';
+    case 'sqrt': return true;
+    case 'fn': return n.name === 'abs';
+    case 'pow': return (n.exp.k === 'num' && n.exp.v % 2 === 0) || (n.base.k === 'sym' && n.base.name === 'e') || (n.base.k === 'num' && n.base.v > 0) || nonneg(n.base);
+    case 'add': return n.terms.every(nonneg);
+    case 'mul': return n.factors.every(nonneg);
+    case 'frac': return nonneg(n.num) && nonneg(n.den);
+    default: return false;
+  }
+}
+
 function fnRule(name: string, a: Node, id: string, h: Hints): Node | null {
   switch (name) {
     case 'abs':
@@ -123,6 +178,8 @@ function fnRule(name: string, a: Node, id: string, h: Hints): Node | null {
       if (a.k === 'fn' && a.name === 'abs') return a;
       if (a.k === 'sqrt') return a;
       if (a.k === 'pow' && a.exp.k === 'num' && a.exp.v % 2 === 0) return a;
+      // |x² + 1| is x² + 1: nothing inside can go below 0
+      if (nonneg(a)) return a;
       if (a.k === 'mul' && a.factors[0]?.k === 'num' && a.factors[0].v < 0) return fn('abs', { ...a, factors: [num(-a.factors[0].v, a.factors[0].id), ...a.factors.slice(1)] }, id);
       return null;
     case 'ln':
@@ -184,6 +241,19 @@ function mulRule(fs: Node[], id: string, h: Hints): Node | null {
     if (c.v === 1) return mulOf(fs.filter(f => f !== c), id);
     if (fs[0] !== c) return mul([c, ...fs.filter(f => f !== c)], id);
   }
+  // eˣ·eˣ → e²ˣ, xⁿ·x → xⁿ⁺¹: a letter power with the same base adds its exponents
+  // (but eˣ·eʸ stays apart, as separating variables needs it)
+  const oneLetter = (a: Node, b: Node) => new Set([...symbols(a), ...symbols(b)].filter(n => n !== 'e' && n !== 'π')).size <= 1;
+  for (let i = 0; i < fs.length; i++) {
+    const a = fs[i];
+    if (a.k !== 'pow' || a.exp.k === 'num') continue;
+    const j = fs.findIndex((b, k) => k !== i && b.k !== 'num' && (b.k === 'pow' ? key(b.base) === key(a.base) && oneLetter(a.exp, b.exp) : key(b) === key(a.base)));
+    if (j < 0) continue;
+    const b = fs[j];
+    h.absorbs.set(b.id, a.id);
+    const merged = pow(a.base, add([a.exp, b.k === 'pow' ? b.exp : num(1)]), a.id);
+    return mulOf(fs.flatMap((f, k) => (k === i ? [merged] : k === j ? [] : [f])), id);
+  }
   // x·x → x², x·x² → x³
   const baseOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' ? f.base : f);
   const expOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' ? f.exp.v : 1);
@@ -197,7 +267,7 @@ function mulRule(fs: Node[], id: string, h: Hints): Node | null {
     const total = group.reduce((s, f) => s + expOf(f), 0);
     group.slice(1).forEach(f => h.absorbs.set(f.id, baseOf(first).id));
     const merged = total === 1 ? baseOf(first)
-      : first.k === 'pow' ? pow(first.base, num(total, (first.exp as Node).id), first.id)
+      : first.k === 'pow' && first.exp.k === 'num' ? pow(first.base, num(total, first.exp.id), first.id)
       : pow(first, num(total));
     const out: Node[] = [];
     fs.forEach(f => {
@@ -260,6 +330,8 @@ function divideContent(n: Node, g: number): Node {
 
 function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
   if (a.k === 'num' && a.v === 0 && !(d.k === 'num' && d.v === 0)) return a;
+  // −x²/x: cancel under the minus
+  if (a.k === 'neg') { const r = fracRule(a.arg, d, id, h); if (r) return negate(r); }
   // a / b^(−k) = a·b^k
   if (d.k === 'pow' && d.exp.k === 'num' && d.exp.v < 0) return mulOf([a, pow(d.base, num(-d.exp.v, d.exp.id), d.id)].filter(f => !(f.k === 'num' && f.v === 1)), id);
   if (d.k === 'num') {
@@ -283,7 +355,38 @@ function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
       nf.splice(j, 1); df.splice(i, 1); cancelled = true;
     }
   }
+  // a thing over its own root: x/√x = √x
+  for (let i = df.length - 1; i >= 0; i--) {
+    const r = df[i];
+    if (r.k !== 'sqrt') continue;
+    const j = nf.findIndex(f => key(f) === key(r.arg));
+    if (j < 0) continue;
+    h.absorbs.set(nf[j].id, r.id);
+    nf[j] = r; df.splice(i, 1); cancelled = true;
+  }
+  // powers of the same thing: x³/x² = x, x/x³ = 1/x²
+  const baseOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? f.base : f);
+  const expOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? f.exp.v : 1);
+  for (let i = df.length - 1; i >= 0; i--) {
+    if (df[i].k === 'num') continue;
+    const b = key(baseOf(df[i]));
+    const j = nf.findIndex(f => f.k !== 'num' && key(baseOf(f)) === b);
+    if (j < 0) continue;
+    const r = expOf(nf[j]) - expOf(df[i]), base = baseOf(nf[j]);
+    const p = (k: number, like: Node) => (k === 1 ? base : pow(base, num(k), like.id));
+    h.absorbs.set((r >= 0 ? df[i] : nf[j]).id, (r >= 0 ? nf[j] : df[i]).id);
+    if (r > 0) { nf[j] = p(r, nf[j]); df.splice(i, 1); }
+    else if (r < 0) { df[i] = p(-r, df[i]); nf.splice(j, 1); }
+    else { nf.splice(j, 1); df.splice(i, 1); }
+    cancelled = true;
+  }
   if (cancelled) return frac(mulOf(nf, a.k === 'mul' ? a.id : undefined), mulOf(df, d.k === 'mul' ? d.id : undefined), id);
+  // a minus underneath goes on top: x/(−y) = −x/y
+  if (d.k === 'neg') return fracRule(negate(a), d.arg, id, h) ?? frac(negate(a), d.arg, id);
+  // a minus on top over a difference: turn the bottom round instead, −3/(2 − x) = 3/(x − 2)
+  const negTop = a.k === 'neg' || (a.k === 'num' && a.v < 0) || (a.k === 'mul' && a.factors[0].k === 'num' && a.factors[0].v < 0);
+  if (negTop && d.k === 'add' && d.terms.length === 2 && d.terms[0].k !== 'neg' && !(d.terms[0].k === 'num' && d.terms[0].v < 0) && d.terms[1].k === 'neg')
+    return frac(negate(a), add([d.terms[1].arg, negate(d.terms[0])], d.id), id);
   return null;
 }
 

@@ -1,10 +1,10 @@
 // Rewrites for rational expressions and trig: polynomial long division, partial
 // fractions, rationalizing a denominator, and a pack of trig identities. Each returns
 // an equivalent expression (or null); the forms strip checks every one numerically.
-import { Node, Frac, num, add, mul, frac, pow, fn, cloneFresh, key, sqrt as sqrtN } from './ast';
+import { Node, Frac, num, add, mul, frac, pow, fn, cloneFresh, key, sqrt as sqrtN, evaluate as evaluateNode } from './ast';
 import { rat, Rat, rmul, radd, rdiv, negate, coefOf, gcd } from './terms';
-import { simplify, newHints } from './simplify';
-import { expandAll, polyOf } from './rewrite';
+import { simplify, newHints, Hints } from './simplify';
+import { expandAll, polyOf, factorize } from './rewrite';
 import { parseExpr } from './parse';
 import { toText } from './print';
 
@@ -240,6 +240,10 @@ export function trigForms(n: Node): TrigForm[] {
   if (n.k === 'mul' && n.factors.length === 3 && n.factors[0].k === 'num' && n.factors[0].v === 2 && isF(n.factors[1], 'sin') && isF(n.factors[2], 'cos') && key(n.factors[1].arg) === key(n.factors[2].arg)) {
     offer('double angle', fn('sin', mul([num(2), cloneFresh(n.factors[1].arg)])));
   }
+  // sin u cos u is half of sin 2u
+  if (n.k === 'mul' && n.factors.length === 2 && isF(n.factors[0], 'sin') && isF(n.factors[1], 'cos') && key(n.factors[0].arg) === key(n.factors[1].arg)) {
+    offer('double angle', frac(fn('sin', mul([num(2), cloneFresh(n.factors[0].arg)])), num(2)));
+  }
   if (n.k === 'add') {
     const ts = n.terms;
     // sin²u + cos²u → 1
@@ -265,4 +269,58 @@ export function trigForms(n: Node): TrigForm[] {
     }
   }
   return out;
+}
+
+/** x³ − 4x → x(x − 2)(x + 2), x⁴ − 5x² + 4 → (x − 1)(x + 1)(x − 2)(x + 2): every rational root
+ *  (rational root theorem) comes out as a factor, repeated ones as a power; what is left stays
+ *  as one factor. Null below degree 3 (quadratics have their own rules) or with no rational root */
+export function factorByRoots(n: Node): Node | null {
+  const P = poly(n);
+  if (!P || !P.v || P.c.length < 4) return null;
+  const v = P.v;
+  // whole-number coefficients first: L·P, with 1/L in front
+  const L = P.c.reduce((m, r) => (m * r.q) / gcd(m, r.q), 1);
+  let c = P.c.map(r => rat((r.p * L) / r.q));
+  const roots = rationalRoots(c);
+  if (!roots.length) return null;
+  const parts: Node[] = [];
+  for (const r of roots) {
+    let times = 0;
+    for (;;) {
+      if (c.length < 2) break;
+      const { q, r: rem } = divide(c, [rat(-r.p), rat(r.q)]);
+      if (rem.length) break;
+      c = q; times++;
+    }
+    if (!times) continue;
+    const f = parseExpr(r.p === 0 ? v : `${r.q === 1 ? '' : r.q}${v} ${r.p < 0 ? '+' : '-'} ${Math.abs(r.p)}`);
+    parts.push(times === 1 ? f : pow(f, num(times)));
+  }
+  // what is left: a constant, or a polynomial with no rational roots
+  const lead = rdiv(c.length === 1 ? c[0] : rat(1), rat(L));
+  if (c.length > 1) {
+    // pull the sign out so the leftover starts positive
+    const neg = c[c.length - 1].p < 0;
+    const rest = parseExpr(polyText(v, neg ? c.map(k => rat(-k.p, k.q)) : c));
+    parts.push(rest);
+    const k = rdiv(rat(neg ? -1 : 1), rat(L));
+    if (k.p !== 1 || k.q !== 1) parts.unshift(k.q === 1 ? num(k.p) : frac(num(k.p), num(k.q)));
+  } else if (lead.p !== 1 || lead.q !== 1) parts.unshift(lead.q === 1 ? num(lead.p) : frac(num(lead.p), num(lead.q)));
+  if (parts.length < 2) return null;
+  const out = mul(parts);
+  // the safety net: the same polynomial at a few points
+  const at = (m: Node, x: number) => evalNum(m, v, x);
+  return [0.31, -1.7, 2.9].every(x => Math.abs(at(out, x) - at(n, x)) <= 1e-8 * (1 + Math.abs(at(n, x)))) ? out : null;
+}
+
+const evalNum = (m: Node, v: string, x: number) => evaluateNode(m, { [v]: x });
+
+/** factor as far as whole numbers allow, then take out any rational roots of what is left */
+export function factorFully(n: Node, h: Hints): Node | null {
+  const r = factorize(n, h);
+  if (!r) return factorByRoots(n);
+  if (r.k !== 'mul') return r;
+  let changed = false;
+  const fs = r.factors.flatMap(f => { const g = f.k === 'add' ? factorByRoots(f) : null; if (!g) return [f]; changed = true; return g.k === 'mul' ? g.factors : [g]; });
+  return changed ? mul(fs, r.id) : r;
 }

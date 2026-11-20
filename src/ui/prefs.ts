@@ -17,10 +17,12 @@ export interface Prefs {
   sideW: number;
   sideH: number;
   graphAt: 'right' | 'below' | 'hidden';
+  /** how tall the work tree across the top is */
+  treeH: number;
 }
 
 const KEY = 'algebrix.prefs';
-const DEFAULTS: Prefs = { theme: 'system', look: 'studio', sounds: 'classic', volume: 0.8, muted: false, speed: 'standard', size: 1, hints: true, railW: 216, sideW: 400, sideH: 300, graphAt: 'right' };
+const DEFAULTS: Prefs = { theme: 'system', look: 'studio', sounds: 'classic', volume: 0.8, muted: false, speed: 'standard', size: 1, hints: true, railW: 216, sideW: 400, sideH: 300, graphAt: 'right', treeH: 176 };
 /** how long animations take relative to standard; flash is fast but still visible */
 export const SPEED_FACTOR: Record<Speed, number> = { calm: 1.45, standard: 1, flash: 0.38 };
 
@@ -40,7 +42,7 @@ function load(): Prefs {
 }
 
 export const prefs: Prefs = load();
-export const PANEL_DEFAULTS = { railW: DEFAULTS.railW, sideW: DEFAULTS.sideW, sideH: DEFAULTS.sideH };
+export const PANEL_DEFAULTS = { railW: DEFAULTS.railW, sideW: DEFAULTS.sideW, sideH: DEFAULTS.sideH, treeH: DEFAULTS.treeH };
 const listeners: ((p: Prefs, changed: keyof Prefs) => void)[] = [];
 
 export function setPref<K extends keyof Prefs>(k: K, v: Prefs[K]) {

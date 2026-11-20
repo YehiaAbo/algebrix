@@ -1,10 +1,12 @@
-import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector } from '../engine/ast';
+import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate, isDiff } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
-import { parseEquation } from '../engine/parse';
+import { parseEquation, ParseError } from '../engine/parse';
 import { toText } from '../engine/print';
 import { applyMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { formsFor } from '../engine/forms';
+import { substitute } from '../engine/calculus';
+import { simplify, newHints } from '../engine/simplify';
 import { moveAny, WrapItem, simplifySpot, Spot } from '../engine/techniques';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition } from '../render/stage';
@@ -19,12 +21,16 @@ import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
-import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml } from './shared';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml } from './shared';
 import * as nav from './nav';
+import { notationFor } from './notation';
 import * as sheet from './sheet';
 import { hasCalc } from '../engine/calcmoves';
 import { odeKind } from '../engine/ode';
-import { renderShelf, ShelfItem } from './shelf';
+import { asPrime, hasDifferentials, slopeVar } from '../engine/leibniz';
+import { TreeView, TreeBig, HeadInfo } from './treeview';
+import { treeOf, goto, here, visibleAt } from './tree';
+import type { Link } from './shared';
 import type { NavView } from './nav';
 import * as opsPart from './ops';
 import * as hubPart from './hub';
@@ -50,6 +56,8 @@ export class App {
   preview: Eq | null = null;
   peek: Eq | null = null;
   hub: Hub | null = null;
+  /** the notation cards under the typing box, and the one picked */
+  nota: (NonNullable<ReturnType<typeof notationFor>> & { i: number }) | null = null;
   typingTimer = 0;
   writing: 'new' | 'edit' = 'edit';
   pending: { timer: number; run: () => void }[] = [];
@@ -70,10 +78,19 @@ export class App {
   resetArmed = 0;
   /** a key was pressed while Tab or f was held: letting go then closes the menu instead of pinning it open */
   chordUsed = false;
+  /** the work tree across the top, and its big view (v) */
+  tree: TreeView;
+  treeBig: TreeBig;
+  private treeSlots: Slot[] | null = null;
+  /** the step of another equation the next move uses (set as a piece of it flies in) */
+  linkNext: Link | null = null;
 
   pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
   constructor() {
     this.stage = new Stage($('stage'));
+    this.tree = new TreeView($('tree'), { size: 16, strip: true, pick: (c, id) => this.goStep(c, id), open: (c, id) => this.openTree(c, id) });
+    this.treeBig = new TreeBig((c, id) => this.goStep(c, id));
+    new ResizeObserver(() => { if (!$('tree').hidden) this.renderTree(false); }).observe($('tree'));
     this.graph = new Graph($<HTMLCanvasElement>('graph'), $('graph-note'));
     this.bind();
     let size = '';
@@ -145,10 +162,19 @@ export class App {
     this.stage.show(lay, Math.round(ox), oy, tr);
     // a final answer that isn't an equation (an inequality's solution set) sits under it
     const ans = $('answer');
-    const text = !this.preview && !this.peek ? this.step?.answer : undefined;
+    // an answer that came from a one-way step (squaring) and fails the original: never shown as solved
+    const wrong = !this.preview && !this.peek && !!this.slot?.bad && !!solvedFor(eq);
+    host.classList.toggle('extraneous', wrong);
+    const all = !this.preview && !this.peek ? this.allAnswers() : null;
+    const text = wrong ? `✗ not a solution: it fails the original equation${all ? ` (the answer is ${all.replace(/<sup>([^<]*)<\/sup>/g, '^$1').replace(/<[^>]+>/g, '')})` : ''}` : !this.preview && !this.peek ? this.step?.answer : undefined;
     const proved = !this.preview && !this.peek && relOf(eq) === '≟' && isProved(eq);
-    ans.hidden = !text && !proved;
-    if (text || proved) {
+    ans.hidden = !text && !proved && !all;
+    ans.classList.toggle('bad', wrong);
+    ans.classList.toggle('all', !text && !proved && !!all);
+    if (!text && !proved && all) {
+      ans.innerHTML = all.startsWith('the only') ? all : `${(all.match(/<b>/g) ?? []).length > 2 ? 'all the answers' : 'both answers'}: ${all}`;
+      ans.style.top = `${Math.round(oy + lay.asc + lay.desc + 22)}px`;
+    } else if (text || proved) {
       ans.textContent = proved ? '∎ proved' : text!;
       ans.style.top = `${Math.round(oy + lay.asc + lay.desc + 22)}px`;
     }
@@ -175,6 +201,42 @@ export class App {
     el.dataset.r = edges.r ? '1' : '';
   }
 
+  /** when an equation was split into cases and every case is solved: the answers together
+   *  ("x = 2 or x = 3"), each in <b>, leaving out the ones that fail the original. Null otherwise */
+  allAnswers(): string | null {
+    const me = this.slot, v = solvedFor(this.eq);
+    if (!me?.origin || !v) return null;
+    const at = key(me.origin);
+    const kin = this.slots.map((s, i) => ({ s, e: this.eqOf(i) })).filter(({ s }) => s.origin && key(s.origin) === at);
+    if (kin.length < 2 || kin.some(({ e }) => solvedFor(e) !== v)) return null;
+    // in order along the number line when they are numbers: x = −2, 0 or 2
+    const sides = kin.filter(({ s }) => !s.bad).map(({ e }) => (e.lhs.k === 'sym' ? e.rhs : e.lhs));
+    const at0 = sides.map(n => evaluate(n, {}));
+    const order = at0.every(Number.isFinite) ? sides.map((n, i) => i).sort((a, b) => at0[a] - at0[b]) : sides.map((n, i) => i);
+    const uniq = [...new Set(order.map(i => toText(sides[i])))];
+    if (!uniq.length) return null;
+    // the one that works, here: say what the others were
+    const out = kin.filter(({ s }) => s.bad).map(({ e }) => toText(e.lhs.k === 'sym' ? e.rhs : e.lhs));
+    if (uniq.length === 1 && !me.bad && out.length) return `the only answer: <b>${v} = ${mathHtml(uniq[0])}</b> (${out.map(o => `${v} = ${mathHtml(o)}`).join(', ')} fails the original)`;
+    if (uniq.length === 1) return me.bad ? `<b>${v} = ${mathHtml(uniq[0])}</b>` : null;
+    // a system: another equation gives y from x (y = x + 1), so each answer is a point
+    const partner = this.slots.map((_, i) => this.eqOf(i)).find(e => {
+      const w = solvedFor(e);
+      return !!w && w !== v && !kin.some(k => k.e === e) && symbols(e.lhs.k === 'sym' ? e.rhs : e.lhs).every(n => n === v);
+    });
+    if (partner && uniq.every(a => !symbols(sides[order.find(i => toText(sides[i]) === a)!]).length)) {
+      const w = solvedFor(partner)!, g = partner.lhs.k === 'sym' ? partner.rhs : partner.lhs;
+      const pts = uniq.map(a => {
+        const x = sides[order.find(i => toText(sides[i]) === a)!], y = toText(simplify(substitute(g, v, x), newHints()));
+        return v < w ? [a, y] : [y, a];
+      });
+      const names = v < w ? `(${v}, ${w})` : `(${w}, ${v})`;
+      const items = pts.map(([p, q], i) => `<b>${i ? '' : `${names} = `}(${mathHtml(p)}, ${mathHtml(q)})</b>`);
+      return items.length === 2 ? items.join(' or ') : `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`;
+    }
+    return uniq.map(a => `<b>${v} = ${mathHtml(a)}</b>`).join(uniq.length > 2 ? ', ' : ' or ').replace(/, (?=[^,]*$)/, ' or ');
+  }
+
   /** the status tag an equation carries: its answer, ✓, ∎, or a warning */
   slotTag(i: number, e: Eq): { text: string; cls: string } | null {
     const sl = this.slots[i], st = sl.steps[sl.at];
@@ -185,39 +247,65 @@ export class App {
     return null;
   }
 
-  /** The sheet: the equation you work on gets the room; the others sit open on the shelf
-   *  across the top, each saying what it can give this one, one key (or click, or Alt + ← →) away. */
-  renderLanes() {
-    const board = $('board'), dock = $('dock');
-    const adding = this.mode === 'write' && this.writing === 'new' && this.slots.length > 0;
-    const active = adding ? this.slots.length : this.cur;
-    const n = this.slots.length + (adding ? 1 : 0);
-    board.classList.toggle('multi', n > 1);
-    $('stage').dataset.n = String(active + 1);
-    dock.hidden = n < 2;
-    if (n < 2) return;
+  /** what each equation's column says at its top: its number, its status, and what it can give
+   *  the equation you're on (lit while the algebra menu is open, when you'd use it) */
+  treeHeads(): HeadInfo[] {
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     const mine = this.shown ? symbols(this.shown) : [];
-    const items: ShelfItem[] = [];
-    for (let i = 0; i < this.slots.length; i++) {
-      if (i === active) continue;
+    return this.slots.map((_, i) => {
       const e = this.eqOf(i);
-      const shared = adding ? [] : symbols(e).filter(v => mine.includes(v));
+      if (i === this.cur) return { tag: this.slotTag(i, e), offer: '', linked: false, focus: true };
+      const shared = symbols(e).filter(v => mine.includes(v));
       const solved = solvedFor(e);
       const keys = `<span class="sep">·</span><kbd>Tab</kbd>+<kbd>${i + 1}</kbd>`;
       let offer = '';
       if (aimed?.k === 'sym' && shared.includes(aimed.name)) offer = `puts in <i>${varHtml(aimed.name)}</i>${keys}`;
       else if (solved && shared.includes(solved)) offer = `gives <i>${varHtml(solved)}</i>${keys}`;
-      else if (shared.length) offer = `shares <span>${shared.map(v => `<i>${varHtml(v)}</i>`).join(", ")}</span>${keys}`;
-      // links light up only while the algebra menu is open (Tab), when you'd use them
-      items.push({ i, eq: e, tag: this.slotTag(i, e), offer, linked: shared.length > 0 && this.mode === 'hub' });
-    }
-    renderShelf($('dock-row'), items, i => this.switchTo(i));
+      else if (shared.length) offer = `shares <span>${shared.map(v => `<i>${varHtml(v)}</i>`).join(', ')}</span>${keys}`;
+      return { tag: this.slotTag(i, e), offer, linked: shared.length > 0 && this.mode === 'hub', focus: false };
+    });
+  }
+
+  /** The work tree across the top: every equation's steps, the lines you left, and where one
+   *  equation fed another. The equation you're on gets the room below. */
+  renderTree(animate = true) {
+    const board = $('board'), host = $('tree');
+    const adding = this.mode === 'write' && this.writing === 'new' && this.slots.length > 0;
+    const n = this.slots.length + (adding ? 1 : 0);
+    board.classList.toggle('multi', n > 1);
+    $('stage').dataset.n = String((adding ? this.slots.length : this.cur) + 1);
+    host.hidden = $('tree-split').hidden = !this.slots.length;
+    if (!this.slots.length) return;
+    // another workspace (or a fresh start): nothing glides in from the old one
+    if (this.treeSlots !== this.slots) { this.tree.reset(); this.treeSlots = this.slots; animate = false; }
+    this.tree.render(this.slots.map(treeOf), this.treeHeads(), this.cur, animate);
+  }
+
+  /** a click on a step in the tree: that equation, at that step */
+  goStep(col: number, id: string | null) {
+    if (this.mode === 'write') this.cancelEdit();
+    this.closeModes();
+    if (col !== this.cur) this.switchTo(col);
+    if (!id) return;
+    const sl = this.slots[col];
+    if (!sl || visibleAt(sl) === id) return;
+    if (!goto(sl, id)) return;
+    this.afterJump();
+  }
+
+  /** v, or a click on the tree: all of it, big */
+  openTree(col?: number, id?: string) {
+    if (!this.slots.length) return;
+    this.closeModes();
+    sound.tick(2);
+    this.treeBig.open(this.slots.map(treeOf), this.treeHeads(), this.cur, col !== undefined && id ? { col, id } : undefined);
   }
 
   /** a copy of another equation flies into this one (substitute, add an equation) */
   flyFrom(j: number) {
-    const src = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${j}"] .lane-math .mini`);
+    // the move that follows used this equation: the tree draws an arrow from it
+    if (this.slots[j]) this.linkNext = here(this.slots[j]);
+    const src = this.slots[j] ? this.tree.elOf(j, visibleAt(this.slots[j]))?.querySelector<HTMLElement>('.mini') : null;
     const dst = this.stage.box('eq');
     if (!src || !dst) return;
     const a = src.getBoundingClientRect(), host = $('stage').getBoundingClientRect();
@@ -227,50 +315,24 @@ export class App {
     document.body.append(ghost);
     const tx = host.left + dst.x + dst.w / 2 - (a.left + a.width / 2), ty = host.top + dst.y + dst.h / 2 - (a.top + a.height / 2);
     ghost.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${tx}px, ${ty}px) scale(1.25)`, opacity: 0 }], { duration: ms(420), easing: 'cubic-bezier(.3,.6,.2,1)', fill: 'forwards' }).onfinish = () => ghost.remove();
-    src.closest('.lane')?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: ms(700), easing: 'ease-out' });
+    src.closest('.titem')?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: ms(700), easing: 'ease-out' });
   }
 
   renderAll(tr: Transition | null, graphAnim = false) {
     this.syncDefs();
-    this.renderLanes();
+    this.renderTree();
     this.renderMain(tr);
-    this.renderTrail();
+    this.renderOriginal();
     this.renderRail();
     this.renderHints();
+    this.graph.extra = this.slot?.bad && this.shown && solvedFor(this.shown) && !this.preview ? 'But this answer came from a one-way step (like squaring) and fails the original, so it is not a solution.' : '';
     if (this.shown) this.graph.draw(this.shown, graphAnim, this.slots.filter((_, i) => i !== this.cur).map((_, j) => this.eqOf(j >= this.cur ? j + 1 : j)));
     document.body.dataset.mode = this.mode;
     this.tour?.check();
   }
 
-  renderTrail() {
-    const host = $('trail');
-    host.querySelectorAll('.trail-row').forEach(r => r.remove());
-    if (this.mode === 'write') return;
-    const from = Math.max(0, this.at - 4);
-    for (let i = from; i < this.at; i++) {
-      const row = document.createElement('button');
-      row.className = 'trail-row';
-      row.style.setProperty('--age', String(this.at - i));
-      row.title = 'Go back to this step';
-      const mini = document.createElement('div');
-      mini.className = 'mini';
-      const label = document.createElement('span');
-      label.className = 'trail-label';
-      const st = this.steps[i + 1];
-      label.textContent = st.label;
-      const dir = document.createElement('span');
-      dir.className = `trail-dir${st.dir === '⇒' ? ' one-way' : ''}`;
-      dir.textContent = st.dir ?? '⇔';
-      dir.title = st.dir === '⇒' ? 'One-way step: it can add solutions, so answers get checked' : 'Reversible step: same solutions before and after';
-      label.prepend(dir);
-      row.append(mini, label);
-      host.append(row);
-      const lay = layout(this.steps[i].eq, 21);
-      mini.style.width = lay.w + 'px';
-      mini.style.height = lay.asc + lay.desc + 'px';
-      new Stage(mini).show(lay, 0, 0, null);
-      row.addEventListener('click', () => this.jump(i));
-    }
+  /** the start of this equation, in the typing box (i types over it) */
+  renderOriginal() {
     const orig = $('original');
     orig.replaceChildren();
     if (this.steps[0]) {
@@ -324,11 +386,12 @@ export class App {
     vars.replaceChildren();
     if (!eq) return;
     const solved = this.mode === 'write' ? null : solvedFor(eq);
-    for (const v of symbols(eq)) {
+    // a hole, a constant of integration and y′ are not variables you choose
+    for (const v of symbols(eq).filter(v => v !== '□' && !/^C(_\d+)?$/.test(v) && !/[′″]$/.test(v) && !isDiff(v) && !v.startsWith('d²'))) {
       const li = document.createElement('li');
       const conds = (this.step?.conditions ?? []).filter(c => new RegExp(`(^|[^a-zα-ω])${v}([^a-zα-ω]|$)`).test(c));
       const dom = this.domains[v] ?? 'real';
-      li.innerHTML = `<span class="var">${varHtml(v)}</span><button class="dom" title="Click to change what ${escapeHtml(v)} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? '<span class="solved">solved</span>' : ''}`;
+      li.innerHTML = `<span class="var">${varHtml(v)}</span><button class="dom" title="Click to change what ${escapeHtml(v)} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? (this.slot?.bad ? '<span class="solved no">not a solution</span>' : '<span class="solved">solved</span>') : ''}`;
       li.querySelector('.dom')!.addEventListener('click', () => this.cycleDomain(v));
       if (conds.length) li.title = conds.join(', ');
       vars.append(li);
@@ -337,11 +400,12 @@ export class App {
     conds.replaceChildren();
     for (const c of this.step?.conditions ?? []) {
       const li = document.createElement('li');
-      li.textContent = c;
+      li.innerHTML = mathHtml(c);
+      li.classList.toggle('prose', /[a-z]{3,} [a-z]{2,}/.test(c));
       conds.append(li);
     }
     $('conds-empty').hidden = (this.step?.conditions.length ?? 0) > 0;
-    $('step-count').textContent = this.mode === 'write' ? 'Writing' : this.at === 0 ? 'Start' : `Step ${this.at}`;
+    $('step-count').textContent = this.mode === 'write' ? 'Writing…' : this.at === 0 ? 'At the start' : `${this.at} step${this.at > 1 ? 's' : ''} in`;
     $('redo-count').textContent = this.at < this.steps.length - 1 ? `${this.steps.length - 1 - this.at} ahead, r to redo` : '';
   }
 
@@ -356,7 +420,14 @@ export class App {
       return;
     }
     if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
-    if (this.mode === 'hub') { host.innerHTML = `<span class="aside">Holding <kbd>${this.hub?.calc ? 'C' : 'Tab'}</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>`; return; }
+    if (this.mode === 'hub') {
+      const h = this.hub;
+      host.innerHTML = h?.awaitVar ? '<span class="aside">Solve for which letter? Press it, or <kbd>Esc</kbd>.</span>'
+        : h?.calc ? '<span class="aside">Calculus: <kbd>←</kbd><kbd>→</kbd> sections, <kbd>↓</kbd> into one, or press a key to use it now.</span>'
+        : h?.sticky ? '<span class="aside">Algebra: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and <kbd>Tab</kbd> to apply. <kbd>Esc</kbd> closes.</span>'
+        : '<span class="aside">Holding <kbd>Tab</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>';
+      return;
+    }
     if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`; return; }
     if (this.mode === 'fnask') { host.innerHTML = `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`; return; }
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
@@ -399,8 +470,9 @@ export class App {
 
   commit(src: string, quiet = false) {
     let eq: Eq;
-    try { eq = this.preview && !quiet ? this.preview : parseEquation(src, true); }
-    catch (e) { this.refuse((e as Error).message); return; }
+    // the preview, when it is what you typed (brackets closed); otherwise the text itself, so nothing typed is lost
+    try { eq = this.preview && !quiet && livePreview(src)?.whole ? this.preview : parseEquation(src, true); }
+    catch (e) { this.refuse(this.preview && symbols(this.preview).includes('□') ? 'Fill in the □ first: it marks what is still missing.' : (e as Error).message); return; }
     if (isIdentity(eq)) eq = { ...eq, rel: '≟' };
     this.preview = null;
     this.message = null;
@@ -420,7 +492,8 @@ export class App {
     if (quiet) this.say('Space aims. m moves it across. = − . / do anything to both sides. Hold Tab for algebra, f for functions, e solves. ? shows every key.');
     else if (rel === '≟') this.say('Both sides agree for every value: an identity. Prove it by rewriting one side at a time until they match.');
     else if (rel === 'def' && eq.lhs.k === 'call') this.say(`Defined ${eq.lhs.name}. Use ${eq.lhs.name}(…) in other equations; hold Tab + u to unfold it, Tab + b for its inverse.`);
-    else if (rel === 'expr') this.say('An expression: rewrite it with s, d, e and f. Add “= …” to make it an equation.');
+    else if (rel === 'expr' && hasCalc(eq)) this.say('Hold C for the next rule (its name shows on the key), or press e to work it all out.');
+    else if (rel === 'expr') this.say('An expression: rewrite it with s, d, e and f, or hold C for calculus. Add “= …” to make it an equation.');
     else if (this.slots.length > 1) this.say(`Equation ${this.cur + 1}. Press 1–${this.slots.length} to switch between them.`);
   }
 
@@ -435,13 +508,17 @@ export class App {
     this.grouped = null;
     const before = this.eq;
     const wasSolved = solvedFor(before);
-    const { answer } = sheet.addStep(this, r);
+    const link = this.linkNext, out = { again: false };
+    this.linkNext = null;
+    const { answer } = sheet.addStep(this, r, { link, out });
     this.sel = r.select !== undefined ? (r.select && find(r.eq, r.select) ? r.select : null) : this.sel && find(r.eq, this.sel) ? this.sel : null;
     sound.move(pitch);
-    this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
-    if (!opts.quietLabel) this.bubble(r.label, false, r.focus ?? this.sel);
+    // judged first, so a wrong answer is drawn as one
     const now = solvedFor(r.eq);
     const bad = now ? this.judge(this.cur) : null;
+    this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
+    if (!opts.quietLabel) this.bubble(r.label, false, r.focus ?? this.sel);
+    if (out.again && !r.auto) this.say('Same as a step you already took, so you are back on it (the tree keeps one of each).');
     if (relOf(r.eq) === '≟' && isProved(r.eq)) { setTimeout(() => sound.solved(), 140); this.say('Both sides match. Proved ∎'); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); this.save(); return true; }
     if (answer) this.say(answer);
     if (bad) { this.say(bad, true); this.renderRail(); }
@@ -481,25 +558,34 @@ export class App {
   }
 
   undo() {
+    const from = this.at;
     if (!sheet.undo(this)) { this.refuse('Nothing to undo. This is the original.'); return; }
-    this.afterJump();
+    this.afterJump(this.played(this.at + 1, from, true));
   }
 
   redo() {
+    const from = this.at;
     if (!sheet.redo(this)) { this.refuse('Nothing to redo.'); return; }
-    this.afterJump();
+    this.afterJump(this.played(from + 1, this.at, false));
   }
 
-  jump(i: number) {
-    if (i === this.at) return;
-    this.at = i;
-    this.afterJump();
+  /** the moves of steps a..b played again (redo), or backwards (undo): what merged comes back
+   *  out of what swallowed it, and what was copied in goes back where it came from */
+  played(a: number, b: number, back: boolean): Transition {
+    const tr: Transition = { quick: true, absorbs: new Map(), flights: [], emerge: new Map() };
+    for (let i = a; i <= b; i++) {
+      const fx = this.steps[i]?.fx;
+      if (!fx) continue;
+      for (const [x, y] of fx.absorbs) { if (back) tr.emerge!.set(x, y); else tr.absorbs!.set(x, y); }
+      for (const f of fx.flights) { if (back) tr.absorbs!.set(f.to, f.from); else tr.flights!.push(f); }
+    }
+    return tr;
   }
 
-  afterJump() {
+  afterJump(tr: Transition = { quick: true }) {
     if (this.sel && !find(this.eq, this.sel)) this.sel = null;
     sound.undo();
-    this.renderAll({ quick: true }, true);
+    this.renderAll(tr, true);
     this.save();
   }
 
@@ -558,7 +644,8 @@ export class App {
       if (!isErr(r)) return this.apply(r, 1.2);
     }
     if (this.spot) return this.apply(this.spot.move, 1.2);
-    this.refuse('Already as simple as it gets.');
+    const other = formsFor(this.eq, this.sel).length;
+    this.refuse(other ? 'Nothing left to simplify. Other forms (factored, divided out…) are under Tab.' : 'Already as simple as it gets.');
   }
 
   /* ---------------- the system of equations ---------------- */
@@ -568,10 +655,12 @@ export class App {
     if (i === this.cur) return;
     if (this.mode === 'write') this.cancelEdit();
     const host = $('stage').getBoundingClientRect();
-    const from = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${i}"] .mini`)?.getBoundingClientRect();
+    const from = this.tree.elOf(i, visibleAt(this.slots[i]))?.querySelector<HTMLElement>('.mini')?.getBoundingClientRect();
     const eqBox = this.stage.box('eq');
     const old = this.cur;
     this.cur = i;
+    // a message about the equation you left ("Equation 2. …") doesn't hold for this one
+    this.message = null;
     sound.tick(1);
     this.stage.clear();
     this.renderAll(null);
@@ -580,13 +669,14 @@ export class App {
       // every glyph starts where it sat in the small card and grows into place
       const k = from.width / to.w;
       $('stage').querySelectorAll<HTMLElement>('.g').forEach(el => {
-        const gx = el.offsetLeft, gy = el.offsetTop;
+        // (an svg glyph, like ∫ or a bracket, has no offsetLeft)
+        const r = el.getBoundingClientRect(), gx = r.left - host.left, gy = r.top - host.top;
         const sx = from.left - host.left + (gx - to.x) * k, sy = from.top - host.top + (gy - to.y) * k;
         el.animate([{ transform: `translate(${sx - gx}px, ${sy - gy}px) scale(${k})`, opacity: 0.6 }, { transform: 'none', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });
       });
     } else this.entrance();
-    // and the equation you left shrinks into its card
-    const card = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${old}"] .mini`);
+    // and the equation you left shrinks into its step in the tree
+    const card = this.slots[old] ? this.tree.elOf(old, visibleAt(this.slots[old]))?.querySelector<HTMLElement>('.mini') : null;
     if (card && eqBox) {
       const c = card.getBoundingClientRect(), k = eqBox.w / c.width;
       card.animate([{ transform: `translate(${host.left + eqBox.x - c.left}px, ${host.top + eqBox.y - c.top}px) scale(${k})`, transformOrigin: '0 0', opacity: 0.3 }, { transform: 'none', transformOrigin: '0 0', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });
@@ -690,7 +780,7 @@ export class App {
     // calculus to work out, or a u to put back
     if (hasCalc(this.eq) || Object.keys(this.substitutions()).some(u => symbols(this.eq).includes(u))) return this.finishCalculus();
     if (relOf(this.eq) === '=' && (isVector(this.eq.lhs) || isVector(this.eq.rhs))) return this.splitComponents();
-    if (odeKind(this.eq)) return this.solveOde();
+    if (odeKind(asPrime(this.eq), slopeVar(this.eq)) || hasDifferentials(this.eq)) return this.solveOde();
     if (relOf(this.eq) === 'expr') {
       // nothing to solve in a lone expression: e tidies it as far as it goes instead
       const f = formsFor(this.eq, null).find(x => x.name === 'simplified' || x.name === 'expanded');
@@ -701,7 +791,12 @@ export class App {
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     const v = aimed?.k === 'sym' && vars.includes(aimed.name) ? aimed.name : vars.length === 1 ? vars[0] : null;
     if (v) return this.solveFor(v);
-    if (!vars.length) return this.refuse('No variable to solve for.');
+    if (!vars.length) {
+      // 2 = 3 has nothing to solve, but it can still be judged
+      const a = evaluate(this.eq.lhs, {}), b = evaluate(this.eq.rhs, {}), r = relOf(this.eq), d = a - b, tol = 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+      const holds = r === '=' ? Math.abs(d) < tol : r === '<' ? d < -tol : r === '>' ? d > tol : r === '≤' ? d < tol : r === '≥' ? d > -tol : null;
+      return this.refuse(holds === null || !isFinite(d) ? 'No letter to solve for.' : `No letter to solve for, and ${toText(this.eq)} is ${holds ? 'true' : 'false'}.`);
+    }
     this.openHub(true);
     this.askVar();
   }
@@ -863,7 +958,11 @@ export class App {
     const got = livePreview(src);
     $('stage').classList.toggle('preview', !!got && got.partial);
     const kind = got ? ({ '=': 'equation', 'expr': 'expression', 'def': 'function', '≟': 'proof' } as Record<string, string>)[relOf(got.eq)] ?? 'inequality' : '';
-    $('input-state').innerHTML = !got ? '' : got.partial ? '<span class="wip">keep going…</span>' : `<span class="ok">✓ ${kind}</span><kbd>Enter</kbd>`;
+    // ≠, floor, a second inequality: more typing won't fix these, so say so now, not after a pause
+    let sure = '';
+    if (!got || got.partial) try { parseEquation(src, true); } catch (e) { if (e instanceof ParseError && e.sure) sure = e.message; }
+    err.textContent = sure;
+    $('input-state').innerHTML = !got || sure ? '' : got.partial ? '<span class="wip">keep going…</span>' : `<span class="ok">✓ ${kind}</span><kbd>Enter</kbd>`;
     if (!got) {
       // nothing readable yet: keep what was there, explain only if you stop typing
       if (src.trim()) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 900);
@@ -871,7 +970,8 @@ export class App {
     }
     this.preview = got.eq;
     this.renderMain(null);
-    this.graph.draw(this.preview, false);
+    // a □ still to fill isn't a variable: keep the last graph until it is
+    if (!symbols(got.eq).includes('□')) this.graph.draw(this.preview, false);
     this.renderRail();
     if (got.partial) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 1400);
   }

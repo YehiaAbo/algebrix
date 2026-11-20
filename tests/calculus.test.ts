@@ -9,6 +9,10 @@ const val = (src: string, env: Record<string, number> = {}) => evaluate(parseExp
 
 describe('typing calculus', () => {
   it.each([
+    ['lim x->0+ 1/x', 'lim_{x->0+} 1/x'],
+    ['lim x->0- 1/x', 'lim_{x->0-} 1/x'],
+    ['lim x->0 + 1/x', 'lim_{x->0} 1/x'],
+    ['x - 1 = 2', 'x - 1 = 2'],
     ['d/dx(x^2)', 'd/dx(x^2)'],
     ['d/dx x^3 sin x', 'd/dx(x^3 sin(x))'],
     ['\\frac{d}{dx}(x^2+1)', 'd/dx(x^2 + 1)'],
@@ -18,7 +22,7 @@ describe('typing calculus', () => {
     ['lim_{x->0+} ln(x)', 'lim_{x->0+} ln(x)'],
     ['\\lim_{x \\to \\infty} (1 + 1/x)^x', 'lim_{x->∞} (1 + 1/x)^x'],
     ["y' = 2x", 'y′ = 2x'],
-    ['dy/dx = 3', 'y′ = 3'],
+    ['dy/dx = 3', 'dy/dx = 3'],
   ])('%s', (src, text) => expect(toText(parseEquation(src, true), true).replace(' = 0', '')).toBe(text));
 
   it('a limit binds its variable; y′ is a variable of its own', () => {
@@ -110,7 +114,7 @@ describe('limits by steps', () => {
   it('0/0 says what to do', () => expect(txt(plugIn(ex('lim x->2 (x^2 - 4)/(x - 2)'), null))).toMatch(/0\/0/));
   it("L'Hôpital on 0/0, then plug in", () => {
     const r = lhopital(ex('lim x->0 sin(x)/x'), null);
-    expect(txt(r)).toBe('lim_{x→0} cos(x)/1');
+    expect(txt(r)).toBe('lim_{x→0} cos(x)');
   });
   it("L'Hôpital refuses when it isn't 0/0 or ∞/∞", () => expect(txt(lhopital(ex('lim x->1 (x + 1)/x'), null))).toMatch(/plug in/));
   it('e finishes a limit', () => {

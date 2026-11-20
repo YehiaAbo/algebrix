@@ -6,6 +6,7 @@ import { sound } from './sound';
 import { ms } from './prefs';
 import { works } from './works';
 import { Slot, $ } from './shared';
+import { linesOf } from './tree';
 import type { App } from './app';
 
 /** start over with one equation (the tour uses this) */
@@ -40,7 +41,7 @@ export function load(this: App, id: string): boolean {
     const w = works.get<Slot>(id);
     if (!w || !w.slots.length) return false;
     const slots = JSON.parse(JSON.stringify(w.slots)) as Slot[];
-    slots.forEach(sl => { sl.steps.forEach(st => bumpIds(st.eq)); sl.at = Math.min(sl.at, sl.steps.length - 1); sl.sel = null; });
+    slots.forEach(sl => { linesOf(sl).forEach(l => l.forEach(st => bumpIds(st.eq))); sl.at = Math.min(sl.at, sl.steps.length - 1); sl.sel = null; });
     this.workId = id;
     works.setCurrent(id);
     this.domains = { ...w.domains };

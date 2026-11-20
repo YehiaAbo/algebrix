@@ -1,26 +1,36 @@
-// Plastic building bricks: every move snaps into place with a two-part click
-// (the studs meeting, then seating), undo pops a brick off, solving rattles a few.
+// Toy bricks: every move presses a brick on, undo pulls one off, a move that won't go is
+// studs on studs, and solving is a hand through the box. The sounds are synthesized in
+// ./bricks.ts; here they are chosen, varied and paced. Real bricks never click the same way
+// twice, so each sound has several variants played in turn, never the same one twice running.
 import { SoundPack } from '../types';
+import { snap, press, unsnap, misfit, tap, studs, rummage } from './bricks';
 
-/** one brick snapping: a bright plastic tick, then a hollow body knock a moment later */
-const snap = (tone: (f: number, d: number, v: number, t?: OscillatorType, g?: number, dl?: number) => void,
-  noise: (d: number, v: number, f: number, q?: number, dl?: number) => void, pitch = 1, delay = 0) => {
-  noise(0.008, 0.32, 4200 * pitch, 3.5, delay);
-  noise(0.018, 0.22, 1500 * pitch, 2.2, delay + 0.022);
-  tone(520 * pitch, 0.035, 0.06, 'triangle', 0.8, delay + 0.022);
-};
+const VARIANTS = 6;
 
 export const blocks: SoundPack = {
   id: 'blocks',
-  name: 'Blocks',
-  blurb: 'Plastic bricks snapping together.',
-  make: ({ tone, noise }) => ({
-    tick: depth => noise(0.006, 0.12, 3600 + depth * 260, 4),
-    labels: () => { noise(0.006, 0.1, 3000, 4); noise(0.006, 0.1, 3600, 4, 0.03); noise(0.006, 0.1, 4200, 4, 0.06); },
-    move: pitch => snap(tone, noise, pitch),
-    refuse: () => { noise(0.012, 0.25, 900, 3); noise(0.012, 0.22, 800, 3, 0.07); tone(140, 0.05, 0.06, 'square', 0.9, 0.07); },
-    undo: () => { noise(0.016, 0.22, 1300, 2.5); noise(0.008, 0.18, 3800, 4, 0.03); },
-    commit: () => { snap(tone, noise, 0.9); snap(tone, noise, 1.1, 0.07); },
-    solved: () => { [0, 0.06, 0.12, 0.18].forEach((d, i) => snap(tone, noise, 0.9 + i * 0.12, d)); tone(784, 0.18, 0.035, 'triangle', 1, 0.24); },
-  }),
+  name: 'Bricks',
+  blurb: 'Toy bricks: pressed on, pulled off, a hand in the box.',
+  make: ({ sample, prepare }) => {
+    // every variant is rendered ahead in idle moments, so no first press stalls an animation
+    for (let k = 0; k < VARIANTS; k++) {
+      prepare(`snap:${k}`, snap(k + 1)); prepare(`unsnap:${k}`, unsnap(k + 1)); prepare(`misfit:${k}`, misfit(k + 1));
+      prepare(`press:${k}`, press(k + 1, 1.25)); prepare(`studs:${k}`, studs(k + 1)); prepare(`rummage:${k}`, rummage(k + 1));
+      for (let d = 0; d <= 8; d++) prepare(`tap:${d}:${k}`, tap(k + 1, d));
+    }
+    const turn: Record<string, number> = {};
+    // the next variant of a sound, skipping the one just played
+    const next = (name: string) => { const k = ((turn[name] ?? -1) + 1 + Math.floor(Math.random() * (VARIANTS - 1))) % VARIANTS; turn[name] = k; return k; };
+    const wobble = () => 0.97 + Math.random() * 0.06;
+    return {
+      tick: depth => { const d = Math.min(depth, 8), k = next('tap' + d); sample(`tap:${d}:${k}`, tap(k + 1, d), 0.5, wobble()); },
+      labels: () => { const k = next('studs'); sample(`studs:${k}`, studs(k + 1), 0.6); },
+      // a bigger change is a bigger brick: pitch below 1 is lower and heavier
+      move: pitch => { const k = next('snap'); sample(`snap:${k}`, snap(k + 1), 0.95, pitch * wobble()); },
+      refuse: () => { const k = next('misfit'); sample(`misfit:${k}`, misfit(k + 1), 0.8, wobble()); },
+      undo: () => { const k = next('unsnap'); sample(`unsnap:${k}`, unsnap(k + 1), 0.85, wobble()); },
+      commit: () => { const k = next('press'); sample(`press:${k}`, press(k + 1, 1.25), 1, wobble()); },
+      solved: () => { const k = next('rummage'); sample(`rummage:${k}`, rummage(k + 1), 0.9); },
+    };
+  },
 };

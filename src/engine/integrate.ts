@@ -2,14 +2,17 @@
 // the bounds of a definite integral, and series (geometric sums, Taylor polynomials, the ratio
 // test). Checked like everything else: a definite integral by its value, an indefinite one by
 // its slope (calculus.ts and verify in moves.ts).
-import { Node, Eq, Int, At, Sum, num, sym, add, mul, neg, frac, pow, fn, int, at, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env, children, withChildren } from './ast';
+import { Node, Eq, Int, At, Sum, num, sym, add, mul, neg, frac, pow, fn, int, at, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env, children, withChildren, sqrt as sqrtN } from './ast';
 import { toText } from './print';
 import { dependsOn, derivative, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
 import { newHints, simplify } from './simplify';
 import { times, plus, prettyDerivative } from './calcmoves';
+import { partialFractions, longDivide } from './polytools';
 
 const one = () => 1;
+/** a letter raised, for labels: eˣ, eʸ, eᵗ */
+const SUP: Record<string, string> = { x: 'ˣ', y: 'ʸ', t: 'ᵗ', u: 'ᵘ', s: 'ˢ', w: 'ʷ', z: 'ᶻ' };
 const fresh = cloneFresh;
 const isNum = (n: Node, v?: number) => n.k === 'num' && (v === undefined || n.v === v);
 const tidy = (n: Node) => simplify(n, newHints());
@@ -25,7 +28,7 @@ export function ratNode(x: number): Node | null {
   return null;
 }
 
-const powOf = (b: Node, e: Node): Node => (isNum(e, 1) ? b : isNum(e, 0) ? num(1) : pow(b, e));
+const powOf = (b: Node, e: Node): Node => (isNum(e, 1) ? b : isNum(e, 0) ? num(1) : e.k === 'frac' && isNum(e.num, 1) && isNum(e.den, 2) ? sqrtN(b) : pow(b, e));
 
 /** u = a·v + b with a a plain number: a, else null */
 function slope(u: Node, v: string): number | null {
@@ -37,12 +40,33 @@ function slope(u: Node, v: string): number | null {
 }
 
 /** F/a for the reverse chain rule on a linear inside */
-const over = (F: Node, a: number): Node => (a === 1 ? F : a === -1 ? times(num(-1), F) : Number.isInteger(1 / a) ? times(num(1 / a), F) : frac(F, ratNode(a) ?? num(a)));
+// F/a, written the way you would: −e^(−2x)/2, not e^(−2x)/(−2); 3^(2x)/(2 ln 3), not a fraction over 2
+const over = (F: Node, a: number): Node => (a === 1 ? F : a < 0 ? times(num(-1), over(F, -a)) : Number.isInteger(1 / a) ? times(num(1 / a), F)
+  : F.k === 'frac' && Number.isInteger(a) ? frac(F.num, times(num(a), F.den)) : frac(F, ratNode(a) ?? num(a)));
 
 const exponent = (n: Node): number | null => {
   const x = n.k === 'num' ? n.v : n.k === 'frac' && n.num.k === 'num' && n.den.k === 'num' ? n.num.v / n.den.v : n.k === 'neg' && n.arg.k === 'num' ? -n.arg.v : null;
   return x;
 };
+
+/** k ± m x² (s = +1 or −1 for the sign of x²), in any order: k and m when it is, else null */
+function quadK(n: Node, v: string, s: 1 | -1): { k: number; m: number } | null {
+  const at = (x: number) => evaluate(n, { [v]: x });
+  const k = at(0), m = s * (at(1) - k);
+  if (!(k > 0) || !(m > 0) || !Number.isFinite(k) || !Number.isFinite(m)) return null;
+  for (const x of [0.5, 1.3, -2.1]) if (Math.abs(at(x) - (k + s * m * x * x)) > 1e-9 * (1 + Math.abs(k))) return null;
+  return { k, m };
+}
+/** √q as an exact node: 2, 1/2, √3, √2/2 */
+const rootOf = (q: number): Node => tidy(sqrtN(ratNode(q) ?? num(q)));
+/** ∫ 1/(k + m x²) = tan⁻¹(x√(m/k))/√(km), ∫ 1/√(k − m x²) = sin⁻¹(x√(m/k))/√m */
+function arcRule(kind: 'atan' | 'asin', k: number, m: number, V: () => Node, v: string): { F: Node; label: string } {
+  const inner = m === k ? V() : times(rootOf(m / k), V());
+  const outer = kind === 'atan' ? k * m : m;
+  const F = outer === 1 ? fn(kind, inner) : frac(fn(kind, inner), rootOf(outer));
+  const shown = (c: number) => (Number.isInteger(c) ? String(c) : toText(ratNode(c) ?? num(c)));
+  return { F: tidy(F), label: kind === 'atan' ? `∫ 1/(${shown(k)} + ${m === 1 ? '' : shown(m)}${v}²) = tan⁻¹` : `∫ 1/√(${shown(k)} − ${m === 1 ? '' : shown(m)}${v}²) = sin⁻¹` };
+}
 
 /** the antiderivatives you'd just write down: xⁿ, 1/x, eˣ, sin, cos, sec², 1/(1+x²)…, with a
  *  linear inside (reverse chain), constant multiples and sums of them */
@@ -65,21 +89,40 @@ function quick(u: Node, v: string): { F: Node; label: string } | null {
   const powerOf = (base: Node, n: number) => {
     const a = slope(base, v);
     if (a === null) return null;
-    if (n === -1) return { F: over(fn('ln', fn('abs', fresh(base))), a), label: '∫ 1/x = ln|x|' };
+    if (n === -1) { const u = base.k === 'sym' ? base.name : 'u'; return { F: over(fn('ln', fn('abs', fresh(base))), a), label: `∫ 1/${u} = ln|${u}|` }; }
+    // a negative whole power comes out as a fraction, the way you'd write it: ∫ y^(−2) = −1/y
+    if (Number.isInteger(n) && n < -1) { const m = -(n + 1); return { F: over(times(num(-1), frac(num(1), m === 1 ? fresh(base) : times(num(m), pow(fresh(base), num(m))))), a), label: 'power rule' }; }
     const k = ratNode(n + 1)!;
     return { F: over(times(ratNode(1 / (n + 1)) ?? frac(num(1), k), powOf(fresh(base), k)), a), label: 'power rule' };
   };
+  // sin² and cos² by the half-angle identities: sin² L = (1 − cos 2L)/2
+  if (u.k === 'pow' && isNum(u.exp, 2) && u.base.k === 'fn' && (u.base.name === 'sin' || u.base.name === 'cos')) {
+    const L = u.base.arg, a = slope(L, v);
+    if (a === null) return null;
+    const half = frac(fresh(L), num(2));
+    const wave = over(frac(fn('sin', times(num(2), fresh(L))), num(4)), a);
+    return { F: u.base.name === 'sin' ? plus(over(half, a), times(num(-1), wave)) : plus(over(half, a), wave), label: `half-angle: ${u.base.name}² = (1 ${u.base.name === 'sin' ? '−' : '+'} cos 2θ)/2` };
+  }
   if (u.k === 'pow' && !dependsOn(u.exp, v)) { const n = exponent(u.exp); if (n !== null) return powerOf(u.base, n); }
   if (u.k === 'sqrt') return powerOf(u.arg, 0.5);
   if (u.k === 'frac' && !dependsOn(u.num, v)) {
+    // a constant below comes out first: 1/(2u) is ½ · 1/u, so ½ ln|u| and not ln|2u|/2
+    if (u.den.k === 'mul') {
+      const cs = u.den.factors.filter(f => !dependsOn(f, v)), vs = u.den.factors.filter(f => dependsOn(f, v));
+      if (cs.length && vs.length) {
+        const q = quick(frac(fresh(u.num), vs.length === 1 ? fresh(vs[0]) : mul(vs.map(fresh))), v);
+        return q && { F: frac(q.F, cs.length === 1 ? fresh(cs[0]) : mul(cs.map(fresh))), label: q.label };
+      }
+    }
     const c = isNum(u.num, 1) ? [] : [fresh(u.num)];
     const d = u.den;
     let q: { F: Node; label: string } | null = null;
-    if (d.k === 'pow' && !dependsOn(d.exp, v)) { const n = exponent(d.exp); if (n !== null) q = powerOf(d.base, -n); }
-    else if (d.k === 'sqrt' && key(d.arg) === key(add([num(1), neg(pow(V(), num(2)))]))) q = { F: fn('asin', V()), label: '∫ 1/√(1 − x²) = sin⁻¹ x' };
+    if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'cos' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(fn('tan', fresh(d.base.arg)), a), label: '∫ sec² = tan' }; }
+    else if (d.k === 'pow' && !dependsOn(d.exp, v)) { const n = exponent(d.exp); if (n !== null) q = powerOf(d.base, -n); }
+    // k − x² under a root, k + x² below, in any order: sin⁻¹ and tan⁻¹ (scaled when k isn't 1)
+    else if (d.k === 'sqrt' && quadK(d.arg, v, -1)) { const { k, m } = quadK(d.arg, v, -1)!; q = arcRule('asin', k, m, V, v); }
     else if (d.k === 'sqrt') q = powerOf(d.arg, -0.5);
-    else if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'cos' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(fn('tan', fresh(d.base.arg)), a), label: '∫ sec² = tan' }; }
-    else if (key(d) === key(add([num(1), pow(V(), num(2))]))) q = { F: fn('atan', V()), label: '∫ 1/(1 + x²) = tan⁻¹ x' };
+    else if (quadK(d, v, 1)) { const { k, m } = quadK(d, v, 1)!; q = arcRule('atan', k, m, V, v); }
     else q = powerOf(d, -1);
     return q && { F: times(...c, q.F), label: q.label };
   }
@@ -87,12 +130,18 @@ function quick(u: Node, v: string): { F: Node; label: string } | null {
     const a = slope(u.exp, v);
     if (a === null) return null;
     const isE = u.base.k === 'sym' && u.base.name === 'e';
-    return { F: over(isE ? fresh(u) : frac(fresh(u), fn('ln', fresh(u.base))), a), label: isE ? '∫ eˣ = eˣ' : '∫ aˣ = aˣ/ln a' };
+    return { F: over(isE ? fresh(u) : frac(fresh(u), fn('ln', fresh(u.base))), a), label: isE ? `∫ e${SUP[v] ?? '^' + v} = e${SUP[v] ?? '^' + v}` : `∫ a${SUP[v] ?? '^' + v} = a${SUP[v] ?? '^' + v}/ln a` };
   }
   if (u.k === 'fn' && (u.name === 'sin' || u.name === 'cos')) {
     const a = slope(u.arg, v);
     if (a === null) return null;
     return u.name === 'sin' ? { F: over(times(num(-1), fn('cos', fresh(u.arg))), a), label: '∫ sin = −cos' } : { F: over(fn('sin', fresh(u.arg)), a), label: '∫ cos = sin' };
+  }
+  // tan = sin/cos, and the top is minus the bottom's slope
+  if (u.k === 'fn' && u.name === 'tan') {
+    const a = slope(u.arg, v);
+    if (a === null) return null;
+    return { F: over(times(num(-1), fn('ln', fn('abs', fn('cos', fresh(u.arg))))), a), label: '∫ tan = −ln|cos|' };
   }
   return null;
 }
@@ -110,11 +159,20 @@ function target<K extends 'int' | 'at' | 'sum'>(e: Eq, sel: string | null, k: K)
   return (t as Extract<Node, { k: K }>) ?? null;
 }
 
+/** a fraction of polynomials made integrable: partial fractions, or long division first */
+function rational(u: Node): { p: Node; label: string } | null {
+  const pf = partialFractions(u);
+  if (pf && key(pf) !== key(u)) return { p: pf, label: 'partial fractions' };
+  const ld = longDivide(u);
+  return ld && key(ld) !== key(u) ? { p: ld, label: 'long division' } : null;
+}
+
 /** C + i: one integration rule on one integral */
 export function intStep(e: Eq, sel: string | null): MoveResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
   if (holdsCalc(T)) return { error: 'Work out what is inside the integral first.' };
+  if (!(T.lo && T.hi) && findPath(e, T.id)?.some(n => n !== T && n.k === 'int' && n.lo && n.hi)) return { error: 'The inside integral has no bounds, so its + C would end up inside the outer one. Give it bounds too.' };
   const v = T.v, def = !!(T.lo && T.hi);
   const wrap = (F: Node): Node => (def ? at(v, F, fresh(T.lo!), fresh(T.hi!)) : F);
   const piece = (w: Node): Node => { const q = quick(w, v); return q ? wrap(q.F) : int(v, fresh(w), T.lo && fresh(T.lo), T.hi && fresh(T.hi)); };
@@ -129,6 +187,21 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
     next = times(...consts.map(fresh), piece(vars.length === 1 ? vars[0] : mul(vars)));
     label = 'constant multiple';
   } else if (u.k === 'frac' && !dependsOn(u.den, v)) { next = frac(piece(u.num), fresh(u.den)); label = 'constant multiple'; }
+  else if (key(tidy(u)) !== key(u) && quick(tidy(u), v)) {
+    // (1/cos x)²: tidied, it is a rule (1/cos² x)
+    return checked(e, { eq: replace(e, T.arg.id, tidy(u)), label: 'simplify the inside', hints: newHints(), factor: one, select: null, rule: 'simplify' });
+  }
+  else if (u.k === 'frac' && rational(u)) {
+    // a fraction of polynomials: divide out and split into simple fractions first, then each is a rule
+    const { p, label } = rational(u)!;
+    return checked(e, { eq: replace(e, T.id, int(v, p, T.lo && fresh(T.lo), T.hi && fresh(T.hi))), label, hints: newHints(), factor: one, select: null, rule: label });
+  }
+  else if (u.k === 'frac' && u.den.k === 'pow' && !dependsOn(u.den.base, v) && dependsOn(u.den.exp, v)) {
+    // 1/eˣ is e⁻ˣ, x/2ˣ is x·2⁻ˣ: up on top, it is a rule (or by parts)
+    const up = pow(fresh(u.den.base), neg(fresh(u.den.exp)));
+    const top = u.num.k === 'num' && u.num.v === 1 ? up : mul([fresh(u.num), up]);
+    return checked(e, { eq: replace(e, T.arg.id, top), label: '1/aᵘ = a⁻ᵘ', hints: newHints(), factor: one, select: null, rule: 'simplify' });
+  }
   else return { error: 'No rule fits as it stands. Try u-substitution (C + u), by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions).' };
   return finish(e, T, next, label);
 }
@@ -274,6 +347,7 @@ function ratio(a: Node, n: string): Node | null {
 export function geometric(e: Eq, sel: string | null): MoveResult {
   const S = target(e, sel, 'sum') as Sum | null;
   if (!S) return { error: 'No sum here.' };
+  if (S.prod) return { error: 'That is a product, not a sum.' };
   const env: Env = {};
   symbols(S).forEach((s, i) => (env[s] = 0.3 + 0.1 * i));
   if (evaluate(S.hi, env) !== Infinity) return { error: 'The geometric series formula is for a sum to ∞.' };
@@ -290,10 +364,54 @@ export function geometric(e: Eq, sel: string | null): MoveResult {
   });
 }
 
+/** Σ c/nᵖ from n = 1 to ∞: π²/6 and π⁴/90 by name; else whether it converges (p > 1) or not */
+export function pSeries(e: Eq, sel: string | null): MoveResult {
+  const S = target(e, sel, 'sum') as Sum | null;
+  if (!S || S.prod) return { error: 'No sum here.' };
+  if (evaluate(S.hi, {}) !== Infinity || !isNum(S.lo, 1)) return { error: 'A p-series runs from 1 to ∞.' };
+  // c/nᵖ: the term at n and 2n differ by 2ᵖ whatever n is
+  const at = (n: number) => evaluate(S.arg, { [S.v]: n });
+  const p = Math.log2(at(3) / at(6)), c = at(1);
+  if (!Number.isFinite(p) || !Number.isFinite(c) || c === 0 || symbols(S.arg).some(w => w !== S.v)) return { error: 'Not a p-series.' };
+  for (const n of [2, 5, 7]) if (Math.abs(at(n) - c / n ** p) > 1e-9 * Math.abs(c)) return { error: 'Not a p-series.' };
+  const P = Math.round(p * 1e9) / 1e9, pt = ratNode(P) ? toText(ratNode(P)!) : String(+P.toPrecision(4));
+  if (P <= 1) return { error: `A p-series with p = ${pt} ≤ 1${P === 1 ? ' (the harmonic series)' : ''}: it diverges.` };
+  const known: Record<number, Node> = { 2: frac(pow(sym('π'), num(2)), num(6)), 4: frac(pow(sym('π'), num(4)), num(90)) };
+  if (!known[P]) return { error: `A p-series with p = ${pt} > 1, so it converges (to about ${+(c * zeta(P)).toPrecision(6)}), but has no simple closed form.` };
+  const next = tidy(times(ratNode(c) ?? num(c), known[P]));
+  return checked(e, { eq: replace(e, S.id, next), label: `p-series, p = ${pt}: ${P === 2 ? 'Σ 1/n² = π²/6' : 'Σ 1/n⁴ = π⁴/90'}`, hints: newHints(), factor: one, select: null, rule: 'p-series' });
+}
+/** ζ(p) by summing, with the tail as an integral */
+function zeta(p: number) { let s = 0; const N = 2000; for (let n = 1; n < N; n++) s += n ** -p; return s + N ** (1 - p) / (p - 1) + 0.5 * N ** -p; }
+
+/** a Σ or ∏ with whole-number bounds and at most 12 terms: how many, or why not */
+export function finiteTerms(S: Sum): number[] | string {
+  const env: Env = {};
+  symbols(S).forEach((s, i) => (env[s] = 0.3 + 0.1 * i));
+  const lo = evaluate(S.lo, env), hi = evaluate(S.hi, env);
+  if (hi === Infinity) return 'It goes on forever, so it can’t be written out.';
+  if (!Number.isInteger(lo) || !Number.isInteger(hi)) return 'The bounds must be whole numbers to write it out.';
+  if (hi - lo > 11) return `That is ${hi - lo + 1} terms: too many to write out.`;
+  return Array.from({ length: Math.max(0, hi - lo + 1) }, (_, i) => lo + i);
+}
+
+/** C + x: a finite Σ or ∏ written out, term by term */
+export function writeOut(e: Eq, sel: string | null): MoveResult {
+  const S = target(e, sel, 'sum') as Sum | null;
+  if (!S) return { error: 'No sum or product here.' };
+  const ks = finiteTerms(S);
+  if (typeof ks === 'string') return { error: ks };
+  const terms = ks.map(k => cloneFresh(substitute(S.arg, S.v, num(k))));
+  const next = terms.length === 0 ? num(S.prod ? 1 : 0) : terms.length === 1 ? terms[0] : S.prod ? mul(terms) : add(terms);
+  const label = S.prod ? 'write out the product' : 'write out the sum';
+  return checked(e, { eq: replace(e, S.id, next), label, hints: newHints(), factor: one, select: null, rule: label });
+}
+
 /** C + r on a series: the ratio test, as a verdict for the bar */
 export function ratioTest(e: Eq, sel: string | null): string {
   const S = target(e, sel, 'sum') as Sum | null;
   if (!S) return 'No sum here.';
+  if (S.prod) return 'The ratio test is for sums.';
   const env: Env = {};
   symbols(S).forEach((s, i) => (env[s] = 0.5 + 0.1 * i));
   const a = (k: number) => Math.abs(evaluate(S.arg, { ...env, [S.v]: k }));

@@ -56,8 +56,25 @@ describe('isolate', () => {
     ['2^x = 8', 'x = 3'],
     ['sin(x) = 1/2', 'x = π/6'],
     ['x^(-1) = 2', 'x = 1/2'],
+    ['-2x = -4', 'x = 2'],
+    ['x^3 = 4x', 'x(x − 2)(x + 2) = 0'],
+    ['x^4 - 5x^2 + 4 = 0', '(x − 1)(x + 1)(x − 2)(x + 2) = 0'],
+    ['2x^3 = x^2', 'x^2(2x − 1) = 0'],
+    ['x^3 = 8', 'x = 2'],
   ])('%s ends at %s', (src, want) => expect(last(ok(isolate(parseEquation(src), 'x')))).toBe(want));
   it('stops when the variable cancels', () => expect(isErr(isolate(parseEquation('x - x + 1 = y'), 'x') as never)).toBe(true));
+  it('a cubic with no nice factors says where it crosses instead of going round', () => {
+    const r = isolate(parseEquation('x^3 = x + 1'), 'x') as { error: string };
+    expect(r.error).toMatch(/^x³ − x − 1 = 0 has no nice factors.*x ≈ 1\.325/);
+  });
+  it.each([
+    ['x^2 = -4', 'x² is never negative, so it can\'t be −4: no real x works.'],
+    ['sqrt(x) = -1', '√x is never negative, so it can\'t be −1: no real x works.'],
+    ['x^(1/2) = -3', 'x^(1/2) is never negative, so it can\'t be −3: no real x works.'],
+    ['|x - 1| = -2', '|x − 1| is never negative, so it can\'t be −2: no real x works.'],
+    ['e^x = 0', 'eˣ is always positive, so it can\'t be 0: no real x works.'],
+    ['2^x = -8', '2ˣ is always positive, so it can\'t be −8: no real x works.'],
+  ])('%s says why no x works, and never squares into a wrong answer', (src, why) => expect((isolate(parseEquation(src), 'x') as { error: string }).error).toBe(why));
   it('no real solutions', () => expect(isErr(isolate(parseEquation('x^2 + 1 = 0'), 'x') as never)).toBe(true));
 });
 

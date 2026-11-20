@@ -3,6 +3,7 @@
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
+  isDiff,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -32,6 +33,8 @@ export interface MoveOk {
   rule?: string;
   /** a final answer that isn't an equation, like x ∈ (−∞, 2) ∪ (3, ∞) */
   answer?: string;
+  /** text renamed in the conditions carried forward: 2C is called C from here on */
+  rename?: [string, string][];
 }
 
 /** ⇔: the new equation has exactly the same solutions. ⇒: every old solution survives but new ones may
@@ -91,7 +94,7 @@ export function moveAcross(e: Eq, sel: string | null): MoveResult {
   }
   const moved = moving.map(negate);
   const theirs = appendTerms(side(e, other(s)), moved);
-  const label = moving.length === 1 ? `move ${isNeg(moving[0]) ? '−' : '+'}${t(isNeg(moving[0]) ? negate(moving[0]) : moving[0])}` : 'move side';
+  const label = moving.length === 1 ? `move ${isNeg(moving[0]) ? '−' : ''}${t(isNeg(moving[0]) ? negate(moving[0]) : moving[0])} across` : 'move side';
   return {
     eq: withSides(e, s, mine, theirs), label, focus: moved.length === 1 ? moved[0].id : undefined,
     select: moved.length === 1 ? moved[0].id : null, hints: newHints(), factor: one,
@@ -115,7 +118,7 @@ export function divideBoth(e: Eq, sel: string | null): MoveResult {
   const theirs = o.k === 'frac' ? { ...o, den: o.den.k === 'mul' ? { ...o.den, factors: [...o.den.factors, divisor] } : mul([o.den, divisor]) } : frac(o, divisor);
   return {
     eq: withSides(e, s, mine, theirs), label: `÷ ${t(divisor)}`, focus: divisor.id, select: divisor.id,
-    conditions: hasSymbols(divisor) ? [`${t(divisor)} ≠ 0`] : [], hints: newHints(),
+    conditions: hasSymbols(divisor) && !neverZero(divisor) ? [`${t(divisor)} ≠ 0`] : [], hints: newHints(),
     factor: env => 1 / evaluate(divisor, env),
   };
 }
@@ -136,7 +139,7 @@ export function multiplyBoth(e: Eq, sel: string | null): MoveResult {
   const theirs = o.k === 'mul' ? { ...o, factors: [m, ...o.factors] } : mul([m, o]);
   return {
     eq: withSides(e, s, mine, theirs), label: `× ${t(m)}`, focus: m.id, select: m.id,
-    conditions: hasSymbols(m) ? [`${t(m)} ≠ 0`] : [], hints: newHints(),
+    conditions: hasSymbols(m) && !neverZero(m) ? [`${t(m)} ≠ 0`] : [], hints: newHints(),
     factor: env => evaluate(m, env),
   };
 }
@@ -218,7 +221,7 @@ export function applyBoth(e: Eq, text: string, others: Eq[] = []): MoveResult {
   const isZero = !hasSymbols(x) && Math.abs(evaluate(x, {})) < 1e-12;
   if ((op === '*' || op === '/') && isZero) return { error: op === '/' ? 'Dividing by 0 is undefined.' : 'Multiplying by 0 erases the equation.' };
   const c = cloneFresh(x); c.from = undefined;
-  const cond = hasSymbols(x) && (op === '*' || op === '/') ? [`${t(x)} ≠ 0`] : [];
+  const cond = hasSymbols(x) && !neverZero(x) && (op === '*' || op === '/') ? [`${t(x)} ≠ 0`] : [];
   let L: Node, R: Node, factor: (env: Env) => number = one;
   if (op === '+' || op === '-') {
     L = appendTerms(e.lhs, [op === '-' ? negate(x) : x]);
@@ -274,13 +277,24 @@ export function indefiniteVars(n: Node): string[] {
   return [...vs];
 }
 
+/** are the indefinite integrals in n one inside the next (∫ ∫ f dx dy), rather than side by side? */
+/** an indefinite integral inside another (∫ ∫ f dx dy, or ∫ (∫ f dx + ∫ g dx) dy once split) */
+function stacked(n: Node): boolean {
+  let found = false;
+  walk(n, m => { if (m.k === 'int' && !(m.lo && m.hi)) walk(m.arg, k => { if (k.k === 'int' && !(k.lo && k.hi)) found = true; }); });
+  return found;
+}
+
 export function verify(before: Eq, r: MoveOk): string | null {
   const ids = allIds(r.eq);
   if (new Set(ids).size !== ids.length) return 'duplicate ids';
   // an indefinite integral is only known up to a constant: compare slopes instead of values
   const ivs = r.check ? [] : [...new Set([...indefiniteVars(before), ...indefiniteVars(r.eq)])];
   if (ivs.length) {
-    const pairs = ivs.map(v => [derivative(add([r.eq.lhs, neg(r.eq.rhs)]), v), derivative(add([before.lhs, neg(before.rhs)]), v)] as const);
+    // stacked ones (∫ ∫ f dx dy): the mixed slope ∂/∂x ∂/∂y …, which every one's constant drops out of
+    const by = ivs.length > 1 && (stacked(before) || stacked(r.eq)) ? [ivs] : ivs.map(v => [v]);
+    const d = (n: Node, vs: string[]) => vs.reduce<Node | null>((a, v) => a && derivative(a, v), n);
+    const pairs = by.map(vs => [d(add([r.eq.lhs, neg(r.eq.rhs)]), vs), d(add([before.lhs, neg(before.rhs)]), vs)] as const);
     if (pairs.some(([a, b]) => !a || !b)) return 'could not check: no derivative';
     const slope: MoveOk = { ...r, check: env => { const f = r.factor(env); return pairs.map(([a, b]) => [evaluate(a!, env), f * evaluate(b!, env)]); } };
     return verify(before, slope);
@@ -390,9 +404,25 @@ export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): MoveRe
 }
 
 /** Is this equation solved for some variable? Returns that variable. */
+/** can't be 0 whatever the letters are: e^(2x), x² + 1, 3e^x. Saying "≠ 0" about these is noise. */
+export function neverZero(n: Node): boolean {
+  const nonneg = (m: Node): boolean => (m.k === 'num' && m.v >= 0) || (m.k === 'pow' && ((m.exp.k === 'num' && m.exp.v % 2 === 0) || neverZero(m))) || m.k === 'sqrt' || (m.k === 'fn' && m.name === 'abs') || (m.k === 'mul' && m.factors.every(nonneg)) || (m.k === 'add' && m.terms.every(nonneg));
+  switch (n.k) {
+    case 'num': return n.v !== 0;
+    case 'neg': return neverZero(n.arg);
+    case 'pow': return (n.base.k === 'sym' && n.base.name === 'e') || (n.base.k === 'num' && n.base.v > 0) || (n.exp.k === 'num' && n.exp.v > 0 && neverZero(n.base));
+    case 'mul': return n.factors.every(neverZero);
+    case 'frac': return neverZero(n.num);
+    case 'add': return n.terms.every(nonneg) && n.terms.some(t => t.k === 'num' && t.v > 0);
+    default: return false;
+  }
+}
+
 export function solvedFor(e: Eq): string | null {
+  // an expression (a limit that came out as e) isn't solved for anything
+  if (e.rel === 'expr' || e.rel === 'def') return null;
   for (const [a, b] of [[e.lhs, e.rhs], [e.rhs, e.lhs]] as const) {
-    if (a.k === 'sym' && !symbols(b).includes(a.name)) return a.name;
+    if (a.k === 'sym' && !isDiff(a.name) && !a.name.startsWith('d²') && a.name !== 'e' && a.name !== 'π' && !symbols(b).includes(a.name)) return a.name;
   }
   return null;
 }

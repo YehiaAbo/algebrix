@@ -75,3 +75,16 @@ describe('C + i on a double integral', () => {
   it('works the inner one first', () => expect(txt(intStepOf('int_0^1 int_0^2 x y dy dx'))).toBe('∫_{0}^{1} [xy^2/2]_{y=0}^{2} dx'));
   it('refuses the outer one while the inner is there', () => expect(isErr(intStepAim('int_0^1 int_0^2 x y dy dx'))).toBe(true));
 });
+
+describe('stacked indefinite integrals', () => {
+  it('the inner one works out, checked by the mixed slope', () => expect(txt(intStepOf('int int x y dx dy'))).toBe('∫ x^2y/2 dy'));
+  it('e works out a double one, with one + C', () => expect(done('int int x y dx dy')).toBe('x^2y^2/4 + C'));
+  it('an indefinite one inside a definite one asks for bounds', () => expect(done('int_0^1 int x y dy dx')).toMatch(/bounds/));
+  it('and a triple one', () => expect(done('int int int x y z dx dy dz')).toBe('x^2y^2z^2/8 + C'));
+  it('still refuses a wrong step: two separate integrals do not hide each other', async () => {
+    const { verify } = await import('../src/engine/moves');
+    const before = ex('int int x y dx dy');
+    const wrong = { eq: ex('int (x^2 y/2 + x) dy'), label: 'wrong', hints: { } as never, factor: () => 1, select: null } as never;
+    expect(verify(before, wrong)).not.toBeNull();
+  });
+});

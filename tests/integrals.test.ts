@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { parseEquation, parseExpr } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { evaluate, Node } from '../src/engine/ast';
-import { intStep, uSub, byParts, plugBounds, geometric, taylor, ratioTest } from '../src/engine/integrate';
+import { intStep, uSub, byParts, plugBounds, geometric, taylor, ratioTest, writeOut } from '../src/engine/integrate';
 import { finishCalc } from '../src/engine/calcmoves';
 import { isErr, MoveResult } from '../src/engine/moves';
 import { tidy } from '../src/engine/techniques';
@@ -49,7 +49,7 @@ describe('a rule at a time', () => {
     ['int (3x^2 + 2x) dx', 'x^3 + x^2 + C'],
     ['int cos(2x) dx', 'sin(2x)/2 + C'],
     ['int e^(3x) dx', 'e^(3x)/3 + C'],
-    ['int 1/x dx', 'ln(|x|) + C'],
+    ['int 1/x dx', 'ln|x| + C'],
     ['int 5 dx', '5x + C'],
     ['int_0^2 x^2 dx', '[x^3/3]_{x=0}^{2}'],
   ])('%s', (src, want) => expect(txt(intStep(ex(src), null))).toBe(want));
@@ -95,3 +95,19 @@ describe('series helpers', () => {
 });
 
 void (null as unknown as Node);
+
+describe('products and finite sums', () => {
+  it.each([
+    ['prod_{k=1}^{5} k', '∏_{k=1}^{5} k'],
+    ['∏_{j=0}^{3} (j + 1)', '∏_{j=0}^{3} (j + 1)'],
+    ['\\prod_{n=1}^{∞} (1 + 1/n^2)', '∏_{n=1}^{∞} (1 + 1/(n^2))'],
+  ])('%s', (src, want) => expect(toText(ex(src))).toBe(want));
+  it('a finite product is worth its factors multiplied', () => expect(val('prod_{k=1}^{5} k')).toBe(120));
+  it('an infinite one through its logs', () => expect(val('prod_{n=2}^{∞} (1 - 1/n^2)')).toBeCloseTo(0.5, 6));
+  it('write out a finite sum', () => expect(txt(writeOut(ex('sum_{i=1}^{3} i^2'), null))).toBe('1^2 + 2^2 + 3^2'));
+  it('write out a finite product', () => expect(txt(writeOut(ex('prod_{j=0}^{3} (j + 1)'), null))).toBe('(0 + 1)(1 + 1)(2 + 1)(3 + 1)'));
+  it('refuses an infinite one', () => expect(isErr(writeOut(ex('sum_{n=1}^{∞} 1/n^2'), null))).toBe(true));
+  it('a product is not a geometric series', () => expect(isErr(geometric(ex('prod_{n=0}^{∞} (1/2)^n'), null))).toBe(true));
+  it('e works out a sum of products', () => expect(done('sum_{i=1}^{2} prod_{j=0}^{3} (i + j)')).toBe('144'));
+  it('e works out a finite sum', () => expect(done('sum_{k=1}^{4} k')).toBe('10'));
+});

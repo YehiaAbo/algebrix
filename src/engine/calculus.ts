@@ -3,7 +3,7 @@
 // differentiation, kept apart from the step-by-step rules in calcmoves.ts (and fuzzed against
 // finite differences in the tests), so a slip in one is caught by the other. Limits are
 // estimated numerically, and give NaN (can't check) when the estimate isn't clean.
-import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, vec, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh } from './ast';
+import { Node, Deriv, Lim, Int, Sum, Env, num, sym, add, mul, neg, frac, pow, fn, sqrt, call, sum, vec, int, evaluate, CALC, DEFS, primed, children, withChildren, cloneFresh, walk, key, symbols } from './ast';
 
 /** does n change with v (directly, or through a variable that depends on v)? */
 export function dependsOn(n: Node, v: string, dep: string[] = []): boolean {
@@ -36,6 +36,8 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       return add(parts);
     }
     case 'frac': {
+      // over a constant: just the top (and an indefinite ∫ on top is never evaluated bare)
+      if (!dependsOn(n.den, v, dep)) { const a = d(n.num); return a && frac(a, n.den); }
       const a = d(n.num), b = d(n.den);
       if (!a || !b) return null;
       return frac(add([mul([a, n.den]), neg(mul([n.num, b]))]), pow(n.den, num(2)));
@@ -72,8 +74,14 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       return inner && d(inner);
     }
     case 'int': {
-      // indefinite: the integrand back (that is what an antiderivative is)
-      if (!n.lo || !n.hi) return n.v === v && !dep.length ? n.arg : null;
+      // indefinite: the integrand back (that is what an antiderivative is); in another letter,
+      // under the sign (both sides are only known up to what doesn't change with n.v)
+      if (!n.lo || !n.hi) {
+        if (dep.length) return null;
+        if (n.v === v) return n.arg;
+        const a = d(n.arg);
+        return a && int(n.v, a);
+      }
       // definite, the bounds moving (the fundamental theorem): f(hi)·hi′ − f(lo)·lo′
       if (dependsOn(n.arg, v, dep) && n.v !== v) return null;
       const lo = d(n.lo), hi = d(n.hi);
@@ -85,7 +93,8 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       return d(whole);
     }
     case 'sum': {
-      // term by term
+      // term by term (a product has no such rule here)
+      if (n.prod) return null;
       if (dependsOn(n.lo, v, dep) || dependsOn(n.hi, v, dep)) return null;
       const a = d(n.arg);
       return a && sum(n.v, n.lo, n.hi, a);
@@ -149,11 +158,24 @@ function oneSide(f: (x: number) => number, a: number, s: 1 | -1): number {
   const big = [1e-4, 1e-6, 1e-8].map(at);
   if (big.every(Number.isFinite) && Math.abs(big[2]) > 1e6 && Math.abs(big[2]) > 10 * Math.abs(big[1]) && Math.abs(big[1]) > 10 * Math.abs(big[0]) * 0.9 && Math.sign(big[0]) === Math.sign(big[2])) return Math.sign(big[2]) * Infinity;
   const r = extrapolate(at, Number.isFinite(a) ? 0.05 : 0.02);
-  if (!Number.isFinite(r.value)) return NaN;
-  return r.err <= 1e-8 * (1 + Math.abs(r.value)) ? r.value : NaN;
+  if (Number.isFinite(r.value) && r.err <= 1e-8 * (1 + Math.abs(r.value))) return r.value;
+  // slow but steady, like x ln x or √x → 0: the steps toward it shrink by a steady factor, so
+  // what is left to go is small; a value that close to a simple number is that number
+  const ys = (Number.isFinite(a) ? [1e-8, 1e-10, 1e-12, 1e-14, 1e-16] : [1e-8, 1e-11, 1e-14, 1e-17, 1e-20]).map(at);
+  if (!ys.every(Number.isFinite)) return NaN;
+  const ds = ys.slice(1).map((y, i) => Math.abs(y - ys[i]));
+  // growing without settling, one sign, like ln x as x → 0: it goes off to ±∞
+  if (ys.every(y => Math.sign(y) === Math.sign(ys[0]) && y !== 0) && ys.every((y, i) => !i || Math.abs(y) > Math.abs(ys[i - 1])) && ds.every((d, i) => !i || d >= 0.5 * ds[i - 1])) return Math.sign(ys[0]) * Infinity;
+  const q = ds[3] / (ds[2] || 1e-300);
+  if (!(ds[1] <= ds[0] / 3 + 1e-300 && ds[2] <= ds[1] / 3 + 1e-300 && q <= 1 / 3)) return NaN;
+  const left = ds[3] * q / (1 - q), y = ys[4];
+  if (left > 1e-6 * (1 + Math.abs(y))) return NaN;
+  for (let d = 1; d <= 12; d++) { const p = Math.round(y * d); if (Math.abs(p / d - y) <= 4 * left + 1e-12) return p / d; }
+  return y;
 }
 
 function limit(n: Lim, env: Env): number {
+  if (n.v.includes(',')) { const r = limit2(n, env); return r.paths.length ? r.value : NaN; }
   const a = evaluate(n.to, env);
   if (Number.isNaN(a)) return NaN;
   const f = (x: number) => evaluate(n.arg, { ...env, [n.v]: x });
@@ -163,6 +185,44 @@ function limit(n: Lim, env: Env): number {
   if (l === r) return l;
   return Math.abs(l - r) <= 1e-7 * (1 + Math.abs(l)) ? (l + r) / 2 : NaN;
 }
+
+/** a limit in two letters, toward (a, b): along lines and parabolas through the point, and round
+ *  shrinking circles. value is the limit when every path agrees and the circles squeeze to it;
+ *  otherwise NaN, with two paths that disagree (as text) when there are such */
+export function limit2(n: Lim, env: Env = {}): { value: number; paths: { name: string; value: number }[] } {
+  const [vx, vy] = n.v.split(','), to = n.to.k === 'vec' ? n.to.items : [];
+  const a = evaluate(to[0], env), b = evaluate(to[1], env);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return { value: NaN, paths: [] };
+  const f = (x: number, y: number) => evaluate(n.arg, { ...env, [vx]: x, [vy]: y });
+  // the paths, named as you'd write them: y = 0, y = x, y = x², x = y² (shifted to (a, b))
+  const u = a ? `(${vx} − ${fmtN(a)})` : vx, w = b ? `(${vy} − ${fmtN(b)})` : vy;
+  const ul = a ? `${vx} − ${fmtN(a)}` : vx, wl = b ? `${vy} − ${fmtN(b)}` : vy;
+  const lines: [string, (t: number) => number][] = [
+    [`${vy} = ${fmtN(b)}`, t => f(a + t, b)],
+    [`${vx} = ${fmtN(a)}`, t => f(a, b + t)],
+    [`${wl} = ${ul}`, t => f(a + t, b + t)],
+    [`${wl} = −${u}`, t => f(a + t, b - t)],
+    [`${wl} = 2${u}`, t => f(a + t, b + 2 * t)],
+    [`${wl} = ${u}²`, t => f(a + t, b + t * t)],
+    [`${ul} = ${w}²`, t => f(a + t * t, b + t)],
+  ];
+  const paths: { name: string; value: number }[] = [];
+  for (const [name, g] of lines) {
+    const l = oneSide(g, 0, -1), r = oneSide(g, 0, 1);
+    const v = l === r || Math.abs(l - r) <= 1e-7 * (1 + Math.abs(l)) ? r : NaN;
+    paths.push({ name, value: v });
+  }
+  const first = paths[0].value;
+  const agree = paths.every(p => Number.isFinite(p.value) ? Math.abs(p.value - first) <= 1e-6 * (1 + Math.abs(first)) : p.value === first);
+  if (!agree) return { value: NaN, paths };
+  if (!Number.isFinite(first)) return { value: first, paths };
+  // the circles: on |(x, y) − (a, b)| = r, the worst gap to the value has to shrink with r
+  const gap = (r: number) => { let m = 0; for (let k = 0; k < 64; k++) { const th = (2 * Math.PI * (k + 0.37)) / 64, v = f(a + r * Math.cos(th), b + r * Math.sin(th)); m = Math.max(m, Number.isFinite(v) ? Math.abs(v - first) : Infinity); } return m; };
+  const g1 = gap(1e-2), g2 = gap(1e-4), g3 = gap(1e-6);
+  const squeezed = g3 <= 1e-4 * (1 + Math.abs(first)) && g3 <= g2 + 1e-12 && g2 <= g1 + 1e-12;
+  return { value: squeezed ? first : NaN, paths };
+}
+const fmtN = (x: number) => (Number.isInteger(x) ? (x < 0 ? `−${-x}` : String(x)) : String(+x.toPrecision(4)));
 
 /* ---------- integrals: double-exponential quadrature ---------- */
 
@@ -205,10 +265,19 @@ export function quad(f: (x: number) => number, a: number, b: number): number {
 }
 
 function integral(n: Int, env: Env): number {
+  // a triple integral is thousands of inner ones, and each checked step asks again for the same
+  // ones, so remember what each was worth (by its shape and the values it depends on)
+  let memo = SHAPE.get(n);
+  if (!memo) { let calls = false; walk(n, m => { if (m.k === 'call') calls = true; }); memo = { key: calls ? '' : key(n), vars: symbols(n) }; SHAPE.set(n, memo); }
+  const at = memo.key && memo.key + memo.vars.map(v => env[v]).join(',');
+  if (at && WORTH.has(at)) return WORTH.get(at)!;
   const a = evaluate(n.lo!, env), b = evaluate(n.hi!, env);
-  if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
-  return quad(x => evaluate(n.arg, { ...env, [n.v]: x }), a, b);
+  const r = Number.isNaN(a) || Number.isNaN(b) ? NaN : quad(x => evaluate(n.arg, { ...env, [n.v]: x }), a, b);
+  if (at) { if (WORTH.size > 50000) WORTH.clear(); WORTH.set(at, r); }
+  return r;
 }
+const SHAPE = new WeakMap<Node, { key: string; vars: string[] }>();
+const WORTH = new Map<string, number>();
 
 /* ---------- series ---------- */
 
@@ -218,6 +287,7 @@ function integral(n: Int, env: Env): number {
 function series(n: Sum, env: Env): number {
   const lo = evaluate(n.lo, env), hi = evaluate(n.hi, env);
   if (!Number.isInteger(lo) || !(Number.isInteger(hi) || hi === Infinity)) return NaN;
+  if (n.prod) return product(n, env, lo, hi);
   const a = (k: number) => evaluate(n.arg, { ...env, [n.v]: k });
   if (hi !== Infinity) {
     if (hi - lo > 1e6) return NaN;
@@ -258,6 +328,24 @@ function series(n: Sum, env: Env): number {
   };
   const e1 = em(lo + 200), e2 = em(lo + 400);
   return Math.abs(e1 - e2) <= 1e-8 * (1 + Math.abs(e2)) ? e2 : NaN;
+}
+
+/** ∏ a(k): exact when finite. An infinite one from its partial products P(N), which settle like
+ *  P + c/N + d/N²: Richardson's extrapolation, trusted only when two runs of it agree. */
+function product(n: Sum, env: Env, lo: number, hi: number): number {
+  const a = (k: number) => evaluate(n.arg, { ...env, [n.v]: k });
+  if (hi !== Infinity) {
+    if (hi - lo > 1e6) return NaN;
+    let p = 1;
+    for (let k = lo; k <= hi; k++) p *= a(k);
+    return p;
+  }
+  const P: Record<number, number> = {};
+  let p = 1;
+  for (let N = 1; N <= 2000; N++) { p *= a(lo + N - 1); if (!Number.isFinite(p)) return NaN; if (N % 250 === 0) P[N] = p; }
+  const rich = (N: number) => (8 * P[4 * N] - 6 * P[2 * N] + P[N]) / 3;
+  const r1 = rich(250), r2 = rich(500);
+  return Math.abs(r1 - r2) <= 1e-8 * (1 + Math.abs(r2)) ? r2 : NaN;
 }
 
 /** Γ(x) by Lanczos, for n! of a non-integer */

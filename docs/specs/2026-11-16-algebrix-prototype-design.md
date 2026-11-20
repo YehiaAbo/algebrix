@@ -244,3 +244,36 @@ App:
 - ODE steps tidy powers of the same base (e^(2x)e^x = e^(3x), x³/x = x²).
 - Tours (Calculus 4): separable equations, integrating factor, second order, divergence and curl.
 - Not yet: nonhomogeneous second order (undetermined coefficients), line and surface integrals, Green's and Stokes' theorems.
+
+### Round 14: smooth typing, C in sections, a typeset ∫
+
+User: typing `int x dx` or `d/dx` glitched on the way (stray i·n, d/d), the integral sign looked hand-drawn, and C should open in sections like f.
+
+- Live preview: a word on its way (in, li, si, d/, d/d) never shows as letters. What is still to come shows as a grey □: `int` is ∫ □ dx, `d/dx` is d/dx(□), `lim x->` is lim_{x→□} □, `x +` is x + □. Enter takes the preview only when nothing is missing; with a □ left it resists ("Fill in the □ first").
+- ∫ is the TeX large-operator glyph (the same outline as typeset LaTeX), stretched to its contents and slanted, with the limits placed like \int_a^b.
+- C opens in sections: Derivatives, Limits, Integrals, Series, Several variables, Differential equations, Vector fields. ← → move between sections (a dot marks those with something that applies, and C opens on the most useful one), ↓ steps in, ← → pick, Enter or C applies, Esc goes back. A key still applies at once. An empty section says what to type for it.
+- New items that work on any expression: l, a limit as x → (asks where), and a, a definite integral (asks for the bounds, like `0, pi`). Like f′, each starts a new piece of work beside the old one.
+- An indefinite integral has no graph until it is worked out (+ C), and the graph says so instead of staying blank.
+
+### Round 15: typeset Σ ∏, stacked integrals, notation cards, calculus graphs, a blind critique
+
+User: the ∫ sits at an odd slant; stacked integrals don't work; Σ and ∏ should look like LaTeX; finish calculus; graph more like Desmos; a way to pick odd notation from cards; and a blind critique of whether features serve the purpose.
+
+- Big operators: ∫ is the TeX glyph skewed back by 0.1 (more upright) and centred on the math axis; Σ and ∏ are the TeX display glyphs, 1.4 em tall on the axis, limits centred above and below.
+- Products: `prod_{k=1}^5 k`, `∏`, `\prod`. Finite products are exact; infinite ones by Richardson extrapolation of the partial products, trusted only when two runs agree. C + x writes out a finite Σ or ∏ (at most 12 terms); e does so for finite ones.
+- Stacked indefinite integrals: checked by the mixed slope ∂/∂x ∂/∂y … when the integrals are nested (each constant drops out), never when they sit side by side. d/dx of ∫ f dy is ∫ ∂f/∂x dy. An indefinite integral inside a definite one is refused (its + C would be integrated).
+- Typing: the outer integral of a stack waits as d□; a lone i or d inside an integral is a word on its way. `lim x->0+ f` is one-sided.
+- Notation cards (src/ui/notation.ts, pure and unit tested): 2+ letters or a \command bring up to six cards; ↓ ↑ pick, Tab takes, the caret lands where you type next. Every card's notation is checked to parse.
+- Second-order ODEs with a right side: undetermined coefficients, done numerically. Each term of g is read as xʲ e^(kx) (cos|sin)(wx); trial terms go up to xʲ⁺², solved by least squares with modified Gram-Schmidt (a trial term that solves the homogeneous equation has a zero column and drops out, so x e^(kx) takes its place), re-solved with only the terms that matter, and kept only if every coefficient is a simple number and the whole solution checks in the equation.
+- Graph: grey points of interest on one curve (zeros, y-intercept, peaks and dips); ∫ₐᵇ f shades the area and frames it; lim shows a ring where f heads (a dashed line at ∞); y′ = f(x, y) draws a slope field, and hover traces the solution through the cursor (Runge-Kutta); + C draws a family of curves; the crossing of a one-letter equation is brought into view; ≈ only for inexact values.
+- From the blind critique: a root that fails the original is drawn in red with "not a solution" (stage, rail and graph note), never green; the other case of a split goes on the shelf at once; + C, C₁, C₂ and y′ are not listed as variables; −(−1) instead of −−1; s does plain arithmetic in one press (the largest piece with no letters) and never takes a step that looks the same; bar text matches the mode (solve-for picker, Tab opened by Enter); C sections wrap on narrow screens; no NaN transforms when switching equations; move labels read "move 2x across".
+
+
+## Round 16 (2026-11-17): integrals typed any way
+
+User: double and triple integrals were still buggy to type; "I should be able to just write anything and for it to parse correctly". Adopted fast-check (property-based tests) for this.
+
+- tests/typing.prop.test.ts generates random single, double and triple integrals (bounds or none, inner bounds that use outer variables, mixed integrands) and types each in every common spelling: int, ∫, \int, integral; bounds as _0^1, _{0}^{1}, _(0)^(1); d's spaced, run together or with \, and \mathrm{d}. Each must read back as the integral meant; printing and reading back changes nothing; every keystroke shows a preview with no fewer ∫ than typed, keeps typed bounds and d's, and never makes up an integrand; definite ones are worth the same number however typed; and worked out with e, stacked ones end with no calculus left, at the right value. Fixed seed (SEED=… npm test tries another batch).
+- Parser: intint, integralint, iint, iiint, ∬, ∭, \iint, \int\int; dxdy, dzdydx, 2xdx; \mathrm{d}x, \limits, \displaystyle; ∫ dx is ∫ 1 dx and ∫ dx/x is ∫ 1/x dx; more d's than ∫ signs wraps one more integral (∫ x dy dx is ∫∫); dA asks for dx dy.
+- Preview: a missing integrand stays □ (never 1); bounds stay in view while typed (∫_0^□).
+- Work-out: the mixed-slope check applies whenever an indefinite integral holds another (also after the sum rule splits the inside); a product with a sum inside an integral is multiplied out when no rule fits; plain numbers left by plugged-in bounds are tidied while work remains; definite integrals remember their values, so checking a triple integral takes milliseconds, not seconds. − (−2x), never − −2x.

@@ -1,10 +1,11 @@
 // The work as data: the equations on the sheet, each with its steps and where you are in
 // them. No drawing and no sound here, so the rules (undo skips automatic tidy steps,
-// conditions add up, nine equations at most) are unit-tested on their own.
-import { Eq, symbols, isIneq } from '../engine/ast';
+// conditions add up, nine equations at most, nothing you tried is lost) are unit-tested on their own.
+import { Eq, symbols, isIneq, key } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
 import { direction, MoveOk, solvedFor } from '../engine/moves';
-import { Slot, Step } from './shared';
+import { Link, Slot, Step } from './shared';
+import { ensureIds, keepLine, linesOf, newId, switchLine } from './tree';
 
 export interface Sheet { slots: Slot[]; cur: number }
 
@@ -12,9 +13,10 @@ export const MAX_EQUATIONS = 9;
 
 export const eqOf = (s: Sheet, i: number): Eq => { const sl = s.slots[i]; return sl.steps[sl.at].eq; };
 
-/** a typed equation: added as a new one, or replacing the current one. Null, or why not. */
-export function place(s: Sheet, eq: Eq, asNew: boolean): string | null {
-  const fresh: Slot = { steps: [{ eq, label: 'start', conditions: [] }], at: 0, sel: null };
+/** a typed equation: added as a new one, or replacing the current one. Null, or why not.
+ *  from: the step it came out of, when a move made it (a derivative, a limit…) */
+export function place(s: Sheet, eq: Eq, asNew: boolean, from?: Link): string | null {
+  const fresh: Slot = { steps: [{ eq, label: 'start', conditions: [], id: newId() }], at: 0, sel: null, uid: newId(), ...(from ? { from } : {}) };
   if (asNew || !s.slots.length) {
     if (s.slots.length >= MAX_EQUATIONS) return 'Nine equations is the limit for now.';
     s.slots.push(fresh);
@@ -23,15 +25,31 @@ export function place(s: Sheet, eq: Eq, asNew: boolean): string | null {
   return null;
 }
 
-/** take a move: steps after the current one are dropped, conditions carry forward, and a
- *  one-variable inequality that is solved gets its answer written out */
-export function addStep(s: Sheet, r: MoveOk): Step {
+/** take a move: conditions carry forward, and a one-variable inequality that is solved gets its
+ *  answer written out. The steps after the current one leave the line you're on but stay in the
+ *  tree; a move that gives the same as a step already taken from here goes back to that step
+ *  (out.again) instead of copying it. link: the step in another equation the move used */
+export function addStep(s: Sheet, r: MoveOk, opts: { link?: Link | null; out?: { again: boolean } } = {}): Step {
   const slot = s.slots[s.cur];
-  const conditions = [...new Set([...slot.steps[slot.at].conditions, ...(r.conditions ?? [])])];
+  ensureIds(slot);
+  const path = slot.steps.slice(0, slot.at + 1), k = key(r.eq);
+  for (const line of linesOf(slot)) {
+    const next = line[slot.at + 1];
+    if (next && key(next.eq) === k && path.every((st, i) => line[i].id === st.id)) {
+      switchLine(slot, line);
+      slot.at++;
+      if (opts.out) opts.out.again = true;
+      return next;
+    }
+  }
+  const renamed = slot.steps[slot.at].conditions.map(c => (r.rename ?? []).reduce((t, [a, b]) => t.split(a).join(b), c));
+  const conditions = [...new Set([...renamed, ...(r.conditions ?? [])])];
   let answer = r.answer;
   const sv = solvedFor(r.eq);
   if (!answer && isIneq(r.eq) && sv && symbols(r.eq).length === 1) { const a = solveInequality(r.eq, sv); if (!('error' in a)) answer = a.text; }
-  const step: Step = { eq: r.eq, label: r.label, conditions, auto: r.auto, rule: r.rule ?? r.label, dir: direction(r), answer };
+  const step: Step = { eq: r.eq, label: r.label, conditions, auto: r.auto, rule: r.rule ?? r.label, dir: direction(r), answer, id: newId(), ...(opts.link ? { link: opts.link } : {}) };
+  if (r.hints.absorbs.size || r.hints.flights.length) step.fx = { absorbs: [...r.hints.absorbs], flights: r.hints.flights.map(f => ({ ...f })) };
+  if (slot.steps.length > slot.at + 1) keepLine(slot, slot.steps);
   slot.steps = slot.steps.slice(0, slot.at + 1);
   slot.steps.push(step);
   slot.at++;

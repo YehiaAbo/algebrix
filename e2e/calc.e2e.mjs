@@ -28,12 +28,13 @@ export const tests = {
     await key('e'); await expectEq('6x − 4', 10000);
   },
 
-  async 'u-substitution puts u = … on the shelf, and e puts it back'({ load, hold, key, until, p, assert }) {
+  async 'u-substitution puts u = … in the tree with an arrow from the integral, and e puts it back'({ load, hold, key, until, p, assert }) {
     await load('int 2x cos(x^2) dx');
     await hold('c', 'u');
     await until(s => s.eq === '∫ cos(u) du' && s.slots === 2, 'the integral in u, u = x² beside it');
-    const shelf = await p.evaluate(() => [...document.querySelectorAll('#dock-row .lane')].length);
-    assert(shelf === 1, 'u = x² is on the shelf');
+    const tree = await p.evaluate(() => ({ cols: document.querySelectorAll('#tree .thead').length, arrows: document.querySelectorAll('#tree path.tarrow').length }));
+    assert(tree.cols === 2, `u = x² is its own column in the tree: ${JSON.stringify(tree)}`);
+    assert(tree.arrows === 1, `an arrow from the integral to u = x²: ${JSON.stringify(tree)}`);
     await key('e'); await until(s => s.eq === 'sin(x^2) + C', 'integrated and put back', 10000);
   },
 
@@ -82,5 +83,71 @@ export const tests = {
     await key('i'); await type("y'' + 9y = 0"); await key('Enter');
     await until(s => s.eq === 'y″ + 9y = 0', 'an equation, not ≟');
     await key('e'); await until(s => s.slots === 2 && s.eq === 'y = C_1 cos(3x) + C_2 sin(3x)', 'the general solution beside it', 8000);
+  },
+
+  async 'typing int x dx and d/dx: □ marks what is still to come, never stray letters'({ p, key, type, until, assert, countRefusals, refusals }) {
+    await key('i');
+    const seen = [];
+    for (const ch of 'int x dx') { await type(ch); await p.waitForTimeout(40); seen.push(await p.evaluate(() => window.algebrix.preview ? window.toText(window.algebrix.preview) : '-')); }
+    assert(!seen.some(t => /^i·?n|^in/.test(t)), `no i·n on the way: ${seen.join(' | ')}`);
+    assert(seen[2] === '∫ □ dx', `int waits for its integrand: ${seen[2]}`);
+    await key('Enter'); await until(s => s.eq === '∫ x dx', 'the integral typed');
+    await key('i'); await type('d/dx');
+    await countRefusals(); await key('Enter');
+    assert(await refusals() === 1, 'Enter with a □ left is refused');
+    await type(' x^2'); await key('Enter');
+    await until(s => s.eq === 'd/dx(x^2)', 'd/dx typed as an expression');
+    await key('e'); await until(s => s.eq === '2x', 'and worked out', 10000);
+  },
+
+  async 'C has sections: ← → between them, ↓ into one, and the limit and the area ask for what they need'({ load, p, key, until, assert, wait }) {
+    await load('sin(x)/x');
+    await key('c'); await wait(150);
+    const tabs = () => p.evaluate(() => [...document.querySelectorAll('#forms .pal-tab')].map(t => t.textContent + (t.classList.contains('on') ? '*' : '')));
+    const t0 = await tabs();
+    assert(t0.includes('Derivatives*') && t0.includes('Integrals') && t0.includes('Limits'), `sections, Derivatives open: ${t0}`);
+    await key('ArrowRight');
+    assert((await tabs()).includes('Limits*'), `→ moves to Limits: ${await tabs()}`);
+    await key('ArrowDown', 'Enter');
+    const input = await p.evaluate(() => !!document.getElementById('calc-input'));
+    assert(input, 'the limit asks where x goes');
+    await p.keyboard.type('0'); await key('Enter');
+    await until(s => s.eq === 'lim_{x→0} sin(x)/x', 'the limit wrapped');
+    await key('e'); await until(s => s.eq === '1', 'worked out', 10000);
+    await load('sin(x)');
+    await key('c'); await wait(150);
+    await key('a'); await wait(100);
+    await p.keyboard.type('0, pi'); await key('Enter');
+    await until(s => s.eq === '∫_{0}^{π} sin(x) dx', 'the area between the bounds');
+    await key('e'); await until(s => s.eq === '2', 'worked out', 10000);
+  },
+  async "aimed at y′, Tab opens it up as dy/dx and into differentials, and it integrates to y = C e^(x²/2)"({ load, key, aim, until, p }) {
+    await load("y' = x y");
+    await aim('y′');
+    await p.keyboard.down('Tab'); await p.waitForTimeout(200); await key('y'); await p.keyboard.up('Tab');
+    await until(s => s.eq === 'dy/dx = xy', 'as dy/dx');
+    await p.keyboard.down('Tab'); await p.waitForTimeout(200); await key('k'); await p.keyboard.up('Tab');
+    await until(s => s.eq === 'dy = xy dx', 'as differentials');
+    await key('Slash'); await p.keyboard.type('y'); await key('Enter');
+    await until(s => s.eq.startsWith('dy/y = '), 'divided by y');
+    await p.keyboard.down('c'); await p.waitForTimeout(200); await key('i'); await p.keyboard.up('c');
+    await until(s => s.eq === '∫ 1/y dy = ∫ x dx', 'integrated both sides');
+    await key('e');
+    await until(s => s.eq === 'y = Ce^(x^2/2)', 'solved as one family', 12000);
+  },
+  async "d²x/dt² typed is the second derivative: y″ zooms to it, and it solves in t"({ load, key, aim, until, p }) {
+    await load("y'' + y = 0");
+    await aim('y″');
+    await p.keyboard.down('Tab'); await p.waitForTimeout(200); await key('y'); await p.keyboard.up('Tab');
+    await until(s => s.eq === 'd²y/dx^2 + y = 0', 'as d²y/dx²');
+    await load('d^2x/dt^2 = -4x');
+    await key('e');
+    await until(s => s.eq === 'x = C_1 cos(2t) + C_2 sin(2t)', 'solved in t', 12000);
+  },
+  async 'a limit in two letters names two paths that disagree'({ load, key, p, assert, wait }) {
+    await load('lim_{(x,y)→(0,0)} xy/(x^2+y^2)');
+    await key('e'); await wait(1500);
+    const ans = await p.evaluate(() => document.getElementById('answer').textContent);
+    assert(ans.includes('no limit') && ans.includes('y = x'), `two paths: ${ans}`);
   },
 };

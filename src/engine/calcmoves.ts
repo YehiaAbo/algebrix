@@ -3,12 +3,13 @@
 // derivative. Every step goes through the same numeric check as an algebra move: the kernel
 // in calculus.ts says what a derivative or limit is worth.
 import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
-import { dependsOn, derivative } from './calculus';
+import { dependsOn, derivative, limit2 } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
-import { intStep, uSub, byParts, plugBounds, geometric, backSub, ratNode } from './integrate';
+import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries } from './integrate';
 import { toText } from './print';
+import { distributeNode } from './rewrite';
 
 const one = () => 1;
 const fresh = cloneFresh;
@@ -34,7 +35,8 @@ export function times(...fs: Node[]): Node {
   // simple pieces (letters, powers of letters) read best in front: 2x·cos(x²)
   const simple = (n: Node) => n.k === 'sym' || (n.k === 'pow' && n.base.k === 'sym');
   const letter = (n: Node) => (n.k === 'sym' ? n.name : n.k === 'pow' && n.base.k === 'sym' ? n.base.name : '');
-  const rank = (n: Node) => { const i = ['x', 'y', 'z'].indexOf(letter(n)); return i < 0 ? 9 : i; };
+  // and a constant's letter before the variables, as written: kx, ax², not xk
+  const rank = (n: Node) => { const l = letter(n), i = ['x', 'y', 'z', 't'].indexOf(l); return i >= 0 ? i : /^[a-df-zA-Zα-ω]$/.test(l) ? -1 : 9; };
   const sorted = [...rest.filter(simple).sort((a, b) => rank(a) - rank(b)), ...rest.filter(f => !simple(f))];
   const body = (c: number): Node => {
     if (!sorted.length) return num(c);
@@ -217,10 +219,42 @@ function sampleEnv(n: Node): Env {
 
 const fmt = (x: number) => (x === Infinity ? '∞' : x === -Infinity ? '−∞' : Number.isInteger(x) ? String(x) : String(+x.toPrecision(4)));
 
+/** a limit as (x, y) → (a, b): put the point in where that works; else every path and every small
+ *  circle nearing one value; else name two paths that disagree, and there is no limit */
+export function limit2Step(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L || !L.v.includes(',') || L.to.k !== 'vec') return { error: 'No two-letter limit here.' };
+  if (hasDeriv(L.arg)) return { error: 'Work out the derivatives inside first (C + d).' };
+  const [vx, vy] = L.v.split(','), [A, B] = L.to.items;
+  const pt = `(${vx}, ${vy}) = (${toText(A)}, ${toText(B)})`;
+  const r = limit2(L);
+  const snapped = Number.isFinite(r.value) ? ratNode(Math.round(r.value * 1e9) / 1e9) : null;
+  const sub = (n: Node): Node => {
+    if (n.k === 'sym' && n.name === vx) return fresh(A);
+    if (n.k === 'sym' && n.name === vy) return fresh(B);
+    const ks = children(n);
+    return ks.length ? withChildren(n, ks.map(sub)) : n;
+  };
+  const body = sub(L.arg), at = evaluate(body, {});
+  if (Number.isFinite(r.value) && Number.isFinite(at) && Math.abs(at - r.value) <= 1e-9 * (1 + Math.abs(at))) {
+    const h = newHints();
+    return checked(e, { eq: replace(e, L.id, simplify(body, h)), label: `plug in ${pt}`, hints: h, factor: one, select: null, rule: 'continuous: plug in' });
+  }
+  if (snapped) {
+    return checked(e, { eq: replace(e, L.id, snapped), label: `every path, and every small circle round (${toText(A)}, ${toText(B)}), nears ${toText(snapped)}`, hints: newHints(), factor: one, select: null, rule: 'squeeze' });
+  }
+  const v = (x: number) => (x === Infinity ? '∞' : x === -Infinity ? '−∞' : toText(ratNode(Math.round(x * 1e9) / 1e9) ?? num(+x.toPrecision(4))));
+  if (r.value === Infinity || r.value === -Infinity) return { eq: e, label: `it grows without bound`, hints: newHints(), factor: one, select: null, answer: `the limit is ${v(r.value)}: it grows without bound along every path` };
+  const p1 = r.paths[0], p2 = r.paths.find(p => !(Number.isFinite(p.value) && Number.isFinite(p1.value) && Math.abs(p.value - p1.value) <= 1e-6 * (1 + Math.abs(p1.value))) && Number.isFinite(p.value));
+  if (Number.isFinite(p1.value) && p2) return { eq: e, label: 'two paths disagree', hints: newHints(), factor: one, select: null, answer: `no limit: along ${p1.name} it nears ${v(p1.value)}, but along ${p2.name} it nears ${v(p2.value)}` };
+  return { error: `No single value: the paths toward (${toText(A)}, ${toText(B)}) don't settle. Try polar form, x = r cos θ, y = r sin θ.` };
+}
+
 /** C + p: put the value in. Only where the function is continuous: the check makes sure. */
 export function plugIn(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
+  if (L.v.includes(',')) return limit2Step(e, sel);
   if (hasDeriv(L.arg)) return { error: 'Work out the derivatives inside first (C + d).' };
   const env = sampleEnv(L);
   const a = evaluate(L.to, env);
@@ -232,6 +266,10 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
     return checked(e, { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' });
   }
   const body = plugged(L);
+  // 0⁰ is a form, not 1: the power has to come down first
+  let zz = false;
+  walk(body, n => { if (n.k === 'pow' && evaluate(n.base, env) === 0 && evaluate(n.exp, env) === 0) zz = true; });
+  if (zz) return { error: `Plugging in ${L.v} = ${toText(L.to)} gives 0⁰, which could be anything. Bring the power down: e^(lim g ln f).` };
   const at = evaluate(body, env);
   if (!Number.isFinite(at)) {
     if (L.arg.k === 'frac') {
@@ -239,25 +277,71 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
       if (Math.abs(t) < 1e-12 && Math.abs(b) < 1e-12) return { error: `Plugging in ${L.v} = ${toText(L.to)} gives 0/0. Factor and cancel (Tab + f, then s), or use L'Hôpital (C + l).` };
       if (Math.abs(b) < 1e-12) return { error: `Plugging in gives ${fmt(t)}/0: the limit is infinite or doesn't exist. Look from each side.` };
     }
-    return { error: `Plugging in ${L.v} = ${toText(L.to)} is undefined.` };
+    return { error: oneSided(L, env, a) ?? `Plugging in ${L.v} = ${toText(L.to)} is undefined.` };
   }
-  return checked(e, { eq: replace(e, L.id, body), label: `plug in ${L.v} = ${toText(L.to)}`, hints: newHints(), factor: one, select: null, rule: 'plug in' });
+  const r = checked(e, { eq: replace(e, L.id, body), label: `plug in ${L.v} = ${toText(L.to)}`, hints: newHints(), factor: one, select: null, rule: 'plug in' });
+  const o = isErr(r) ? oneSided(L, env, a) : null;
+  return o ? { error: o } : r;
+}
+
+/** defined on one side only (√x, x ln x at 0): the two-sided limit isn't there, a one-sided one is */
+function oneSided(L: Lim, env: Env, a: number): string | null {
+  if (L.side) return null;
+  const f = (x: number) => evaluate(L.arg, { ...env, [L.v]: x });
+  const only = ([1, -1] as const).find(s => [1e-3, 1e-6].every(h => Number.isNaN(f(a - s * h))) && [1e-3, 1e-6].every(h => Number.isFinite(f(a + s * h))));
+  return only ? `${toText(L.arg).replace(/sqrt\(/g, '√(')} only exists to the ${only > 0 ? 'right' : 'left'} of ${L.v} = ${toText(L.to)}, so the limit can only come from that side: lim_(${L.v}→${toText(L.to)}${only > 0 ? '+' : '−'}).` : null;
 }
 
 /** C + l: 0/0 or ∞/∞ becomes the limit of the derivatives' quotient */
 export function lhopital(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
+  if (L.v.includes(',')) return { error: "L'Hôpital is for one letter. With two, try paths (C + p), or polar form." };
   const f = L.arg;
   if (f.k !== 'frac') return { error: "L'Hôpital needs a fraction. Make it one first (Tab + c)." };
   const env = sampleEnv(L);
-  const part = (n: Node) => evaluate(lim(L.v, L.to, n, L.side), env);
+  // ±∞ from the two sides (1/x at 0) still counts as ∞
+  const part = (n: Node) => { const x = evaluate(lim(L.v, L.to, n, L.side), env); return Number.isNaN(x) ? evaluate(lim(L.v, L.to, fn('abs', fresh(n)), L.side), env) : x; };
   const t = part(f.num), b = part(f.den);
   const zero = (x: number) => Math.abs(x) < 1e-9, inf = (x: number) => !Number.isFinite(x) && !Number.isNaN(x);
   if (!((zero(t) && zero(b)) || (inf(t) && inf(b)))) return { error: `L'Hôpital needs 0/0 or ∞/∞. Here it is ${fmt(t)}/${fmt(b)}${Number.isFinite(t) && Number.isFinite(b) && !zero(b) ? ', so just plug in (C + p)' : ''}.` };
   const c: Ctx = { v: L.v, dep: [] };
-  const next = lim(L.v, L.to, frac(inner(f.num, c), inner(f.den, c)), L.side, L.id);
+  const dt = inner(f.num, c), db = inner(f.den, c);
+  const next = lim(L.v, L.to, db.k === 'num' && db.v === 1 ? dt : frac(dt, db), L.side, L.id);
   return checked(e, { eq: replace(e, L.id, next), label: `L'Hôpital (${zero(t) ? '0/0' : '∞/∞'})`, hints: newHints(), factor: one, select: null, rule: "L'Hôpital" });
+}
+
+/** what each piece of a limit's inside tends to */
+function tends(L: Lim) {
+  const env = sampleEnv(L);
+  return (n: Node) => evaluate(lim(L.v, L.to, n, L.side), env);
+}
+const near = (x: number, y: number) => Math.abs(x - y) < 1e-6;
+const huge = (x: number) => !Number.isFinite(x) && !Number.isNaN(x);
+
+/** 1^∞, 0⁰ and ∞⁰: lim f^g = e^(lim g ln f), so the power comes down as a product */
+export function expLog(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L || L.arg.k !== 'pow' || !dependsOn(L.arg.exp, L.v)) return { error: 'Needs a limit of f^g with the letter in the power.' };
+  const t = tends(L), b = t(L.arg.base), x = Math.abs(t(L.arg.exp)) || t(fn('abs', fresh(L.arg.exp)));
+  const form = near(b, 1) && huge(x) ? '1^∞' : near(b, 0) && near(x, 0) ? '0⁰' : huge(b) && near(x, 0) ? '∞⁰' : null;
+  if (!form) return { error: 'Only for 1^∞, 0⁰ or ∞⁰.' };
+  const next = pow(sym('e'), lim(L.v, fresh(L.to), mul([fresh(L.arg.exp), fn('ln', fresh(L.arg.base))]), L.side));
+  return checked(e, { eq: replace(e, L.id, next), label: `${form}: bring the power down, e^(lim g ln f)`, hints: newHints(), factor: one, select: null, rule: 'limit of a power' });
+}
+
+/** 0·∞: one factor goes underneath as 1/it, so L'Hôpital can take the 0/0 */
+export function asQuotient(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L || L.arg.k !== 'mul' || L.arg.factors.length !== 2) return { error: 'Needs a limit of a product.' };
+  const t = tends(L), [A, B] = L.arg.factors, size = (n: Node) => { const x = t(n); return Number.isNaN(x) ? t(fn('abs', fresh(n))) : x; }, a = size(A), b = size(B);
+  if (!((huge(a) && near(b, 0)) || (huge(b) && near(a, 0)))) return { error: 'Only for 0·∞.' };
+  // a ln or an inverse trig stays on top (its derivative is the easy one); else the 0 does, for 0/0
+  const keep = (n: Node) => n.k === 'fn' && ['ln', 'log', 'asin', 'acos', 'atan'].includes(n.name);
+  const [top, other] = keep(A) ? [A, B] : keep(B) ? [B, A] : near(a, 0) ? [A, B] : [B, A];
+  const under = other.k === 'frac' && other.num.k === 'num' && other.num.v === 1 ? fresh(other.den) : frac(num(1), fresh(other));
+  const next = lim(L.v, fresh(L.to), frac(fresh(top), under), L.side, L.id);
+  return checked(e, { eq: replace(e, L.id, next), label: '0·∞: write it as a fraction', hints: newHints(), factor: one, select: null, rule: 'limit of a product' });
 }
 
 /* ---------- e: finish all the calculus ---------- */
@@ -280,6 +364,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
   const steps: MoveOk[] = [];
   const active = { ...subs };
   let cur = e;
+  // by parts on a side that is one integral: if that integral comes back (eˣ sin x), solve for it
+  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string } | null = null, parts = 0;
   for (let i = 0; i < 60; i++) {
     const t = nextCalc(cur);
     let r: MoveResult;
@@ -290,37 +376,97 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       r = backSub(cur, u, active[u]);
       delete active[u];
     } else if (t.k === 'deriv') r = derivStep(cur, t.id);
+    else if (t.k === 'lim' && t.v.includes(',')) {
+      // two letters: a plug-in, a squeeze, or two paths that disagree (which ends it)
+      r = limit2Step(cur, t.id);
+      if (!isErr(r) && r.answer) { steps.push(r); return { steps }; }
+    }
     else if (t.k === 'lim') {
       r = plugIn(cur, t.id);
       if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }
+      if (isErr(r)) { const h = expLog(cur, t.id); if (!isErr(h)) r = h; }
+      if (isErr(r)) { const h = asQuotient(cur, t.id); if (!isErr(h)) r = h; }
     } else if (t.k === 'at') r = plugBounds(cur, t.id);
-    else if (t.k === 'sum') r = geometric(cur, t.id);
+    else if (t.k === 'sum') {
+      r = typeof finiteTerms(t) === 'string' ? geometric(cur, t.id) : writeOut(cur, t.id);
+      if (isErr(r) && /^Not geometric/.test(r.error)) { const q = pSeries(cur, t.id); if (!isErr(q) || q.error !== 'Not a p-series.') r = q; }
+    }
     else if (t.k === 'grad') r = gradStep(cur, t.id);
     else if (t.k === 'mul') r = dotStep(cur, t.id);
     else {
-      r = intStep(cur, t.id);
+      const back = origin && t.k === 'int' ? cameBack(cur, origin.side, origin.f, origin.v, t) : null;
+      r = back ?? intStep(cur, t.id);
       if (isErr(r)) {
         const s = uSub(cur, t.id);
         if (!isErr(s.move) && s.u && s.g) { r = s.move; if (s.side) active[s.u] = s.g; }
-        else { const b = byParts(cur, t.id); if (!isErr(b)) r = b; }
+        else {
+          const b = byParts(cur, t.id);
+          if (!isErr(b)) {
+            if (++parts > 4) return { steps, stuck: 'By parts keeps going without the integral getting simpler. Try another u (aim at it, then C + b).' };
+            const side = cur.lhs.id === t.id ? 'lhs' : cur.rhs.id === t.id ? 'rhs' : null;
+            if (!origin && side && t.k === 'int' && !t.lo) origin = { side, f: t.arg, v: t.v };
+            r = b;
+          } else { const x = expandInside(cur, t); if (x) r = x; }
+        }
       }
     }
     if (isErr(r)) return { steps, stuck: r.error };
     steps.push(r);
     cur = r.eq;
     // an inner integral just worked out: tidy what the outer one now holds
-    if (t?.k === 'at') { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
+    // and a derivative just taken inside a limit (L'Hôpital): tidy the quotient before plugging in
+    if (t?.k === 'at' || t?.k === 'int' || (t?.k === 'deriv' && inLim(cur))) { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
   }
   return { steps };
 }
 
+/** ∫ eˣ sin x by parts twice gives eˣ sin x − eˣ cos x − ∫ eˣ sin x: the integral I came back.
+ *  The side was I all along, so I = A + kI, and I = A/(1 − k) */
+function cameBack(e: Eq, side: 'lhs' | 'rhs', f: Node, v: string, t: Node): MoveResult | null {
+  if (t.k !== 'int' || t.lo || t.v !== v || !findPath(e[side], t.id)) return null;
+  const xs = [0.37, 0.91, 1.53];
+  const ratios = xs.map(x => evaluate(t.arg, { [v]: x }) / evaluate(f, { [v]: x }));
+  if (!ratios.every(r => Number.isFinite(r) && Math.abs(r - ratios[0]) < 1e-9 * (1 + Math.abs(r)))) return null;
+  const S = e[side], A = replace(S, t.id, num(0)), B = replace(S, t.id, num(1));
+  const ks = xs.map(x => evaluate(B, { [v]: x }) - evaluate(A, { [v]: x }));
+  if (!ks.every(k => Math.abs(k - ks[0]) < 1e-9 * (1 + Math.abs(k)))) return null;
+  const k = ks[0] * ratios[0];
+  if (Math.abs(1 - k) < 1e-9) return null;
+  const h = newHints();
+  const I = simplify(frac(A, ratNode(1 - k) ?? num(1 - k)), h);
+  const next = side === 'lhs' ? eq(plus(I, sym('C')), e.rhs, e.rel) : eq(e.lhs, plus(I, sym('C')), e.rel);
+  const m = ratNode(Math.abs(k)), mt = !m ? `${+Math.abs(k).toPrecision(4)}I` : m.k === 'num' ? `${m.v === 1 ? '' : m.v}I` : m.k === 'frac' && m.num.k === 'num' && m.den.k === 'num' ? `${m.num.v === 1 ? '' : m.num.v}I/${m.den.v}` : 'kI';
+  const r = checked(e, { eq: next, label: `the integral came back: I = … ${k > 0 ? '+' : '−'} ${mt}, so solve for I`, hints: h, factor: one, select: null, rule: 'solve for the integral' });
+  return isErr(r) ? null : r;
+}
+
+/** a limit whose inside has no derivatives left to take */
+const inLim = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'lim' && !hasCalc(n.arg)) f = true; }); return f; };
+
+/** x²(sin x − x cos x): multiply the inside out, so the sum rule can take it term by term */
+function expandInside(e: Eq, t: Node): MoveOk | null {
+  if (t.k !== 'int' || hasCalc(t.arg)) return null;
+  const h = newHints();
+  const a = distributeNode(t.arg, h);
+  if (!a || a.k !== 'add') return null;
+  const r = checked(e, { eq: replace(e, t.arg.id, simplify(a, h)) as Eq, label: 'multiply out the inside', hints: h, factor: one, select: null });
+  return isErr(r) ? null : r;
+}
+
 /** simplify the inside of each integral that has no calculus left in it (a double integral's
- *  outer one, once the inner is done) */
+ *  outer one, once the inner is done), and plain numbers left by plugged-in bounds */
 function tidyIntegrands(e: Eq): MoveOk | null {
   const h = newHints();
   let changed = false;
+  const busy = hasCalc(e);
   const go = (n: Node): Node => {
-    if (n.k === 'int' && !hasCalc(n.arg)) {
+    // bounds just plugged in, with work still to do: 1^3 sin(1) − 0^3 sin(0) is sin(1) from here on
+    if (busy && n.k !== 'num' && n.k !== 'sym' && !symbols(n).length && !hasCalc(n)) {
+      const a = simplify(n, h);
+      if (toText(a) !== toText(n)) { changed = true; return a; }
+      return n;
+    }
+    if ((n.k === 'int' || n.k === 'lim') && !hasCalc(n.arg)) {
       const a = simplify(n.arg, h);
       if (toText(a) !== toText(n.arg)) { changed = true; return withChildren(n, children(n).map(c => (c === n.arg ? a : c))); }
       return n;

@@ -9,7 +9,8 @@ import { layout } from '../render/layout';
 import { Stage } from '../render/stage';
 import { walk } from '../engine/ast';
 import { sound } from './sound';
-import { $, Tech, escapeHtml } from './shared';
+import { $, Tech, Hub, escapeHtml } from './shared';
+import { CALC_GROUPS } from './calc';
 import type { App } from './app';
 
 export function techniques(this: App): Tech[] {
@@ -46,11 +47,15 @@ export function techniques(this: App): Tech[] {
 
 export function openHub(this: App, sticky: boolean, calc = false) {
   this.flush();
-  const forms = calc ? this.calcForms() : formsFor(this.eq, this.sel);
-  this.hub = { forms, techs: calc ? this.calcTechniques() : this.techniques(), i: 0, sticky, moved: false, awaitVar: false, calc };
+  const forms = calc ? [] : formsFor(this.eq, this.sel);
+  const techs = calc ? this.calcTechniques() : this.techniques();
+  // C opens on the section with something to do (the first one, if nothing applies)
+  const first = techs.find(t => t.lead && t.ok) ?? techs.find(t => t.ok) ?? techs[0];
+  const tab = calc ? Math.max(0, CALC_GROUPS.findIndex(g => g.name === first?.group)) : 0;
+  this.hub = { forms, techs, i: 0, sticky, moved: false, awaitVar: false, calc, tab };
   this.chordUsed = false;
   this.setMode('hub');
-  if (this.slots.length > 1) this.renderLanes();
+  if (this.slots.length > 1) this.renderTree();
   sound.labels();
   this.renderHub();
   this.renderHints();
@@ -62,11 +67,13 @@ export function askVar(this: App) {
   this.hub.sticky = true;
   sound.tick(2);
   this.renderHub();
+  this.renderHints();
 }
 
 export function hubKey(this: App, e: KeyboardEvent) {
   const h = this.hub!;
   const k = e.key;
+  if (h.calc) return this.calcKey(e);
   if (k === 'Escape') return this.closeHub(true);
   if (e.repeat) return;
   if (h.awaitVar) {
@@ -114,6 +121,7 @@ export function peekAt(this: App) {
 export function applyForm(this: App) {
   const h = this.hub;
   if (!h) return;
+  if (h.calc) { const t = groupTechs(h)[h.i]; return t ? this.runTech(t) : this.closeHub(true); }
   const form = h.forms[h.i];
   this.closeHub(false);
   this.apply(form, 1.15);
@@ -127,7 +135,100 @@ export function closeHub(this: App, animateBack: boolean) {
   $('forms').hidden = true;
   this.setMode('solve');
   if (animateBack && peeked) { sound.undo(); this.renderAll({ quick: true }, true); }
-  else { this.renderHints(); if (this.slots.length > 1) this.renderLanes(); }
+  else { this.renderHints(); if (this.slots.length > 1) this.renderTree(); }
+}
+
+/* ---------- the calculus hub: sections like the f palette ---------- */
+
+const groupTechs = (h: Hub) => h.techs.filter(t => t.group === CALC_GROUPS[h.tab ?? 0].name);
+
+/** C's keys: ← → sections, ↓ into one, ← → its items, Enter or release applies; a key applies at once */
+export function calcKey(this: App, e: KeyboardEvent) {
+  const h = this.hub!;
+  const k = e.key;
+  if (h.asking) return;
+  if (k === 'Escape') { if (h.moved) { h.moved = false; sound.tick(1); return this.renderHub(); } return this.closeHub(true); }
+  if (e.repeat) return;
+  const items = groupTechs(h);
+  const dx = k === 'ArrowRight' ? 1 : k === 'ArrowLeft' ? -1 : 0;
+  if (dx && !h.moved) { h.tab = ((h.tab ?? 0) + dx + CALC_GROUPS.length) % CALC_GROUPS.length; sound.tick(1); return this.renderHub(); }
+  if (dx && h.moved) { if (items.length) h.i = (h.i + dx + items.length) % items.length; sound.tick(2); return this.renderHub(); }
+  if (k === 'ArrowDown' && !h.moved) {
+    if (!items.length) return this.refuse(`Nothing in ${CALC_GROUPS[h.tab ?? 0].name} applies here. Try ${CALC_GROUPS[h.tab ?? 0].example}.`);
+    h.moved = true; h.i = Math.max(0, items.findIndex(t => t.ok)); sound.tick(2); return this.renderHub();
+  }
+  if (k === 'ArrowUp' && h.moved) { h.moved = false; sound.tick(1); return this.renderHub(); }
+  if (k === 'Enter' || ((k === 'c' || k === 'C') && h.moved)) {
+    if (!h.moved) { if (!items.length) return this.refuse(`Nothing in ${CALC_GROUPS[h.tab ?? 0].name} applies here.`); h.moved = true; h.i = 0; return this.renderHub(); }
+    return this.runTech(items[h.i]);
+  }
+  if (k === 'c' || k === 'C') return this.closeHub(true);
+  // a key straight away: the one that applies, if two sections share it
+  const all = h.techs.filter(t => t.key === k);
+  const tech = all.find(t => t.ok) ?? all[0];
+  if (tech) return this.runTech(tech);
+  return this.refuse(h.techs.length ? `Press one of ${[...new Set(h.techs.map(t => t.key))].join(', ')}, or ← → for the sections.` : 'No calculus here yet. ← → shows what each section takes.');
+}
+
+/** run a technique from C, asking for input first when it needs some */
+export function runTech(this: App, t: Tech) {
+  const h = this.hub!;
+  if (!t.ok) return this.refuse(`${t.label[0].toUpperCase()}${t.label.slice(1)} doesn't apply here.`);
+  if (t.ask) {
+    h.asking = t; h.sticky = true; h.moved = true;
+    h.tab = CALC_GROUPS.findIndex(g => g.name === t.group);
+    h.i = groupTechs(h).indexOf(t);
+    sound.tick(2);
+    return this.renderHub();
+  }
+  this.closeHub(false);
+  t.run();
+}
+
+function renderCalcHub(this: App, host: HTMLElement) {
+  const h = this.hub!;
+  host.classList.add('pal', 'calc');
+  const tabs = document.createElement('div');
+  tabs.className = 'pal-tabs' + (h.moved ? '' : ' focus');
+  tabs.innerHTML = CALC_GROUPS.map((g, j) => {
+    const live = h.techs.some(t => t.group === g.name && t.ok);
+    return `<button class="pal-tab${j === h.tab ? ' on' : ''}${live ? ' live' : ''}" data-tab="${j}">${g.name}</button>`;
+  }).join('');
+  host.append(tabs);
+  const items = groupTechs(h);
+  const row = document.createElement('div');
+  row.className = 'hub-row calc-items';
+  row.innerHTML = items.length
+    ? items.map((t, j) => `<button class="chip${t.ok ? '' : ' off'}${h.moved && j === h.i ? ' on' : ''}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}${t.ask ? ' …' : ''}</button>`).join('')
+    : `<span class="calc-empty">Nothing here for this one. Type ${escapeHtml(CALC_GROUPS[h.tab ?? 0].example)}.</span>`;
+  host.append(row);
+  if (h.asking) {
+    const ask = document.createElement('div');
+    ask.className = 'pal-ask';
+    ask.innerHTML = `<span>${escapeHtml(h.asking.label)}: ${escapeHtml(h.asking.ask!.prompt)}</span><input id="calc-input" spellcheck="false" autocomplete="off"><span class="op-note">${escapeHtml(h.asking.ask!.hint)}, Enter applies</span>`;
+    host.append(ask);
+  }
+  const tip = document.createElement('div');
+  tip.className = 'forms-tip';
+  tip.innerHTML = h.asking ? '<kbd>Enter</kbd> apply <kbd>Esc</kbd> back'
+    : h.moved ? `<kbd>←</kbd><kbd>→</kbd> pick <kbd>↑</kbd> sections ${h.sticky ? '<kbd>Enter</kbd> applies <kbd>Esc</kbd> closes' : 'release <kbd>C</kbd> to apply'}`
+    : `<kbd>←</kbd><kbd>→</kbd> sections <kbd>↓</kbd> open one, or press a key. ${h.sticky ? '<kbd>Esc</kbd> closes' : ''}`;
+  host.append(tip);
+  if (h.asking) {
+    const input = $<HTMLInputElement>('calc-input');
+    input.addEventListener('keydown', ev => {
+      ev.stopPropagation();
+      if (ev.key === 'Escape') { ev.preventDefault(); h.asking = undefined; this.renderHub(); return; }
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (!input.value.trim()) return this.refuse(h.asking!.ask!.hint[0].toUpperCase() + h.asking!.ask!.hint.slice(1) + ', then Enter.');
+        const t = h.asking!;
+        this.closeHub(false);
+        t.ask!.run(input.value);
+      }
+    });
+    setTimeout(() => input.focus(), 0);
+  }
 }
 
 export function renderHub(this: App) {
@@ -135,10 +236,16 @@ export function renderHub(this: App) {
   const host = $('forms');
   host.replaceChildren();
   host.className = 'forms hub';
+  if (h.calc) {
+    renderCalcHub.call(this, host);
+    host.hidden = false;
+    this.place(host);
+    return;
+  }
   if (h.awaitVar) {
     const row = document.createElement('div');
     row.className = 'hub-row';
-    row.innerHTML = `<span class="hub-title">Solve for</span>` + symbols(this.eq).map(v => `<button class="chip var" data-k="${v}"><kbd>${v}</kbd></button>`).join('');
+    row.innerHTML = `<span class="hub-title">Solve for</span>` + [...symbols(this.eq)].sort((a, b) => Number(/^C(_\d+)?$/.test(a)) - Number(/^C(_\d+)?$/.test(b))).map(v => `<button class="chip var" data-k="${v}"><kbd>${v}</kbd></button>`).join('');
     host.append(row);
   } else {
     const row = document.createElement('div');

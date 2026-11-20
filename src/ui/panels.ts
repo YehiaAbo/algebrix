@@ -9,6 +9,7 @@ const VAR: Record<Key, string> = { railW: '--rail-w', sideW: '--side-w', sideH: 
 export function applyPanels() {
   const app = document.querySelector<HTMLElement>('.app')!;
   for (const k of Object.keys(VAR) as Key[]) app.style.setProperty(VAR[k], `${prefs[k]}px`);
+  app.style.setProperty('--tree-h', `${prefs.treeH}px`);
   app.dataset.graph = prefs.graphAt;
 }
 
@@ -46,6 +47,7 @@ export function initPanels() {
       el.addEventListener('pointerup', up);
     });
   };
+  initTreeSplit();
   make('split-rail', 'railW', 'v', 1);
   make('split-side', 'sideW', 'v', -1);
   make('split-below', 'sideH', 'h', -1);
@@ -58,4 +60,34 @@ export function cycleGraph() {
   setPref('graphAt', order[(order.indexOf(prefs.graphAt) + 1) % order.length]);
   applyPanels();
   return prefs.graphAt;
+}
+
+/** the line under the work tree: drag it to give the tree more or less of the board */
+function initTreeSplit() {
+  const app = document.querySelector<HTMLElement>('.app')!, el = document.getElementById('tree-split')!, board = document.getElementById('board')!;
+  el.addEventListener('dblclick', () => { setPref('treeH', PANEL_DEFAULTS.treeH); applyPanels(); });
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    document.body.classList.add('resizing');
+    document.body.style.cursor = 'row-resize';
+    const start = e.clientY, from = prefs.treeH;
+    let now = from;
+    const move = (m: PointerEvent) => {
+      // the equation keeps at least 180px
+      now = Math.round(Math.max(72, Math.min(board.clientHeight - 180, from + m.clientY - start)));
+      app.style.setProperty('--tree-h', `${now}px`);
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.classList.remove('drag');
+      document.body.classList.remove('resizing');
+      document.body.style.cursor = '';
+      setPref('treeH', now);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+  });
 }

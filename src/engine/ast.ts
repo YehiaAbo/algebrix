@@ -24,8 +24,8 @@ export interface Lim extends Base { k: 'lim'; v: string; to: Node; side?: '+' | 
 export interface Int extends Base { k: 'int'; v: string; arg: Node; lo?: Node; hi?: Node }
 /** [arg] from v = lo to v = hi: what an antiderivative is worth between two bounds */
 export interface At extends Base { k: 'at'; v: string; arg: Node; lo: Node; hi: Node }
-/** Σ arg for v = lo to hi (hi may be ∞); v is bound inside */
-export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node }
+/** Σ arg for v = lo to hi (hi may be ∞), or ∏ when prod; v is bound inside */
+export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node; prod?: boolean }
 /** a vector ⟨a, b, c⟩ */
 export interface Vec extends Base { k: 'vec'; items: Node[] }
 /** ∇f: the vector of partial derivatives along vars. With op, ∇·F (divergence) or ∇×F (curl) of a field ⟨…⟩ */
@@ -72,9 +72,16 @@ export const varOrder = (vs: string[]) => [...vs].sort((a, b) => { const r = (v:
 export const lim = (v: string, to: Node, arg: Node, side?: '+' | '-', id = newId()): Lim => (side ? { k: 'lim', id, v, to, arg, side } : { k: 'lim', id, v, to, arg });
 export const int = (v: string, arg: Node, lo?: Node, hi?: Node, id = newId()): Int => (lo && hi ? { k: 'int', id, v, arg, lo, hi } : { k: 'int', id, v, arg });
 export const at = (v: string, arg: Node, lo: Node, hi: Node, id = newId()): At => ({ k: 'at', id, v, arg, lo, hi });
-export const sum = (v: string, lo: Node, hi: Node, arg: Node, id = newId()): Sum => ({ k: 'sum', id, v, lo, hi, arg });
+export const sum = (v: string, lo: Node, hi: Node, arg: Node, id = newId(), prod = false): Sum => (prod ? { k: 'sum', id, v, lo, hi, arg, prod } : { k: 'sum', id, v, lo, hi, arg });
 /** the name of a derivative: y → y′, f′ → f″ */
 export const primed = (name: string) => name + '′';
+/** a differential: dx, dy, dt (a letter of its own, d + one letter; written with an upright d) */
+export const isDiff = (name: string) => /^d[a-zA-Zα-ω]$/.test(name);
+/** d²y: the top of a second derivative d²y/dx² */
+export const isDiff2 = (name: string) => /^d²[a-zA-Zα-ω]$/.test(name);
+/** d²y/dx²: the second derivative as a fraction, d²y over (dx)² */
+export const isLeibniz2 = (n: Node): boolean =>
+  n.k === 'frac' && n.num.k === 'sym' && isDiff2(n.num.name) && n.den.k === 'pow' && n.den.base.k === 'sym' && isDiff(n.den.base.name) && n.den.exp.k === 'num' && n.den.exp.v === 2;
 /** names that read as function calls when followed by "(" */
 export const FUNC_NAMES = ['f', 'g', 'h'];
 /** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */
@@ -195,7 +202,7 @@ export function key(n: Node): string {
     case 'lim': return '(lim ' + n.v + ' ' + key(n.to) + (n.side ?? '') + ' ' + key(n.arg) + ')';
     case 'int': return '(int ' + n.v + (n.lo && n.hi ? ' ' + key(n.lo) + ' ' + key(n.hi) : '') + ' ' + key(n.arg) + ')';
     case 'at': return '(at ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
-    case 'sum': return '(sum ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
+    case 'sum': return (n.prod ? '(prod ' : '(sum ') + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
     case 'eq': return '(' + (n.rel ?? '=') + ' ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
   }
 }
@@ -219,7 +226,18 @@ export function evaluate(n: Node, env: Env): number {
     }
     case 'neg': return -evaluate(n.arg, env);
     case 'frac': return evaluate(n.num, env) / evaluate(n.den, env);
-    case 'pow': return Math.pow(evaluate(n.base, env), evaluate(n.exp, env));
+    case 'pow': {
+      const b = evaluate(n.base, env), x = evaluate(n.exp, env);
+      // an odd root of a negative is real: (−8)^(1/3) = −2, (−8)^(2/3) = 4
+      if (b < 0 && !Number.isInteger(x)) {
+        const e = n.exp.k === 'neg' ? n.exp.arg : n.exp, sg = n.exp.k === 'neg' ? -1 : 1;
+        if (e.k === 'frac' && e.num.k === 'num' && e.den.k === 'num' && Number.isInteger(e.num.v) && Number.isInteger(e.den.v) && Math.abs(e.den.v) % 2 === 1) {
+          const m = Math.pow(-b, x);
+          return Math.abs(e.num.v * sg) % 2 === 0 ? m : -m;
+        }
+      }
+      return Math.pow(b, x);
+    }
     case 'sqrt': return Math.sqrt(evaluate(n.arg, env));
     case 'fn': {
       const a = evaluate(n.arg, env);
@@ -260,7 +278,7 @@ export function symbols(n: Node): string[] {
   const s = new Set<string>();
   const visit = (m: Node, bound: Set<string>) => {
     if (m.k === 'sym') { if (!(m.name in CONSTS) && !bound.has(m.name)) s.add(m.name); return; }
-    if (m.k === 'lim') { visit(m.to, bound); visit(m.arg, new Set([...bound, m.v])); return; }
+    if (m.k === 'lim') { visit(m.to, bound); visit(m.arg, new Set([...bound, ...m.v.split(',')])); return; }
     if ((m.k === 'int' && m.lo && m.hi) || m.k === 'at' || m.k === 'sum') { children(m).forEach(c => visit(c, c === m.arg ? new Set([...bound, m.v]) : bound)); return; }
     if (m.k === 'deriv' && m.dep) { const inner = new Set<string>(); walk(m.arg, q => { if (q.k === 'sym') inner.add(q.name); }); m.dep.forEach(w => { if (inner.has(w) && !bound.has(w)) s.add(primed(w)); }); }
     children(m).forEach(c => visit(c, bound));
