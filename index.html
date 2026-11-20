@@ -129,10 +129,11 @@
           <section><h3>10. More than equations</h3><p>Type <i>x^2 − 4 &lt; 0</i> for an inequality (moves flip the sign when they must; <kbd>e</kbd> solves it with a sign chart). Type just an expression to rewrite it. An identity like <i>(a+b)^2 = a^2+2ab+b^2</i> becomes a proof. <i>f(x) = x^2 + 1</i> defines a function.</p></section>
           <section><h3>11. Your work</h3><p><kbd>w</kbd> shows every workspace as a card: open, rename, copy, or start a new one. <kbd>Shift</kbd>+<kbd>R</kbd> twice puts every equation back at its start (<kbd>r</kbd> replays your steps).</p></section>
           <section><h3>12. Hold C for calculus</h3><p>Type <i>d/dx x^2 sin x</i> or <i>lim x->0 sin(x)/x</i>; while you type, a grey □ marks what is still to come (Enter waits until every □ is filled). <kbd>C</kbd> opens in sections: Derivatives, Limits, Integrals, Series, Several variables, Differential equations, Vector fields. <kbd>←</kbd> <kbd>→</kbd> pick a section (a dot marks the ones that apply), <kbd>↓</kbd> steps in, <kbd>Enter</kbd> applies, or press an item's key at once. On any expression, <kbd>l</kbd> wraps it in a limit and <kbd>a</kbd> in a definite integral: type where x goes, or the bounds like <i>0, pi</i>. Hold <kbd>C</kbd>: <kbd>d</kbd> takes the next derivative rule (its name shows on the key), <kbd>p</kbd> plugs in, <kbd>l</kbd> is L'Hôpital. On a function, <kbd>d</kbd> adds f′ as a new equation and <kbd>m</kbd> finds where the slope is 0; on an equation, it differentiates both sides and y′ appears. <kbd>e</kbd> works all of it out.</p></section>
-          <section><h3>13. Integrals and series</h3><p>Type <i>int x^2 dx</i> or <i>int_0^1 x^2 dx</i>, then <kbd>i</kbd> integrates, <kbd>u</kbd> substitutes (u = … becomes its own equation in the tree), <kbd>b</kbd> is by parts, <kbd>p</kbd> plugs in the bounds, and the graph shades the area. Stack them for double and triple integrals: <i>int_0^1 int_0^x x y dy dx</i>. Series: <i>sum_{n=0}^∞ (1/2)^n</i>, with <kbd>g</kbd> geometric and <kbd>r</kbd> the ratio test; <kbd>t</kbd> gives a Taylor polynomial.</p></section>
-          <section><h3>14. Several letters, and differential equations</h3><p>Two letters, like <i>x^2 y + y^3</i>: <kbd>d</kbd> is ∂/∂x (aim at y for ∂/∂y), <kbd>n</kbd> the gradient ∇, <kbd>m</kbd> sets every partial to 0, and <kbd>k</kbd> is Lagrange with a constraint you typed as another equation. A vector equation splits into one equation per entry with <kbd>e</kbd>. Type vectors as <i>(1, 2)</i>; on a field like <i>(-y, x, 0)</i>, <kbd>v</kbd> is the divergence and <kbd>w</kbd> the curl. Differential equations: type <i>y' = x y</i>, <i>y' + 2y = e^x</i>, <i>y'' - 3y' + 2y = 0</i> or with a right side like <i>y'' + y = sin(x)</i> (undetermined coefficients). <kbd>s</kbd> separates, <kbd>f</kbd> is the integrating factor, <kbd>r</kbd> the characteristic equation, <kbd>g</kbd> the general solution, and <kbd>e</kbd> picks the method. The graph shows the slope field: hover to trace a solution.</p></section>
-          <section><h3>15. Odd notation</h3><p>While you type, part of a word (<i>int</i>, <i>lim</i>, <i>alpha</i>, or a LaTeX <i>\sum</i>) brings up cards with the notation it could mean: integrals single to triple, sums and products, one-sided limits, ∂, ∇, Greek letters and more. <kbd>↓</kbd> <kbd>↑</kbd> pick one, <kbd>Tab</kbd> takes it and puts the caret where you type next. Stack integrals freely: <i>int int x y dx dy</i>. Products: <i>prod_{k=1}^5 k</i>. A grey □ marks what is still missing. Type it the way you would write it: <i>x²</i>, <i>sin^2 x</i>, <i>√x</i>, <i>½</i>, <i>log_2 8</i>, <i>theta</i>, <i>x1</i> for x₁, <i>50%</i> and LaTeX like <i>\frac{1}{2}</i> all read as meant.</p></section>
-          <section><h3>16. Make it yours</h3><p><kbd>,</kbd> opens settings: theme, look (try Pixel), math size, speed, sound pack (Bricks is a real brick on a table; Build is a brick game, its snaps climbing a scale as you work). <kbd>z</kbd> or the ⚡ at the bottom switches flash mode.</p></section>
+          <section><h3>13. Integrals and series</h3><p>Type <i>int x^2 dx</i> or <i>int_0^1 x^2 dx</i>, then <kbd>i</kbd> integrates, <kbd>u</kbd> substitutes (three moves you can make yourself: name the inside with <kbd>b</kbd>, take its differentials with C <kbd>k</kbd>, sub them in with Tab + its number), <kbd>b</kbd> is by parts, <kbd>p</kbd> plugs in the bounds, and the graph shades the area. Stack them for double and triple integrals: <i>int_0^1 int_0^x x y dy dx</i>. Series: <i>sum_{n=0}^∞ (1/2)^n</i>, with <kbd>k</kbd> a known sum and <kbd>r</kbd> the ratio test; <kbd>t</kbd> gives a Taylor polynomial. Hold Tab on a Σ or ∏ for the general moves: split it, take a term out, shift the index, pull a constant out.</p></section>
+          <section><h3>14. Name it, sub in, put in a value</h3><p>Most techniques are a few general moves. <kbd>b</kbd> names the aimed piece: type a letter (<i>u</i>), a function (<i>I(t)</i>), or what it equals (<i>sin θ</i>), and it becomes an equation of its own, linked in the tree. A number named is a parameter: aim at the 2 in <i>x^2</i>, press <kbd>b</kbd>, and it is <i>t</i>. Hold Tab + an equation's number to sub it in. <kbd>p</kbd> puts a value into anything that holds for every value. Chips marked CHAIN in the C hub are shortcuts: they play these moves into the tree, one at a time. The Feynman technique, by hand: name the 2 as <i>t</i>, the integral as <i>I(t)</i>, C <kbd>d</kbd> on the definition (Leibniz takes d/dt inside), <kbd>e</kbd>, C <kbd>i</kbd> to integrate back, <kbd>p</kbd> at t = 0, unfold I(0) with Tab <kbd>u</kbd>, and <kbd>e</kbd> finds C.</p></section>
+          <section><h3>15. Several letters, and differential equations</h3><p>Two letters, like <i>x^2 y + y^3</i>: <kbd>d</kbd> is ∂/∂x (aim at y for ∂/∂y), <kbd>n</kbd> the gradient ∇, <kbd>m</kbd> sets every partial to 0, and <kbd>k</kbd> is Lagrange with a constraint you typed as another equation. A vector equation splits into one equation per entry with <kbd>e</kbd>. Type vectors as <i>(1, 2)</i>; on a field like <i>(-y, x, 0)</i>, <kbd>v</kbd> is the divergence and <kbd>w</kbd> the curl. Differential equations: type <i>y' = x y</i>, <i>y' + 2y = e^x</i>, <i>y'' - 3y' + 2y = 0</i> or with a right side like <i>y'' + y = sin(x)</i> (undetermined coefficients). <kbd>s</kbd> separates, <kbd>f</kbd> is the integrating factor, <kbd>r</kbd> tries y = e^(rx) in a new equation, <kbd>g</kbd> the general solution, and <kbd>e</kbd> picks the method. The graph shows the slope field: hover to trace a solution.</p></section>
+          <section><h3>16. Odd notation</h3><p>While you type, part of a word (<i>int</i>, <i>lim</i>, <i>alpha</i>, or a LaTeX <i>\sum</i>) brings up cards with the notation it could mean: integrals single to triple, sums and products, one-sided limits, ∂, ∇, Greek letters and more. <kbd>↓</kbd> <kbd>↑</kbd> pick one, <kbd>Tab</kbd> takes it and puts the caret where you type next. Stack integrals freely: <i>int int x y dx dy</i>. Products: <i>prod_{k=1}^5 k</i>. A grey □ marks what is still missing. Type it the way you would write it: <i>x²</i>, <i>sin^2 x</i>, <i>√x</i>, <i>½</i>, <i>log_2 8</i>, <i>theta</i>, <i>x1</i> for x₁, <i>50%</i> and LaTeX like <i>\frac{1}{2}</i> all read as meant.</p></section>
+          <section><h3>17. Make it yours</h3><p><kbd>,</kbd> opens settings: theme, look (try Pixel), math size, speed, sound pack (Bricks is a real brick on a table; Build is a brick game, its snaps climbing a scale as you work). <kbd>z</kbd> or the ⚡ at the bottom switches flash mode.</p></section>
         </div>
       </div>
       <div class="help-pane" data-pane="keys" hidden>
@@ -169,6 +170,8 @@
             <dt><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></dt><dd>reorder: slide a term</dd>
             <dt><kbd>e</kbd></dt><dd>solve for the aimed (or only) variable</dd>
             <dt><kbd>-</kbd> then <i>2#2</i></dt><dd>subtract 2 × equation 2 (elimination)</dd>
+            <dt><kbd>b</kbd></dt><dd>name the aimed piece: a letter (u), a function (I(t)), or what it equals (sin θ); it becomes an equation of its own</dd>
+            <dt><kbd>p</kbd></dt><dd>put in a value, where it holds for every value (a definition, I(t) = …)</dd>
           </dl>
           <h3 class="gap">Hold f + (functions on both sides)</h3>
           <dl>
@@ -186,7 +189,7 @@
           <h3>Hold Tab + (algebra)</h3>
           <dl>
             <dt><kbd>i</kbd></dt><dd>solve for a variable</dd>
-            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>substitute from that equation</dd>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>sub in from that equation: a letter, a named piece, or du = 2x dx into an integral</dd>
             <dt><kbd>a</kbd></dt><dd>split into cases: |…| = b, or a product = 0</dd>
             <dt><kbd>g</kbd> <kbd>h</kbd></dt><dd>quadratic formula / completed square</dd>
             <dt><kbd>c</kbd> <kbd>t</kbd></dt><dd>one fraction / split into terms</dd>
@@ -196,19 +199,22 @@
             <dt><kbd>q</kbd> <kbd>v</kbd> <kbd>n</kbd></dt><dd>long division / partial fractions / rationalize</dd>
             <dt><kbd>k</kbd></dt><dd>eliminate a variable with another equation</dd>
             <dt><kbd>u</kbd> <kbd>b</kbd></dt><dd>unfold f(…) / build f⁻¹</dd>
+            <dt><kbd>t</kbd> <kbd>m</kbd></dt><dd>on a Σ or ∏: split it / as a limit of partial sums (more: take a term out, shift, constant out)</dd>
+            <dt><kbd>b</kbd></dt><dd>product rule backwards: f g′ + f′ g is (f g)′</dd>
             <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>browse forms and identities (trig too), Tab or release to apply</dd>
           </dl>
           <h3 class="gap">Hold C + (calculus)</h3>
           <dl>
             <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↓</kbd></dt><dd>sections (Derivatives, Limits, Integrals …), then their items</dd>
-            <dt><kbd>d</kbd></dt><dd>next derivative rule / f′ / d/dx both sides</dd>
+            <dt><kbd>d</kbd></dt><dd>next derivative rule / f′ / d/dx both sides (Leibniz under an integral)</dd>
+            <dt><kbd>k</kbd></dt><dd>differentials of both sides: u = x² gives du = 2x dx</dd>
             <dt><kbd>p</kbd> <kbd>l</kbd></dt><dd>plug in (a limit, or the bounds) / L'Hôpital</dd>
             <dt><kbd>m</kbd></dt><dd>max and min: where the slope is 0</dd>
             <dt><kbd>h</kbd></dt><dd>the derivative as a limit</dd>
             <dt><kbd>l</kbd> <kbd>a</kbd></dt><dd>on any expression: a limit as x → … / the area between two bounds</dd>
-            <dt><kbd>i</kbd></dt><dd>integrate (next rule) / antiderivative</dd>
-            <dt><kbd>u</kbd> <kbd>b</kbd></dt><dd>u-substitution / by parts</dd>
-            <dt><kbd>g</kbd> <kbd>r</kbd> <kbd>t</kbd></dt><dd>geometric series / ratio test / Taylor</dd>
+            <dt><kbd>i</kbd></dt><dd>integrate (next rule) / antiderivative / ∫ both sides</dd>
+            <dt><kbd>u</kbd> <kbd>b</kbd></dt><dd>u-substitution (a chain: b, k, sub in) / by parts</dd>
+            <dt><kbd>k</kbd> <kbd>r</kbd> <kbd>t</kbd></dt><dd>known sum (geometric, telescoping, Σk, ∏k …) / ratio test / Taylor</dd>
             <dt><kbd>x</kbd></dt><dd>write out a finite Σ or ∏ term by term</dd>
             <dt><kbd>n</kbd> <kbd>k</kbd></dt><dd>gradient ∇ / Lagrange (two or more letters; d is then ∂)</dd>
             <dt><kbd>o</kbd> <kbd>s</kbd></dt><dd>dot product / split a vector into equations</dd>
