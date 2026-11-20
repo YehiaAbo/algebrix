@@ -15,6 +15,7 @@ import { evaluate } from '../engine/ast';
 import { sound } from './sound';
 import { ms } from './prefs';
 import { Slot, DOMAIN_TEXT } from './shared';
+import { here } from './tree';
 import type { App } from './app';
 
 export function solveFor(this: App, v: string) {
@@ -75,7 +76,7 @@ export function afterSolve(this: App, v: string, why?: string) {
   if (always !== null) {
     // one case of several: this case is empty, the others may not be
     const aCase = !!this.slot?.origin && this.slots.length > 1;
-    this.say(always ? `${v} cancelled out, and ${toText(this.eq)} is always true: every ${v} works.` : aCase ? `${v} cancelled out, and ${toText(this.eq)} is never true, so this case has no solution. The other case is on the shelf (Alt + →).` : `${v} cancelled out, and ${toText(this.eq)} is never true: no ${v} works, so there is no solution.`, !always);
+    this.say(always ? `${v} cancelled out, and ${toText(this.eq)} is always true: every ${v} works.` : aCase ? `${v} cancelled out, and ${toText(this.eq)} is never true, so this case has no solution. The other case is the next equation in the tree (Alt + →).` : `${v} cancelled out, and ${toText(this.eq)} is never true: no ${v} works, so there is no solution.`, !always);
     return;
   }
   const no = impossible(this.eq, v);
@@ -89,10 +90,12 @@ export function split(this: App, v?: string, cases?: Cases) {
   if (this.slots.length + c.rest.length > 9) { this.refuse('Nine equations is the limit for now.'); return; }
   const origin = this.slot!.origin ?? this.steps[0].eq;
   const at = this.cur;
+  // the cases come out of the step you split
+  const from = here(this.slot!);
   // each case reads from its plus term: y = √(C − x²)
   c.first.eq = leadPositive(c.first.eq);
   c.rest = c.rest.map(e => leadPositive(e));
-  // land on a case that works: an extraneous root (from squaring, or outside a log) waits on the shelf
+  // land on a case that works: an extraneous root (from squaring, or outside a log) waits in the tree
   if (v) {
     const works = (e: Eq) => {
       const r = isolate(e, v), end = Array.isArray(r) && r.length ? r[r.length - 1].eq : e;
@@ -107,7 +110,7 @@ export function split(this: App, v?: string, cases?: Cases) {
   }
   this.apply(c.first, 1.1);
   c.rest.forEach((e, j) => {
-    const slot: Slot = { steps: [{ eq: e, label: `case ${j + 2}`, conditions: [...this.step.conditions] }], at: 0, sel: null, origin };
+    const slot: Slot = { steps: [{ eq: e, label: `case ${j + 2}`, conditions: [...this.step.conditions] }], at: 0, sel: null, origin, from };
     if (v) {
       const r = isolate(e, v);
       if (Array.isArray(r)) for (const st of r) { slot.steps.push({ eq: st.eq, label: st.label, conditions: [...new Set([...slot.steps[slot.at].conditions, ...(st.conditions ?? [])])], auto: st.auto }); slot.at++; }
@@ -116,8 +119,8 @@ export function split(this: App, v?: string, cases?: Cases) {
     this.judge(at + 1 + j);
   });
   if (!this.slot!.origin) this.slot!.origin = origin;
-  // the other cases go straight onto the shelf, in view
-  this.renderLanes();
+  // the other cases go straight into the tree, in view
+  this.renderTree();
   this.renderRail();
   this.save();
   const nums = c.rest.map((_, j) => at + 2 + j).join(' and ');
@@ -164,7 +167,7 @@ export function addInverse(this: App) {
   const inv = inverseFunction(this.eq);
   if ('error' in inv) { this.refuse(inv.error); return; }
   if (this.slots.length >= 9) { this.refuse('Nine equations is the limit for now.'); return; }
-  this.slots.push({ steps: [{ eq: inv, label: 'inverse', conditions: [] }], at: 0, sel: null });
+  this.slots.push({ steps: [{ eq: inv, label: 'inverse', conditions: [] }], at: 0, sel: null, from: here(this.slot!) });
   this.cur = this.slots.length - 1;
   sound.commit();
   this.stage.clear();

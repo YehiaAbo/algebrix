@@ -125,18 +125,6 @@ body[data-mode="write"] #input { border-color: var(--sel); background: var(--des
 body[data-mode="write"] .original { display: none; }
 .input-error { min-height: 18px; margin: 4px 4px 0; color: var(--bad); font-size: 12.5px; }
 
-.trail { position: absolute; top: 0; left: 0; right: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 16px 0; min-height: 0; }
-.trail-row {
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 100%;
-  background: none; border: 0; padding: 4px 8px; border-radius: 8px; cursor: pointer;
-  opacity: calc(1 - (var(--age) - 1) * 0.2);
-  animation: rise calc(.28s * var(--pace, 1)) var(--ease) backwards;
-}
-.trail-row:last-child { animation-delay: .06s; }
-.trail-row:hover { background: var(--bg); opacity: 1; }
-.trail-row .mini { grid-column: 2; color: var(--muted); }
-.trail-label { grid-column: 3; justify-self: start; margin-left: 18px; color: var(--faint); font-size: 12.5px; white-space: nowrap; }
-.trail-row:hover .trail-label { color: var(--muted); }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 
 .mini { position: relative; }
@@ -408,14 +396,12 @@ body:not([data-mode="solve"]) .spots { display: none; }
 /* mouse box-select */
 .marquee { position: absolute; border: 1.5px dashed var(--sel); background: var(--sel-fill); border-radius: 6px; pointer-events: none; z-index: 3; }
 .marquee[hidden] { display: none; }
-.trail-dir { display: inline-block; width: 16px; margin-right: 6px; color: var(--faint); font-family: var(--math-font); font-size: 13px; text-align: center; }
-.trail-dir.one-way { color: var(--sel); }
 
 /* answers, goals, domains */
 .answer { position: absolute; left: 0; right: 0; text-align: center; font-family: var(--math-font); font-size: 22px; color: var(--good); pointer-events: none; animation: rise .3s var(--ease); }
 .answer[hidden] { display: none; }
 .answer.bad { color: var(--bad); font: 600 14px var(--ui-font); }
-.stage.extraneous .g:not(.trail .g) { color: var(--bad); opacity: .8; }
+.stage.extraneous .g { color: var(--bad); opacity: .8; }
 .vars .solved.no { color: var(--bad); white-space: nowrap; }
 .eq-slot .solved.ans { font-family: var(--math-font); font-size: 11px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eq-slot .goal { margin-left: auto; font-size: 10.5px; color: var(--sel); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
@@ -506,7 +492,7 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .set-opt.on { background: var(--sel); color: var(--on-sel); box-shadow: none; }
 .set-blurb { width: 100%; color: var(--faint); font-size: 12px; margin-top: 3px; }
 
-/* flash mode: overlay pops and trail rows keep up too */
+/* flash mode: overlay pops keep up too */
 :root[data-speed="flash"] .help, :root[data-speed="flash"] .overlay { animation-duration: .06s; }
 
 /* hover: where a click would aim */
@@ -541,38 +527,93 @@ body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
 @keyframes nudge-l { 50% { transform: translateX(-3px); } }
 @keyframes nudge-r { 50% { transform: translateX(3px); } }
 
-/* ---------- the sheet: your equation gets the room, the others wait in a dock ---------- */
-.board { position: relative; display: flex; min-height: 0; min-width: 0; }
-.board > .stage { flex: 1 1 0; min-width: 0; }
+/* ---------- the sheet: your equation gets the room, the work tree runs across the top ---------- */
+.board { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.board > .stage { flex: 1 1 0; min-width: 0; min-height: 0; }
 .board.multi > .stage::before {
   content: attr(data-n); position: absolute; top: 10px; left: 14px; z-index: 2;
   font: 600 11px/18px var(--ui-font); min-width: 18px; height: 18px; text-align: center; border-radius: 5px;
   background: var(--sel); color: var(--on-sel);
 }
-/* the shelf: other equations open across the top, between a card and a full sheet */
-.board.multi { flex-direction: column; }
-.dock { position: relative; z-index: 3; flex: none; padding: 10px 16px 0 44px; }
-.dock[hidden] { display: none; }
-.dock-row { display: flex; align-items: stretch; gap: 0; overflow-x: auto; scrollbar-width: thin; padding-bottom: 10px; border-bottom: 1px dashed var(--line); }
-.lane {
-  display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 4px; flex: none; min-width: 120px; max-width: 320px;
-  padding: 4px 18px 4px 14px; border: 0; border-left: 1.5px solid var(--line); border-radius: 0; cursor: pointer; color: var(--ink); font: inherit; text-align: left;
-  background: transparent; transition: background .15s, border-color .15s;
+.tree {
+  position: relative; flex: none; height: var(--tree-h, 176px); overflow: hidden; cursor: zoom-in; user-select: none;
 }
-.lane:hover { background: color-mix(in srgb, var(--sel) 5%, transparent); border-left-color: var(--sel); }
-.lane-head { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
-.lane-head kbd { font-size: 10px; min-width: 16px; height: 16px; }
-.lane-tag { font-size: 11px; font-weight: 600; color: var(--good); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lane-tag.no { color: var(--bad); } .lane-tag.goal { color: var(--copy); } .lane-tag.ans { font-family: var(--math-font); font-weight: 500; font-size: 12.5px; }
-.lane-math { display: block; }
-.lane-math .mini { display: block; }
-.lane-offer { display: flex; align-items: center; gap: 4px; min-height: 15px; font-size: 11px; color: var(--muted); white-space: nowrap; }
-.lane-offer .sep { color: var(--faint); margin: 0 2px; }
-.lane-offer:empty::before { content: 'nothing shared'; color: var(--faint); }
-.lane-offer kbd { font-size: 9.5px; min-width: 14px; height: 14px; }
-.lane-offer i { font-family: var(--math-font); font-size: 13px; color: var(--ink); }
-.lane.linked { border-left-color: var(--copy); background: color-mix(in srgb, var(--copy) 8%, transparent); }
-.lane.linked .lane-offer { color: var(--copy); }
+/* steps far above the line you're on fade out under the numbers, and below into the work */
+.tree::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(to bottom, var(--desk) 0, var(--desk) 22px, color-mix(in srgb, var(--desk) 0%, transparent) 50px, color-mix(in srgb, var(--desk) 0%, transparent) calc(100% - 16px), var(--desk));
+}
+.tree[hidden], .tree-split[hidden] { display: none; }
+.tree-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.tree-svg { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.tree-layer { position: absolute; left: 0; top: 0; }
+.titem {
+  position: absolute; left: 0; top: 0; cursor: pointer; color: var(--muted); border-radius: 7px;
+  transition: color .2s, background-color .2s, box-shadow .2s;
+}
+.titem::before { content: ''; position: absolute; inset: -4px -9px; border-radius: 8px; transition: background-color .2s; }
+.titem:hover::before { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.titem .mini { position: relative; }
+.titem.off { color: var(--muted); opacity: .5; }
+.titem.now { color: var(--ink); }
+.titem.here { color: var(--sel); }
+.titem.here::before { background: var(--sel-fill); box-shadow: 0 0 0 1px color-mix(in srgb, var(--sel) 22%, transparent); }
+.tfold { display: flex; align-items: center; justify-content: center; height: 100%; white-space: nowrap; font: italic 12px/1 var(--ui-font); color: var(--faint); letter-spacing: .01em; }
+.titem.fold:hover .tfold { color: var(--muted); }
+.tree-svg path { fill: none; stroke: var(--faint); stroke-width: 1.15; stroke-linecap: round; opacity: .75; }
+.tree-svg path.live { opacity: 1; }
+.tree-svg path.fold { stroke-dasharray: 1.5 4; }
+.tree-svg path.tarrow { stroke: var(--muted); opacity: .55; stroke-dasharray: 5 4; }
+.tree-svg .tlabel { font: 11px var(--ui-font); fill: var(--faint); }
+.tree-svg .tlabel.live { fill: var(--muted); }
+.tree-heads { position: absolute; left: 0; top: 6px; z-index: 2; height: 0; }
+.thead {
+  position: absolute; top: 0; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  padding: 1px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer;
+}
+.thead kbd { font-size: 10px; min-width: 17px; height: 17px; }
+.thead.on kbd { background: var(--sel); border-color: var(--sel); color: var(--on-sel); }
+.thead:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.ttag { font-weight: 600; color: var(--good); max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.ttag.no { color: var(--bad); } .ttag.goal { color: var(--copy); } .ttag.ans { font-family: var(--math-font); font-weight: 500; font-size: 12.5px; }
+.toffer { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.toffer .sep { color: var(--faint); margin: 0 2px; }
+.toffer kbd { font-size: 9.5px; min-width: 14px; height: 14px; }
+.toffer i { font-family: var(--math-font); font-size: 13px; color: var(--ink); }
+.thead.linked { background: color-mix(in srgb, var(--copy) 12%, transparent); }
+.thead.linked .toffer { color: var(--copy); }
+.tree-open {
+  position: absolute; right: 8px; top: 6px; z-index: 3; display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 7px; background: transparent; color: var(--faint); cursor: pointer; transition: color .15s, background-color .15s;
+}
+.tree-open svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tree-open:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+/* the line under the tree: drag it to share the board differently */
+.tree-split { position: relative; z-index: 4; flex: none; height: 9px; margin-top: -4px; cursor: row-resize; }
+.tree-split::before { content: ''; position: absolute; left: 16px; right: 16px; top: 4px; border-top: 1px dashed var(--line); }
+.tree-split::after { content: ''; position: absolute; left: 50%; top: 3px; width: 38px; height: 3px; margin-left: -19px; border-radius: 2px; background: var(--line); transition: background-color .15s, width .15s; }
+.tree-split:hover::after, .tree-split.drag::after { background: var(--sel); width: 54px; margin-left: -27px; }
+/* the big view: the whole tree on a canvas */
+.tree-big { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(3px); }
+.tree-big[hidden] { display: none; }
+.tree-big-card {
+  display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(1280px, calc(100vw - 48px)); height: calc(100vh - 48px);
+  background: var(--desk); border-radius: 14px; box-shadow: 0 0 0 1px var(--line), 0 24px 60px var(--shadow); overflow: hidden;
+}
+.tree-big-head { display: flex; align-items: center; gap: 16px; padding: 12px 14px 10px 20px; border-bottom: 1px solid var(--line); }
+.tree-big-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.tree-big-keys { display: flex; flex-wrap: wrap; gap: 14px; color: var(--faint); font-size: 12px; margin-left: auto; }
+.tree-big-keys kbd { font-size: 10px; }
+.tree-big-close { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.tree-big-close:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.tree-big-canvas {
+  position: relative; overflow: hidden; cursor: grab; touch-action: none; user-select: none;
+  background-image: radial-gradient(circle, var(--grid) 1.1px, transparent 1.2px); background-size: 22px 22px;
+}
+.tree-big-canvas.grabbing { cursor: grabbing; }
+.tree-big-canvas .tree-heads { top: 0; }
+.tree-big-canvas .titem.here::before { inset: -6px -12px; }
+@media (max-width: 720px) { .tree-big-keys { display: none; } }
 .fly { pointer-events: none; }
 .fly .g { color: var(--copy); }
 /* the rail no longer lists equations: the sheet does */

@@ -15,6 +15,7 @@ import { derivStep, plugIn, lhopital, finishCalc, hasCalc, calcVar, derivativeOf
 import { intStep, uSub, byParts, plugBounds, geometric, ratioTest, taylor, writeOut } from '../engine/integrate';
 import { sound } from './sound';
 import * as sheet from './sheet';
+import { here } from './tree';
 import { Tech } from './shared';
 import type { App } from './app';
 
@@ -151,13 +152,13 @@ const has = (n: Node, k: string) => { let f = false; walk(n, m => { if (m.k === 
 const body = (e: Eq) => (e.rel === 'def' ? e.rhs : e.lhs);
 const eqOf = (n: Node): Eq => mkEq(n, num(0), 'expr');
 
-/** C + u: the integral in u, and u = … on the shelf beside it */
+/** C + u: the integral in u, and u = … as an equation of its own beside it */
 export function substituteU(this: App) {
   const r = uSub(this.eq, this.sel);
   if (isErr(r.move)) return this.refuse(r.move.error);
   if (r.side) {
     if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
-    this.slots.push({ steps: [{ eq: r.side, label: 'substitution', conditions: [] }], at: 0, sel: null });
+    this.slots.push({ steps: [{ eq: r.side, label: 'substitution', conditions: [] }], at: 0, sel: null, from: here(this.slot!) });
   }
   this.apply(r.move, 1.1);
 }
@@ -181,14 +182,14 @@ export function solveOde(this: App) {
   this.play(s, () => this.finishCalculus());
 }
 
-/** a vector equation: one equation for each entry, side by side on the shelf */
+/** a vector equation: one equation for each entry, side by side in the tree */
 export function splitComponents(this: App) {
   const c = components(this.eq);
   if (isErr(c.first)) return this.refuse(c.first.error);
   this.split(undefined, { first: c.first, rest: c.rest, why: 'one equation for each entry' });
 }
 
-/** u-substitutions on the shelf: u → what it stands for */
+/** u-substitutions among the equations: u → what it stands for */
 export function substitutions(this: App): Record<string, Node> {
   const out: Record<string, Node> = {};
   for (const s of this.slots) {
@@ -201,7 +202,7 @@ export function substitutions(this: App): Record<string, Node> {
 /** a new equation to work on, next to this one */
 export function addWork(this: App, e: Eq | { error: string }, why: string) {
   if ('error' in e) { this.refuse(e.error); return; }
-  const problem = sheet.place(this, e, true);
+  const problem = sheet.place(this, e, true, here(this.slot!));
   if (problem) { this.refuse(problem); return; }
   sound.commit();
   this.sel = null;

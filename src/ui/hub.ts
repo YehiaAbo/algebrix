@@ -55,7 +55,7 @@ export function openHub(this: App, sticky: boolean, calc = false) {
   this.hub = { forms, techs, i: 0, sticky, moved: false, awaitVar: false, calc, tab };
   this.chordUsed = false;
   this.setMode('hub');
-  if (this.slots.length > 1) this.renderLanes();
+  if (this.slots.length > 1) this.renderTree();
   sound.labels();
   this.renderHub();
   this.renderHints();
@@ -135,7 +135,7 @@ export function closeHub(this: App, animateBack: boolean) {
   $('forms').hidden = true;
   this.setMode('solve');
   if (animateBack && peeked) { sound.undo(); this.renderAll({ quick: true }, true); }
-  else { this.renderHints(); if (this.slots.length > 1) this.renderLanes(); }
+  else { this.renderHints(); if (this.slots.length > 1) this.renderTree(); }
 }
 
 /* ---------- the calculus hub: sections like the f palette ---------- */

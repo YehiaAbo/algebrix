@@ -1,18 +1,18 @@
-// Several equations: the shelf across the top, switching, substituting, eliminating.
+// Several equations: the work tree across the top, switching, substituting, eliminating.
 const add = async (h, src) => { await h.key('n'); await h.type(src); await h.key('Enter'); await h.until(s => s.mode !== 'write', `${src} added`); };
 
 export const tests = {
-  async 'the shelf shows the other equations and what they share'(h) {
+  async 'the tree shows every equation and what the others share'(h) {
     await h.load('2x + 3y = 12');
     await add(h, 'x - y = 1');
     await add(h, 'z = 5');
     await h.key('1'); await h.until(s => s.cur === 0, 'equation 1');
-    const lanes = await h.p.evaluate(() => [...document.querySelectorAll('#dock-row .lane')].map(l => ({ n: l.dataset.lane, offer: l.querySelector('.lane-offer').textContent })));
-    h.assert(lanes.length === 2, `two equations on the shelf, got ${lanes.length}`);
-    h.assert(lanes[0].offer.startsWith('shares x, y'), `equation 2 shares x and y: "${lanes[0].offer}"`);
-    h.assert(lanes[1].offer === '', `equation 3 shares nothing: "${lanes[1].offer}"`);
+    const heads = await h.p.evaluate(() => [...document.querySelectorAll('#tree .thead')].map(l => ({ n: l.dataset.col, offer: l.querySelector('.toffer')?.textContent ?? '' })));
+    h.assert(heads.length === 3, `three equations in the tree, got ${heads.length}`);
+    h.assert(heads[1].offer.startsWith('shares x, y'), `equation 2 shares x and y: "${heads[1].offer}"`);
+    h.assert(heads[2].offer === '', `equation 3 shares nothing: "${heads[2].offer}"`);
     await h.p.keyboard.down('Tab'); await h.wait(150);
-    const linked = await h.p.evaluate(() => [...document.querySelectorAll('#dock-row .lane.linked')].map(l => l.dataset.lane));
+    const linked = await h.p.evaluate(() => [...document.querySelectorAll('#tree .thead.linked')].map(l => l.dataset.col));
     await h.p.keyboard.up('Tab'); await h.key('Escape');
     h.assert(linked.join() === '1', `only equation 2 lights up while Tab is held: ${linked}`);
   },
@@ -24,8 +24,8 @@ export const tests = {
     await h.key('Alt+ArrowRight'); await h.until(s => s.cur === 1, 'Alt + → to equation 2');
     await h.key('Alt+ArrowRight'); await h.wait(200);
     h.assert((await h.state()).cur === 1, 'Alt + → at the last equation stays put');
-    await (await h.p.$('#dock-row .lane[data-lane="0"]')).dispatchEvent('mousedown');
-    await h.until(s => s.cur === 0, 'a click on the shelf switches');
+    await h.p.click('#tree .thead[data-col="0"]');
+    await h.until(s => s.cur === 0, 'a click on its number in the tree switches');
   },
 
   async 'substitute and eliminate between equations'(h) {

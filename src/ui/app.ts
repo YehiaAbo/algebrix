@@ -28,7 +28,9 @@ import * as sheet from './sheet';
 import { hasCalc } from '../engine/calcmoves';
 import { odeKind } from '../engine/ode';
 import { asPrime, hasDifferentials, slopeVar } from '../engine/leibniz';
-import { renderShelf, ShelfItem } from './shelf';
+import { TreeView, TreeBig, HeadInfo } from './treeview';
+import { treeOf, goto, here, visibleAt } from './tree';
+import type { Link } from './shared';
 import type { NavView } from './nav';
 import * as opsPart from './ops';
 import * as hubPart from './hub';
@@ -76,10 +78,19 @@ export class App {
   resetArmed = 0;
   /** a key was pressed while Tab or f was held: letting go then closes the menu instead of pinning it open */
   chordUsed = false;
+  /** the work tree across the top, and its big view (v) */
+  tree: TreeView;
+  treeBig: TreeBig;
+  private treeSlots: Slot[] | null = null;
+  /** the step of another equation the next move uses (set as a piece of it flies in) */
+  linkNext: Link | null = null;
 
   pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
   constructor() {
     this.stage = new Stage($('stage'));
+    this.tree = new TreeView($('tree'), { size: 16, strip: true, pick: (c, id) => this.goStep(c, id), open: (c, id) => this.openTree(c, id) });
+    this.treeBig = new TreeBig((c, id) => this.goStep(c, id));
+    new ResizeObserver(() => { if (!$('tree').hidden) this.renderTree(false); }).observe($('tree'));
     this.graph = new Graph($<HTMLCanvasElement>('graph'), $('graph-note'));
     this.bind();
     let size = '';
@@ -236,39 +247,65 @@ export class App {
     return null;
   }
 
-  /** The sheet: the equation you work on gets the room; the others sit open on the shelf
-   *  across the top, each saying what it can give this one, one key (or click, or Alt + ← →) away. */
-  renderLanes() {
-    const board = $('board'), dock = $('dock');
-    const adding = this.mode === 'write' && this.writing === 'new' && this.slots.length > 0;
-    const active = adding ? this.slots.length : this.cur;
-    const n = this.slots.length + (adding ? 1 : 0);
-    board.classList.toggle('multi', n > 1);
-    $('stage').dataset.n = String(active + 1);
-    dock.hidden = n < 2;
-    if (n < 2) return;
+  /** what each equation's column says at its top: its number, its status, and what it can give
+   *  the equation you're on (lit while the algebra menu is open, when you'd use it) */
+  treeHeads(): HeadInfo[] {
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     const mine = this.shown ? symbols(this.shown) : [];
-    const items: ShelfItem[] = [];
-    for (let i = 0; i < this.slots.length; i++) {
-      if (i === active) continue;
+    return this.slots.map((_, i) => {
       const e = this.eqOf(i);
-      const shared = adding ? [] : symbols(e).filter(v => mine.includes(v));
+      if (i === this.cur) return { tag: this.slotTag(i, e), offer: '', linked: false, focus: true };
+      const shared = symbols(e).filter(v => mine.includes(v));
       const solved = solvedFor(e);
       const keys = `<span class="sep">·</span><kbd>Tab</kbd>+<kbd>${i + 1}</kbd>`;
       let offer = '';
       if (aimed?.k === 'sym' && shared.includes(aimed.name)) offer = `puts in <i>${varHtml(aimed.name)}</i>${keys}`;
       else if (solved && shared.includes(solved)) offer = `gives <i>${varHtml(solved)}</i>${keys}`;
-      else if (shared.length) offer = `shares <span>${shared.map(v => `<i>${varHtml(v)}</i>`).join(", ")}</span>${keys}`;
-      // links light up only while the algebra menu is open (Tab), when you'd use them
-      items.push({ i, eq: e, tag: this.slotTag(i, e), offer, linked: shared.length > 0 && this.mode === 'hub' });
-    }
-    renderShelf($('dock-row'), items, i => this.switchTo(i));
+      else if (shared.length) offer = `shares <span>${shared.map(v => `<i>${varHtml(v)}</i>`).join(', ')}</span>${keys}`;
+      return { tag: this.slotTag(i, e), offer, linked: shared.length > 0 && this.mode === 'hub', focus: false };
+    });
+  }
+
+  /** The work tree across the top: every equation's steps, the lines you left, and where one
+   *  equation fed another. The equation you're on gets the room below. */
+  renderTree(animate = true) {
+    const board = $('board'), host = $('tree');
+    const adding = this.mode === 'write' && this.writing === 'new' && this.slots.length > 0;
+    const n = this.slots.length + (adding ? 1 : 0);
+    board.classList.toggle('multi', n > 1);
+    $('stage').dataset.n = String((adding ? this.slots.length : this.cur) + 1);
+    host.hidden = $('tree-split').hidden = !this.slots.length;
+    if (!this.slots.length) return;
+    // another workspace (or a fresh start): nothing glides in from the old one
+    if (this.treeSlots !== this.slots) { this.tree.reset(); this.treeSlots = this.slots; animate = false; }
+    this.tree.render(this.slots.map(treeOf), this.treeHeads(), this.cur, animate);
+  }
+
+  /** a click on a step in the tree: that equation, at that step */
+  goStep(col: number, id: string | null) {
+    if (this.mode === 'write') this.cancelEdit();
+    this.closeModes();
+    if (col !== this.cur) this.switchTo(col);
+    if (!id) return;
+    const sl = this.slots[col];
+    if (!sl || visibleAt(sl) === id) return;
+    if (!goto(sl, id)) return;
+    this.afterJump();
+  }
+
+  /** v, or a click on the tree: all of it, big */
+  openTree(col?: number, id?: string) {
+    if (!this.slots.length) return;
+    this.closeModes();
+    sound.tick(2);
+    this.treeBig.open(this.slots.map(treeOf), this.treeHeads(), this.cur, col !== undefined && id ? { col, id } : undefined);
   }
 
   /** a copy of another equation flies into this one (substitute, add an equation) */
   flyFrom(j: number) {
-    const src = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${j}"] .lane-math .mini`);
+    // the move that follows used this equation: the tree draws an arrow from it
+    if (this.slots[j]) this.linkNext = here(this.slots[j]);
+    const src = this.slots[j] ? this.tree.elOf(j, visibleAt(this.slots[j]))?.querySelector<HTMLElement>('.mini') : null;
     const dst = this.stage.box('eq');
     if (!src || !dst) return;
     const a = src.getBoundingClientRect(), host = $('stage').getBoundingClientRect();
@@ -278,14 +315,14 @@ export class App {
     document.body.append(ghost);
     const tx = host.left + dst.x + dst.w / 2 - (a.left + a.width / 2), ty = host.top + dst.y + dst.h / 2 - (a.top + a.height / 2);
     ghost.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${tx}px, ${ty}px) scale(1.25)`, opacity: 0 }], { duration: ms(420), easing: 'cubic-bezier(.3,.6,.2,1)', fill: 'forwards' }).onfinish = () => ghost.remove();
-    src.closest('.lane')?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: ms(700), easing: 'ease-out' });
+    src.closest('.titem')?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: ms(700), easing: 'ease-out' });
   }
 
   renderAll(tr: Transition | null, graphAnim = false) {
     this.syncDefs();
-    this.renderLanes();
+    this.renderTree();
     this.renderMain(tr);
-    this.renderTrail();
+    this.renderOriginal();
     this.renderRail();
     this.renderHints();
     this.graph.extra = this.slot?.bad && this.shown && solvedFor(this.shown) && !this.preview ? 'But this answer came from a one-way step (like squaring) and fails the original, so it is not a solution.' : '';
@@ -294,35 +331,8 @@ export class App {
     this.tour?.check();
   }
 
-  renderTrail() {
-    const host = $('trail');
-    host.querySelectorAll('.trail-row').forEach(r => r.remove());
-    if (this.mode === 'write') return;
-    const from = Math.max(0, this.at - 4);
-    for (let i = from; i < this.at; i++) {
-      const row = document.createElement('button');
-      row.className = 'trail-row';
-      row.style.setProperty('--age', String(this.at - i));
-      row.title = 'Go back to this step';
-      const mini = document.createElement('div');
-      mini.className = 'mini';
-      const label = document.createElement('span');
-      label.className = 'trail-label';
-      const st = this.steps[i + 1];
-      label.textContent = st.label;
-      const dir = document.createElement('span');
-      dir.className = `trail-dir${st.dir === '⇒' ? ' one-way' : ''}`;
-      dir.textContent = st.dir ?? '⇔';
-      dir.title = st.dir === '⇒' ? 'One-way step: it can add solutions, so answers get checked' : 'Reversible step: same solutions before and after';
-      label.prepend(dir);
-      row.append(mini, label);
-      host.append(row);
-      const lay = layout(this.steps[i].eq, 21);
-      mini.style.width = lay.w + 'px';
-      mini.style.height = lay.asc + lay.desc + 'px';
-      new Stage(mini).show(lay, 0, 0, null);
-      row.addEventListener('click', () => this.jump(i));
-    }
+  /** the start of this equation, in the typing box (i types over it) */
+  renderOriginal() {
     const orig = $('original');
     orig.replaceChildren();
     if (this.steps[0]) {
@@ -498,7 +508,9 @@ export class App {
     this.grouped = null;
     const before = this.eq;
     const wasSolved = solvedFor(before);
-    const { answer } = sheet.addStep(this, r);
+    const link = this.linkNext, out = { again: false };
+    this.linkNext = null;
+    const { answer } = sheet.addStep(this, r, { link, out });
     this.sel = r.select !== undefined ? (r.select && find(r.eq, r.select) ? r.select : null) : this.sel && find(r.eq, this.sel) ? this.sel : null;
     sound.move(pitch);
     // judged first, so a wrong answer is drawn as one
@@ -506,6 +518,7 @@ export class App {
     const bad = now ? this.judge(this.cur) : null;
     this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
     if (!opts.quietLabel) this.bubble(r.label, false, r.focus ?? this.sel);
+    if (out.again && !r.auto) this.say('Same as a step you already took, so you are back on it (the tree keeps one of each).');
     if (relOf(r.eq) === '≟' && isProved(r.eq)) { setTimeout(() => sound.solved(), 140); this.say('Both sides match. Proved ∎'); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); this.save(); return true; }
     if (answer) this.say(answer);
     if (bad) { this.say(bad, true); this.renderRail(); }
@@ -545,25 +558,34 @@ export class App {
   }
 
   undo() {
+    const from = this.at;
     if (!sheet.undo(this)) { this.refuse('Nothing to undo. This is the original.'); return; }
-    this.afterJump();
+    this.afterJump(this.played(this.at + 1, from, true));
   }
 
   redo() {
+    const from = this.at;
     if (!sheet.redo(this)) { this.refuse('Nothing to redo.'); return; }
-    this.afterJump();
+    this.afterJump(this.played(from + 1, this.at, false));
   }
 
-  jump(i: number) {
-    if (i === this.at) return;
-    this.at = i;
-    this.afterJump();
+  /** the moves of steps a..b played again (redo), or backwards (undo): what merged comes back
+   *  out of what swallowed it, and what was copied in goes back where it came from */
+  played(a: number, b: number, back: boolean): Transition {
+    const tr: Transition = { quick: true, absorbs: new Map(), flights: [], emerge: new Map() };
+    for (let i = a; i <= b; i++) {
+      const fx = this.steps[i]?.fx;
+      if (!fx) continue;
+      for (const [x, y] of fx.absorbs) { if (back) tr.emerge!.set(x, y); else tr.absorbs!.set(x, y); }
+      for (const f of fx.flights) { if (back) tr.absorbs!.set(f.to, f.from); else tr.flights!.push(f); }
+    }
+    return tr;
   }
 
-  afterJump() {
+  afterJump(tr: Transition = { quick: true }) {
     if (this.sel && !find(this.eq, this.sel)) this.sel = null;
     sound.undo();
-    this.renderAll({ quick: true }, true);
+    this.renderAll(tr, true);
     this.save();
   }
 
@@ -633,7 +655,7 @@ export class App {
     if (i === this.cur) return;
     if (this.mode === 'write') this.cancelEdit();
     const host = $('stage').getBoundingClientRect();
-    const from = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${i}"] .mini`)?.getBoundingClientRect();
+    const from = this.tree.elOf(i, visibleAt(this.slots[i]))?.querySelector<HTMLElement>('.mini')?.getBoundingClientRect();
     const eqBox = this.stage.box('eq');
     const old = this.cur;
     this.cur = i;
@@ -653,8 +675,8 @@ export class App {
         el.animate([{ transform: `translate(${sx - gx}px, ${sy - gy}px) scale(${k})`, opacity: 0.6 }, { transform: 'none', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });
       });
     } else this.entrance();
-    // and the equation you left shrinks into its card
-    const card = $('dock').querySelector<HTMLElement>(`.lane[data-lane="${old}"] .mini`);
+    // and the equation you left shrinks into its step in the tree
+    const card = this.slots[old] ? this.tree.elOf(old, visibleAt(this.slots[old]))?.querySelector<HTMLElement>('.mini') : null;
     if (card && eqBox) {
       const c = card.getBoundingClientRect(), k = eqBox.w / c.width;
       card.animate([{ transform: `translate(${host.left + eqBox.x - c.left}px, ${host.top + eqBox.y - c.top}px) scale(${k})`, transformOrigin: '0 0', opacity: 0.3 }, { transform: 'none', transformOrigin: '0 0', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });

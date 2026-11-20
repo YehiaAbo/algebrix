@@ -28,12 +28,13 @@ export const tests = {
     await key('e'); await expectEq('6x − 4', 10000);
   },
 
-  async 'u-substitution puts u = … on the shelf, and e puts it back'({ load, hold, key, until, p, assert }) {
+  async 'u-substitution puts u = … in the tree with an arrow from the integral, and e puts it back'({ load, hold, key, until, p, assert }) {
     await load('int 2x cos(x^2) dx');
     await hold('c', 'u');
     await until(s => s.eq === '∫ cos(u) du' && s.slots === 2, 'the integral in u, u = x² beside it');
-    const shelf = await p.evaluate(() => [...document.querySelectorAll('#dock-row .lane')].length);
-    assert(shelf === 1, 'u = x² is on the shelf');
+    const tree = await p.evaluate(() => ({ cols: document.querySelectorAll('#tree .thead').length, arrows: document.querySelectorAll('#tree path.tarrow').length }));
+    assert(tree.cols === 2, `u = x² is its own column in the tree: ${JSON.stringify(tree)}`);
+    assert(tree.arrows === 1, `an arrow from the integral to u = x²: ${JSON.stringify(tree)}`);
     await key('e'); await until(s => s.eq === 'sin(x^2) + C', 'integrated and put back', 10000);
   },
 

@@ -1,5 +1,5 @@
 // Round 15: the notation cards, stacked integrals (typed any way), wrong roots that must never look solved,
-// the other case on the shelf, and the graph's calculus pictures.
+// the other case in the tree, and the graph's calculus pictures.
 export const tests = {
   async 'typing int brings up notation cards: ↓ picks, Tab takes, and the caret lands inside'({ p, key, type, until, assert, wait }) {
     await key('i'); await type('2 + in'); await wait(150);
@@ -57,12 +57,12 @@ export const tests = {
     assert(ans.includes('5π/6 + 2kπ'), `every solution: ${ans}`);
   },
 
-  async 'splitting into cases puts the other one on the shelf straight away'({ load, hold, until, p, assert }) {
+  async 'splitting into cases puts the other one in the tree straight away'({ load, hold, until, p, assert }) {
     await load('(x - 1)(x + 4) = 0');
     await hold('Tab', 'a');
     await until(s => s.slots === 2, 'two cases');
-    const shelf = await p.evaluate(() => document.querySelectorAll('#dock-row .lane').length);
-    assert(shelf === 1, 'x + 4 = 0 is on the shelf');
+    const cols = await p.evaluate(() => document.querySelectorAll('#tree .thead').length);
+    assert(cols === 2, 'x + 4 = 0 is a column of the tree');
   },
 
   async 'the graph pictures calculus: an area, and a slope field'({ load, p, assert, wait }) {

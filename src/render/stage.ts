@@ -10,6 +10,8 @@ export interface Transition {
   flights?: { from: string; to: string }[];
   /** undo/redo: no arcs, slightly quicker */
   quick?: boolean;
+  /** a move played backwards: new pieces (by node id) come out of the old piece that had swallowed them */
+  emerge?: Map<string, string>;
 }
 
 interface Entry { el: HTMLElement | SVGSVGElement; g: Glyph }
@@ -53,7 +55,7 @@ export class Stage {
     for (const g of this.ghosts) g.remove();
     this.ghosts.clear();
     const prev = this.entries;
-    const prevLayout = this.layout;
+    const prevLayout = this.layout, pox = this.ox, poy = this.oy;
     this.entries = new Map();
     this.layout = lay; this.ox = ox; this.oy = oy;
 
@@ -104,8 +106,14 @@ export class Stage {
         this.flip(el, from, target, dur, focusOwned(g) && !tr.quick, oldText !== undefined && oldText !== g.text);
       } else {
         const src = g.from ? visual.get(g.from) : null;
-        const same = src ? null : reuse(g, target);
-        if (src) {
+        const outOf = !src && tr.emerge ? [...g.owners].reverse().find(id => tr.emerge!.has(id)) : undefined;
+        const box = outOf ? prevLayout?.boxes.get(tr.emerge!.get(outOf)!) : undefined;
+        const same = src || box ? null : reuse(g, target);
+        if (box) {
+          // it comes back out of what had swallowed it
+          const r = { x: box.x + pox + box.w / 2 - target.w * 0.25, y: box.y + poy + box.h / 2 - target.h * 0.25, w: target.w * 0.5, h: target.h * 0.5 };
+          this.flip(el, r, target, dur + 40, false, true);
+        } else if (src) {
           this.flip(el, src, target, dur + 60, !tr.quick, false);
           el.animate([{ color: 'var(--copy)' }, { color: 'var(--copy)', offset: 0.55 }, { color: 'currentColor' }], { duration: dur + 300, easing: 'ease-out' });
         } else if (same) {

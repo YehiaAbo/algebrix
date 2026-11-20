@@ -5,10 +5,17 @@ import { parseEquation } from '../engine/parse';
 import { MoveName } from '../engine/moves';
 import { Form } from '../engine/forms';
 
-/** one step of work: what it is, the rule it used, and whether it is reversible (⇔) or one-way (⇒) */
-export interface Step { eq: Eq; label: string; conditions: string[]; auto?: boolean; rule?: string; dir?: '⇔' | '⇒'; answer?: string }
-/** origin: the equation a case came from, to check answers against. bad: why its answer fails */
-export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string }
+/** a step in another equation's tree: the equation (by its uid) and the step (by its id) */
+export interface Link { slot: string; step: string }
+/** one step of work: what it is, the rule it used, and whether it is reversible (⇔) or one-way (⇒).
+ *  id: stable, for the work tree. link: the step in another equation this one used (a substitution) */
+export interface Step { eq: Eq; label: string; conditions: string[]; auto?: boolean; rule?: string; dir?: '⇔' | '⇒'; answer?: string; id?: string; link?: Link; fx?: StepFx }
+/** how the move's pieces travelled (what merged into what, what was copied where), so undo can play it backwards */
+export interface StepFx { absorbs: [string, string][]; flights: { from: string; to: string }[] }
+/** origin: the equation a case came from, to check answers against. bad: why its answer fails.
+ *  steps is the line you are on (start to its last step); alts are the other lines you tried, each
+ *  from the start, together the work tree. uid names the equation for links; from: the step it came out of */
+export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string; uid?: string; alts?: Step[][]; from?: Link }
 export type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
 
 export const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;

@@ -54,7 +54,9 @@ export function bind(this: App) {
     }
   });
   $('original').addEventListener('click', () => this.edit(false));
-  $('trail').addEventListener('mousedown', e => e.stopPropagation());
+  // the tree: a click on a step goes there (handled by the tree); anywhere else opens it big
+  $('tree').addEventListener('mousedown', e => e.stopPropagation());
+  $('tree').addEventListener('click', () => this.openTree());
   $('stage').addEventListener('mousedown', e => this.pointerDown(e));
   $('stage').addEventListener('mousemove', e => this.hover(e));
   $('stage').addEventListener('mouseleave', () => $('hover').classList.remove('on'));
@@ -158,6 +160,7 @@ export function key(this: App, e: KeyboardEvent) {
   if (this.tour.menuOpen) return this.tour.menuKey(e);
   if (this.library.isOpen) return this.library.key(e);
   if (this.settings.isOpen) return this.settings.key(e);
+  if (this.treeBig.isOpen) return this.treeBig.key(e);
   if (!$('help').hidden) {
     if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); this.toggleHelp(false); }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); this.helpTab(e.key === 'ArrowLeft' ? 'how' : 'keys'); }
@@ -221,6 +224,7 @@ export function key(this: App, e: KeyboardEvent) {
     case '?': handled(); return this.toggleHelp();
     case 'M': handled(); return this.toggleSound();
     case 'g': handled(); return this.tour.menu();
+    case 'v': handled(); return this.openTree();
     case 'w': handled(); this.closeModes(); return this.library.open();
     case ',': handled(); this.closeModes(); return this.settings.open();
     case 'z': handled(); return this.toggleFlash();
