@@ -114,5 +114,27 @@ Every step still goes through the numeric safety net. These parts are new:
 - **Letters in the bounds of a sum.** These are sampled as whole numbers, so
   Σ_{k=1}^{n} k = n(n + 1)/2 can be checked.
 - **Leibniz's rule** is in the kernel as well, so d/dt ∫ … dx has a value to check against.
-- **Put in a value** is a one-way (⇒) step. It is only allowed on a statement that holds
-  for every value of the letter.
+- **Put in a value** is a one-way (⇒) step. It is allowed on a definition, on an equation
+  about a function of the letter, and on a relation with other letters in it
+  (1 = A(x + 1) + B(x − 1), x² + y² = 25), where what follows is a consequence. It is refused
+  on an equation in that letter alone (x² = 4), since that asks which x works.
+- **A bound letter.** Naming x in ∫₀¹ … dx leaves the integral alone (x is bound there) and
+  makes x = sin θ its own equation. Subbing in dx = cos θ dθ then changes the whole integral at
+  once, bounds and all (θ = sin⁻¹ of each old bound).
+
+## Blind review (2026-11-20)
+
+A fresh reviewer tried 14 techniques with only the general moves. Fixed since: u-sub with a
+linear inside, by parts with a parameter or an end at ∞, p on identities, like fractions
+cancelling inside Σ, definite trig substitution, |u| on a range, the triangle forms
+(cos(sin⁻¹ x) = √(1 − x²)), rationalizing a top, ∫ split and constant out, a minus through a
+bracket, and 4/3 π r³ typed with a space.
+
+Still open:
+- Feynman on ∫₀^∞ sin x / x dx needs a factor that isn't there (e^(−tx)). A move to multiply
+  by 1 written as something with a parameter would cover it.
+- Sub in aimed at a piece that matches a side only up to a constant (−∫ … vs ∫ …) falls back
+  to the letter instead. Take the constant out first.
+- e (the autopilot) still does u-substitution in one step; the C u shortcut plays the chain.
+- Compare coefficients (undetermined coefficients by hand) works through p at several values,
+  but there is no move for it by name.
