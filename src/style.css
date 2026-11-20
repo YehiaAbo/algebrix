@@ -304,6 +304,7 @@ kbd.wide { padding: 0 7px; }
 .chip:hover { background: var(--sel-fill); }
 .chip kbd { min-width: 19px; height: 19px; font-size: 10.5px; }
 .chip.off { opacity: .38; }
+.chip .short { margin-left: 6px; font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--faint); border-radius: 4px; padding: 0 4px; line-height: 14px; }
 .chip.rec, .chip.lead:not(.off) { box-shadow: inset 0 0 0 1.5px var(--sel); }
 .chip.var { padding: 0 5px; }
 .chip .fx { font: 16px var(--math-font); }

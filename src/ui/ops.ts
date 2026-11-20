@@ -29,6 +29,7 @@ export function prefill(this: App, op: string): string {
 }
 
 export function openOp(this: App, op: string) {
+  this.opKind = 'both';
   this.closeHub(false);
   this.setMode('op');
   const box = $('op');
@@ -67,6 +68,7 @@ function wrapOf(v: string): { f: Wrap; arg?: ReturnType<typeof parseExpr> } | { 
 }
 
 export function onOpType(this: App) {
+  if (this.opKind !== 'both') return this.onNameType();
   const r = this.opResult();
   const v = $<HTMLInputElement>('op-input').value.trim();
   const op = ({ '−': '-', '×': '*', '·': '*', '÷': '/' } as Record<string, string>)[v[0]] ?? v[0];
@@ -79,6 +81,8 @@ export function onOpType(this: App) {
 
 export function closeOp(this: App) {
   $('op').hidden = true;
+  $('op').classList.remove('naming', 'bad');
+  this.opKind = 'both';
   $<HTMLInputElement>('op-input').blur();
   const had = !!this.peek;
   this.peek = null;

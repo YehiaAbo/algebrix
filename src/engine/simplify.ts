@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -224,11 +224,19 @@ function mulRule(fs: Node[], id: string, h: Hints): Node | null {
     const c = coefOf({ k: 'mul', id, factors: rest } as Node);
     return c ? mul([num(-c.v, c.id), ...rest.slice(1)], id) : mul([num(-1), ...rest], id);
   }
+  // a differential is written last, outside any fraction: x²/y² dx
+  const isD = (f: Node) => f.k === 'sym' && isDiff(f.name);
+  if (fs.some((f, i) => isD(f) && fs.slice(i + 1).some(g => !isD(g)))) return mul([...fs.filter(f => !isD(f)), ...fs.filter(isD)], id);
   const fi = fs.findIndex(f => f.k === 'frac');
   if (fi >= 0) {
     const F = fs[fi] as Extract<Node, { k: 'frac' }>;
     const others = fs.filter((_, i) => i !== fi);
-    return frac(mul([...others, F.num], id), F.den, F.id);
+    const ds = others.filter(isD), rest = others.filter(f => !isD(f));
+    // (a dx below cancels with the one beside it: dy/dx · dx is dy)
+    const keepOut = ds.length && !symbols(F.den).some(isDiff);
+    if (keepOut && !rest.length) { /* x²/y² dx stays as it is */ }
+    else if (keepOut) return mul([frac(mul([...rest, F.num]), F.den, F.id), ...ds], id);
+    else return frac(mul([...others, F.num], id), F.den, F.id);
   }
   const nums = fs.filter(f => f.k === 'num') as Extract<Node, { k: 'num' }>[];
   if (nums.length > 1) {
@@ -332,6 +340,12 @@ function divideContent(n: Node, g: number): Node {
 
 function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
   if (a.k === 'num' && a.v === 0 && !(d.k === 'num' && d.v === 0)) return a;
+  // x² dx over y²: the differential comes out, x²/y² dx (once nothing on top cancels with it)
+  const isD = (f: Node) => f.k === 'sym' && isDiff(f.name);
+  if (a.k === 'mul' && a.factors.some(isD) && !a.factors.every(isD) && !symbols(d).some(isDiff)) {
+    const rest = a.factors.filter(f => !isD(f));
+    return mul([frac(rest.length === 1 ? rest[0] : mul(rest), d, id), ...a.factors.filter(isD)]);
+  }
   // −x²/x: cancel under the minus
   if (a.k === 'neg') { const r = fracRule(a.arg, d, id, h); if (r) return negate(r); }
   // a / b^(−k) = a·b^k

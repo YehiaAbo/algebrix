@@ -45,6 +45,8 @@ export function bind(this: App) {
     if (e.key === 'Escape') { e.preventDefault(); this.closeOp(); }
     if (e.key === 'Enter') {
       e.preventDefault();
+      if (this.opKind === 'name') return this.commitName();
+      if (this.opKind === 'value') return this.commitValue();
       const r = this.opResult();
       if (isErr(r)) { this.refuse(r.error); return; }
       const ref = /#(\d)/.exec($<HTMLInputElement>('op-input').value);
@@ -225,6 +227,8 @@ export function key(this: App, e: KeyboardEvent) {
     case 'M': handled(); return this.toggleSound();
     case 'g': handled(); return this.tour.menu();
     case 'v': handled(); return this.openTree();
+    case 'b': handled(); return this.openName();
+    case 'p': handled(); return this.openValue();
     case 'w': handled(); this.closeModes(); return this.library.open();
     case ',': handled(); this.closeModes(); return this.settings.open();
     case 'z': handled(); return this.toggleFlash();

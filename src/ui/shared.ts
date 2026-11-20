@@ -15,7 +15,8 @@ export interface StepFx { absorbs: [string, string][]; flights: { from: string; 
 /** origin: the equation a case came from, to check answers against. bad: why its answer fails.
  *  steps is the line you are on (start to its last step); alts are the other lines you tried, each
  *  from the start, together the work tree. uid names the equation for links; from: the step it came out of */
-export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string; uid?: string; alts?: Step[][]; from?: Link }
+/** named: this equation is a name made with b (u = x², t = 2, I(t) = …, x = sin θ) */
+export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string; uid?: string; alts?: Step[][]; from?: Link; named?: 'letter' | 'param' | 'fn' | 'expr' }
 export type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
 
 export const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -36,7 +37,7 @@ export const LABEL_CHARS = 'asdfghjklqwertyuiopzxcvbnm';
 export const DOMAIN_TEXT: Record<Domain, string> = { real: 'real number', positive: 'positive', nonneg: 'zero or more', integer: 'whole number' };
 
 /** group: its section in the C hub. ask: it needs something typed first (a limit's target, bounds) */
-export interface Tech { key: string; label: string; ok: boolean; run: () => void; group?: string; lead?: boolean; ask?: { prompt: string; hint: string; run: (text: string) => void } }
+export interface Tech { key: string; label: string; ok: boolean; run: () => void; group?: string; lead?: boolean; shortcut?: boolean; ask?: { prompt: string; hint: string; run: (text: string) => void } }
 /** calc: the calculus hub (C) rather than the algebra hub (Tab); there, tab is the section shown and
  *  asking the technique waiting for typed input */
 export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; calc?: boolean; tab?: number; asking?: Tech }

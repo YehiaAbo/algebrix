@@ -199,7 +199,7 @@ function renderCalcHub(this: App, host: HTMLElement) {
   const row = document.createElement('div');
   row.className = 'hub-row calc-items';
   row.innerHTML = items.length
-    ? items.map((t, j) => `<button class="chip${t.ok ? '' : ' off'}${h.moved && j === h.i ? ' on' : ''}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}${t.ask ? ' …' : ''}</button>`).join('')
+    ? items.map((t, j) => `<button class="chip${t.ok ? '' : ' off'}${h.moved && j === h.i ? ' on' : ''}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}${t.ask ? ' …' : ''}${t.shortcut ? '<span class="short" title="a chain of general moves, each one in the tree">chain</span>' : ''}</button>`).join('')
     : `<span class="calc-empty">Nothing here for this one. Type ${escapeHtml(CALC_GROUPS[h.tab ?? 0].example)}.</span>`;
   host.append(row);
   if (h.asking) {

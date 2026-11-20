@@ -2,9 +2,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseEquation } from '../src/engine/parse';
 import { Eq, Node, walk, key, LETS, DEFS } from '../src/engine/ast';
-import { isErr, MoveResult } from '../src/engine/moves';
+import { isErr, MoveResult, applyBoth } from '../src/engine/moves';
 import { toText } from '../src/engine/print';
-import { nameIt, subIn, differentialsBoth, putValue, integrateBoth } from '../src/engine/general';
+import { nameIt, subIn, differentialsBoth, putValue, integrateBoth, separateChain, characteristicChain } from '../src/engine/general';
+import { bothSides, finishCalc } from '../src/engine/calcmoves';
+import { simplify, newHints } from '../src/engine/simplify';
+import { formsFor } from '../src/engine/forms';
 import { intStep } from '../src/engine/integrate';
 
 const T = (e: Eq) => toText(e);
@@ -85,7 +88,7 @@ describe('u-substitution by hand: name it, differentials, sub in, integrate, sub
 });
 
 describe('Feynman technique by hand', () => {
-  it('∫₀¹ (x² − 1)/ln x dx: parameter, I(t), d/dt both sides, Leibniz', () => {
+  it('∫₀¹ (x² − 1)/ln x dx = ln 3: parameter, I(t), d/dt both sides, Leibniz, ∫ back, find C', () => {
     let e = parseEquation('int_0^1 (x^2 - 1)/ln(x) dx', true);
     let two: string | null = null;
     walk(e, n => { if (!two && n.k === 'num' && n.v === 2) two = n.id; });
@@ -97,10 +100,59 @@ describe('Feynman technique by hand', () => {
     expect(T(I.def)).toBe('I(t) = ∫_{0}^{1} (x^t − 1)/ln(x) dx');
     expect(T(I.step.eq)).toBe('I(t)');
     DEFS.set('I', { param: 't', body: I.def.rhs });
-    // put in a value: I(0) = ∫ (x⁰ − 1)/ln x dx
-    const at0 = putValue(I.def, 't', '0');
+    // d/dt both sides; Leibniz takes d/dt under the integral, and the one left is easy
+    const work = (q: Eq) => { const f = finishCalc(q); if (f.stuck) throw new Error(f.stuck); return f.steps.length ? f.steps[f.steps.length - 1].eq : q; };
+    const slope = work(ok(bothSides(I.def, 't')));
+    expect(T(slope)).toBe('I′(t) = 1/(t + 1)');
+    // ∫ both sides dt: I(t) = ln|t + 1| + C
+    const back = work(ok(integrateBoth(slope, 't')));
+    expect(T(back)).toBe('I(t) = ln|t + 1| + C');
+    // the constant: I(0) two ways. From the definition it is ∫ 0 dx = 0
+    const def0 = putValue(I.def, 't', '0');
+    if ('error' in def0) throw new Error(def0.error);
+    expect(T(def0)).toBe('I(0) = ∫_{0}^{1} (x^0 − 1)/ln(x) dx');
+    const zero = work(def0);
+    expect(T(zero)).toBe('I(0) = 0');
+    const at0 = putValue(back, 't', '0');
     if ('error' in at0) throw new Error(at0.error);
-    expect(T(at0)).toBe('I(0) = ∫_{0}^{1} (x^0 − 1)/ln(x) dx');
+    let call: string | null = null;
+    walk(at0, n => { if (!call && n.k === 'call') call = n.id; });
+    const c = ok(subIn(at0, zero, call, 'Equation 4'));
+    expect(T(simplify(c, newHints()) as Eq)).toBe('0 = C');
+    // C = 0 in, then t = 2: the integral we wanted
+    let C: string | null = null;
+    walk(back, n => { if (!C && n.k === 'sym' && n.name === 'C') C = n.id; });
+    const done = ok(subIn(back, parseEquation('C = 0'), C, 'Equation 5'));
+    const at2 = putValue(done, 't', '2');
+    if ('error' in at2) throw new Error(at2.error);
+    expect(T(simplify(at2, newHints()) as Eq)).toBe('I(2) = ln(3)');
+  });
+});
+
+describe('techniques as chains of general moves', () => {
+  it('integrating factor by hand: × e^(x²), expand, product rule backwards, ∫ both sides', () => {
+    let e = parseEquation("y' + 2x y = x");
+    e = ok(applyBoth(e, '* e^(x^2)'));
+    e = formsFor(e, e.lhs.id).find(f => f.name === 'expanded')!.eq;
+    const b = formsFor(e, e.lhs.id).find(f => f.name === 'product rule backwards');
+    expect(b && T(b.eq)).toBe('d/dx(e^(x^2)y) = e^(x^2)x');
+    const f = finishCalc(ok(integrateBoth(b!.eq, 'x')));
+    expect(f.stuck).toBeUndefined();
+    expect(T(f.steps[f.steps.length - 1].eq)).toBe('e^(x^2)y = e^(x^2)/2 + C');
+  });
+  it('product rule backwards on its own', () => {
+    const q = parseEquation('e^x sin(x) + e^x cos(x)', true);
+    expect(formsFor(q, q.lhs.id).some(f => f.name === 'product rule backwards')).toBe(true);
+  });
+  it('separating is a chain: y′ = x y gives dy/y = x dx', () => {
+    const steps = separateChain(parseEquation("y' = x y"), 'y', 'x');
+    if (!Array.isArray(steps)) throw new Error(steps.error);
+    expect(T(steps[steps.length - 1].eq)).toBe('dy/y = x dx');
+  });
+  it('the characteristic equation is a chain: try y = e^(rx)', () => {
+    const steps = characteristicChain(parseEquation("y'' - 3y' + 2y = 0"), 'y');
+    if (!Array.isArray(steps)) throw new Error(steps.error);
+    expect(T(steps[steps.length - 1].eq)).toMatch(/r\^2 − 3r \+ 2 = 0|\(r − 1\)\(r − 2\) = 0/);
   });
 });
 

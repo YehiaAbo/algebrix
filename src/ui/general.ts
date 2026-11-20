@@ -1,0 +1,228 @@
+// The general moves in the app: b names the aimed piece, p puts a value into a statement that
+// holds for every value, hold Tab + n subs a piece in from equation n, and C does calculus to both
+// sides. Each is one step in the tree; the shortcuts in C are chains of these.
+// Methods of App, kept in their own file; app.ts puts them on App.prototype.
+import { find, symbols, LETS, isDiff, Node } from '../engine/ast';
+import { toText } from '../engine/print';
+import { isErr, MoveOk } from '../engine/moves';
+import { nameIt, subIn, putValue, valueVar, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain } from '../engine/general';
+import { uCandidate, uSub } from '../engine/integrate';
+import { letters, asPrime } from '../engine/leibniz';
+import { ms } from './prefs';
+import * as sheet from './sheet';
+import { sound } from './sound';
+import { here } from './tree';
+import { $ } from './shared';
+import type { App } from './app';
+
+
+/** the letter b offers first: u for a piece, t for a number (a parameter), the next free one after */
+function freshLetter(taken: Set<string>, constant: boolean): string {
+  for (const c of constant ? ['t', 's', 'a', 'k'] : ['u', 'w', 'v', 's', 'z']) if (!taken.has(c)) return c;
+  return 'q';
+}
+
+/** every letter used in any equation, so a new name never collides */
+export function lettersInUse(this: App): string[] {
+  return [...new Set(this.slots.flatMap((_, j) => symbols(this.eqOf(j))))];
+}
+
+/** b: open the box to name the aimed piece */
+export function openName(this: App) {
+  const P = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
+  if (!P || P.k === 'eq') return this.refuse('Aim at the piece to name first (arrows, or Space), then press b.');
+  if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
+  this.opKind = 'name';
+  this.closeHub(false);
+  this.setMode('op');
+  const input = $<HTMLInputElement>('op-input');
+  input.value = freshLetter(new Set(this.lettersInUse()), symbols(P).length === 0);
+  $('op').hidden = false;
+  $('op').classList.add('naming');
+  this.place($('op'));
+  input.focus();
+  input.select();
+  this.onOpType();
+  this.renderHints();
+}
+
+export function nameResult(this: App): Named | { error: string } {
+  const text = $<HTMLInputElement>('op-input').value;
+  const others = this.slots.flatMap((_, j) => (j === this.cur ? [] : symbols(this.eqOf(j))));
+  return nameIt(this.eq, this.sel, text, others);
+}
+
+/** Enter in the b box: the step here, and the name as an equation of its own, linked to it */
+export function commitName(this: App) {
+  const r = this.nameResult();
+  if ('error' in r) return this.refuse(r.error);
+  this.closeOp();
+  this.addName(r);
+}
+
+/** a name taken: the step in this equation, then the name as an equation of its own beside it */
+export function addName(this: App, r: Named) {
+  if (!this.apply(r.step, 1.05)) return;
+  const kind = r.def.rel === 'def' ? 'fn' : r.letter ? 'letter' : r.def.lhs.k === 'sym' && symbols(r.def.rhs).length === 0 ? 'param' : 'expr';
+  this.slots.push({ steps: [{ eq: r.def, label: 'name', conditions: [] }], at: 0, sel: null, from: here(this.slot!), named: kind });
+  sound.commit();
+  this.renderAll(null);
+  this.save();
+  const n = this.slots.length;
+  const what = toText(r.def);
+  this.say(kind === 'param'
+    ? `Equation ${n}: ${what}, the value you want in the end. This one now holds for every ${toText(r.def.lhs)}.`
+    : kind === 'fn' ? `Equation ${n}: ${what}. C d differentiates both sides; p puts in a value.`
+    : `Equation ${n}: ${what}. In it, C k takes the differentials (for d${kind === 'letter' ? r.letter : toText(r.def.lhs)}); hold Tab + ${n} subs it in here.`);
+}
+
+/** p: put a value into a statement that holds for every value, as an equation of its own */
+export function openValue(this: App) {
+  const v = valueVar(this.eq, this.sel);
+  if (!v) return this.refuse('Aim at the letter to put a value in for, then press p.');
+  this.opKind = 'value';
+  this.valueOf = v;
+  this.closeHub(false);
+  this.setMode('op');
+  const input = $<HTMLInputElement>('op-input');
+  input.value = '0';
+  $('op').hidden = false;
+  this.place($('op'));
+  input.focus();
+  input.select();
+  this.onOpType();
+  this.renderHints();
+}
+
+export function commitValue(this: App) {
+  const text = $<HTMLInputElement>('op-input').value;
+  const r = putValue(this.eq, this.valueOf!, text);
+  if ('error' in r) return this.refuse(r.error);
+  this.closeOp();
+  if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
+  this.slots.push({ steps: [{ eq: r, label: `at ${this.valueOf} = ${text.trim()}`, conditions: [], rule: 'put in a value', dir: '⇒' }], at: 0, sel: null, from: here(this.slot!) });
+  this.cur = this.slots.length - 1;
+  sound.commit();
+  this.sel = null;
+  this.stage.clear();
+  this.renderAll(null);
+  this.entrance();
+  this.save();
+  this.say(`Equation ${this.cur + 1}: at ${this.valueOf} = ${text.trim()}. s tidies it; Tab u unfolds a function.`);
+}
+
+/** what the box shows while you type, for b and p */
+export function onNameType(this: App) {
+  const note = $('op-note'), symEl = $('op-sym');
+  if (this.opKind === 'name') {
+    const r = this.nameResult();
+    symEl.textContent = 'name it';
+    $('op').classList.toggle('bad', 'error' in r);
+    note.textContent = 'error' in r ? r.error : `new equation: ${toText(r.def)} · Enter`;
+    this.peek = 'error' in r ? null : r.step.eq;
+  } else {
+    const text = $<HTMLInputElement>('op-input').value;
+    const r = text.trim() ? putValue(this.eq, this.valueOf!, text) : { error: 'Type a value.' };
+    symEl.textContent = `${this.valueOf} =`;
+    $('op').classList.toggle('bad', 'error' in r);
+    note.textContent = 'error' in r ? r.error : `new equation: ${toText(r)} · Enter`;
+    this.peek = null;
+  }
+  this.renderMain({ quick: true });
+}
+
+/* ---------- sub in ---------- */
+
+/** hold Tab + n: a piece of this equation replaced using equation n */
+export function substituteFrom(this: App, j: number) {
+  const r = subIn(this.eq, this.eqOf(j), this.sel, `Equation ${j + 1}`);
+  if (!isErr(r)) this.flyFrom(j);
+  this.applyTidy(r, 1.2);
+}
+
+/* ---------- calculus to both sides ---------- */
+
+/** C + i on an equation with no integral to work out: ∫ … dv of both sides */
+export function integrateBothKey(this: App) {
+  const v = bothVar(this.eq, this.sel);
+  if (!v) return this.refuse('Aim at the letter to integrate by.');
+  this.apply(integrateBoth(this.eq, v), 1.1);
+}
+
+/** C + k: take the differential of both sides (u = x² gives du = 2x dx) */
+export function differentialsKey(this: App) {
+  this.apply(differentialsBoth(this.eq), 1.1);
+}
+
+/** named letters in force, for the safety net and for putting them back at the end:
+ *  u → x² (a letter named from a piece); x → sin θ (a letter set to an expression) */
+export function syncLets(this: App) {
+  LETS.clear();
+  this.slots.forEach(s => {
+    if (s.named !== 'letter' && s.named !== 'expr') return;
+    const e = s.steps[0].eq;
+    if (e.lhs.k === 'sym' && !isDiff(e.lhs.name)) LETS.set(e.lhs.name, e.rhs);
+  });
+}
+
+/** the letters named from a piece (u = x²), to put back once the work in u is done */
+export function namedLetters(this: App): Record<string, Node> {
+  const out: Record<string, Node> = {};
+  this.slots.forEach(s => { if (s.named === 'letter' && s.steps[0].eq.lhs.k === 'sym') out[s.steps[0].eq.lhs.name] = s.steps[0].eq.rhs; });
+  return out;
+}
+
+
+/** a step in another equation, without going there (a shortcut working on two equations) */
+export function stepIn(this: App, j: number, r: MoveOk) {
+  const keep = this.cur;
+  this.cur = j;
+  sheet.addStep(this, r, {});
+  this.cur = keep;
+  sound.move(1.1);
+  this.renderTree();
+  this.save();
+}
+
+/** C + u, the shortcut: name the inside u, take the differentials of u = g, and sub them in.
+ *  Three general steps, each in the tree; e then integrates in u and puts x back. */
+export function uSubShortcut(this: App) {
+  const g = uCandidate(this.eq, this.sel);
+  if (!g) { const r = uSub(this.eq, this.sel).move; return this.refuse(isErr(r) ? r.error : 'No inside function whose derivative is also there.'); }
+  if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
+  const taken = new Set(this.lettersInUse());
+  const letter = ['u', 'w', 's', 'v', 'z'].find(c => !taken.has(c)) ?? 'q';
+  const n = nameIt(this.eq, g.id, letter, [...taken]);
+  if ('error' in n) return this.refuse(n.error);
+  this.addName(n);
+  const j = this.slots.length - 1;
+  this.later(ms(560), () => {
+    this.syncLets();
+    const d = differentialsBoth(this.eqOf(j));
+    if (isErr(d)) return this.refuse(d.error);
+    this.stepIn(j, d);
+    this.later(ms(560), () => {
+      this.sel = null;
+      this.substituteFrom(j);
+      this.say(`u-substitution, as three moves: name ${letter} = ${toText(n.def.rhs)}, its differentials, sub them in. Now C i integrates in ${letter}, and e puts ${symbols(n.def.rhs).join(', ')} back.`);
+    });
+  });
+}
+
+/** C + s, the shortcut: in differentials, then everything in y on the left */
+export function separateShortcut(this: App) {
+  const L = letters(asPrime(this.eq));
+  if (!L) return this.refuse('Separating needs a first-order equation with y′ in it.');
+  const steps = separateChain(this.eq, L.y, L.x);
+  if (!Array.isArray(steps)) return this.refuse(steps.error);
+  this.play(steps, () => this.say('Separated. C i integrates both sides.'));
+}
+
+/** C + r, the shortcut: try y = e^(rx), work out the slopes, take e^(rx) out and divide it away */
+export function characteristicShortcut(this: App) {
+  const L = letters(asPrime(this.eq));
+  if (!L) return this.refuse('Needs y″, y′ and y.');
+  const steps = characteristicChain(this.eq, L.y);
+  if (!Array.isArray(steps)) return this.refuse(steps.error);
+  this.play(steps, () => this.say('The characteristic equation: e solves it for r. Each root r gives e^(rx); C g writes the general solution.'));
+}

@@ -369,6 +369,8 @@ const CALC = ['deriv', 'lim', 'int', 'at', 'sum', 'grad'];
 function nextCalc(n: Node): Node | null {
   // d/dt of an integral with t inside: Leibniz first, so the integral that is left is the easier one
   if (n.k === 'deriv' && n.arg.k === 'int' && n.arg.lo && n.arg.v !== n.v && dependsOn(n.arg.arg, n.v, n.dep)) return n;
+  // ∫ d/dx(F) dx: the fundamental theorem gives F back, with no need to work the derivative out
+  if (n.k === 'int' && !n.lo && n.arg.k === 'deriv' && n.arg.v === n.v && !n.arg.partial) return n;
   for (const c of children(n)) { const t = nextCalc(c); if (t) return t; }
   return CALC.includes(n.k) || isDot(n) ? n : null;
 }

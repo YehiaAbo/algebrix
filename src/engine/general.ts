@@ -4,13 +4,15 @@
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
 import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS } from './ast';
-import { MoveOk, MoveResult, checked, isErr, solvedFor } from './moves';
+import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
 import { solvedForm } from './techniques';
 import { parseExpr } from './parse';
 import { toText } from './print';
-import { letters } from './leibniz';
+import { letters, toDifferentials } from './leibniz';
+import { splitXY } from './ode';
+import { finishCalc } from './calcmoves';
 
 const one = () => 1;
 const t = (n: Node) => toText(n);
@@ -316,4 +318,63 @@ export function differentialsBoth(e: Eq): MoveResult {
     eq: next, label: 'differentials of both sides', hints: newHints(), factor: one, select: null, rule: 'differentiate both sides', implies: true,
     check: env => [[evaluate(next, env), ws.reduce((s, w, i) => s + evaluate(dF[i]!, env) * (env['d' + w] ?? NaN), 0)]],
   });
+}
+
+/* ---------- shortcuts, as chains of the moves above ---------- */
+
+/** separate the variables: write it in differentials, divide by the y part, tidy */
+export function separateChain(e: Eq, y: string, x: string): MoveOk[] | { error: string } {
+  const d = toDifferentials(e);
+  if (isErr(d)) return d;
+  const steps: MoveOk[] = [d];
+  const dy = 'd' + y, dx = 'd' + x;
+  const R = d.eq.lhs.k === 'sym' && d.eq.lhs.name === dy ? d.eq.rhs : d.eq.lhs;
+  const without = simplify(frac(cloneFresh(R), sym(dx)), newHints());
+  const p = splitXY(without, x, y);
+  if (!p) return { error: `This doesn't split into (something in ${x}) × (something in ${y}). Try the integrating factor (C + f).` };
+  if (!(p.h.k === 'num' && p.h.v === 1)) {
+    // 1/y² is cleared by × y², anything else by ÷ it
+    const h = p.h;
+    const r = h.k === 'frac' && h.num.k === 'num' && h.num.v === 1 ? applyBothChecked(d.eq, '* (' + toText(h.den) + ')') : applyBothChecked(d.eq, '/ (' + toText(h) + ')');
+    if (isErr(r)) return r;
+    steps.push(r);
+    const s = applyMove('simplify', r.eq, null);
+    if (!isErr(s)) steps.push({ ...s, label: 'simplify' });
+  }
+  return steps;
+}
+
+/** try y = e^(rx): name y, work out the slopes, take e^(rx) out, divide it away (it is never 0) */
+export function characteristicChain(e: Eq, y: string): MoveOk[] | { error: string } {
+  let yId: string | null = null;
+  walk(e, n => { if (!yId && n.k === 'sym' && n.name === y) yId = n.id; });
+  if (!yId) return { error: `There is no ${y} on its own here to try e^(rx) for.` };
+  const x = letters(e)?.x ?? 'x';
+  const r = symbols(e).includes('r') ? 'm' : 'r';
+  const n = nameIt(e, yId, `e^(${r}${x})`);
+  if ('error' in n) return n;
+  const steps: MoveOk[] = [n.step];
+  let cur = n.step.eq;
+  const fc = finishCalc(cur);
+  if (fc.stuck) return { error: fc.stuck };
+  steps.push(...fc.steps);
+  cur = fc.steps.length ? fc.steps[fc.steps.length - 1].eq : cur;
+  const t0 = applyMove('simplify', cur, null);
+  if (!isErr(t0)) { steps.push({ ...t0, label: 'simplify' }); cur = t0.eq; }
+  const f = applyMove('factor', cur, null);
+  if (isErr(f)) return f;
+  steps.push(f);
+  cur = f.eq;
+  // the e^(rx) factor of the side that holds it
+  let E: string | null = null;
+  walk(cur, m => { if (!E && m.k === 'pow' && m.base.k === 'sym' && m.base.name === 'e' && symbols(m.exp).includes(r)) E = m.id; });
+  if (E) {
+    const dv = applyMove('divide', cur, E);
+    if (!isErr(dv)) {
+      steps.push(dv);
+      const s = applyMove('simplify', dv.eq, null);
+      if (!isErr(s)) steps.push({ ...s, label: 'simplify' });
+    }
+  }
+  return steps;
 }

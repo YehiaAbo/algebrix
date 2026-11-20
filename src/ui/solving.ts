@@ -1,6 +1,6 @@
-// Solving: isolate a variable, split into cases, check answers, domains, inverses, substitution.
+// Solving: isolate a variable, split into cases, check answers, domains, inverses.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, relOf, isIneq, DEFS, add, key, holds, Eq } from '../engine/ast';
+import { symbols, relOf, isIneq, DEFS, add, key, holds, Eq } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
 import { inverseFunction } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
@@ -10,7 +10,7 @@ import { isErr, solvedFor, checked, MoveOk, MoveResult } from '../engine/moves';
 import { newHints } from '../engine/simplify';
 import { absorbConstant, shareExponential, renameConstant } from '../engine/ode';
 import { negate } from '../engine/terms';
-import { isolate, substitute, splitCases, tidy, Cases, impossible, leadPositive, everyTrigSolution } from '../engine/techniques';
+import { isolate, splitCases, tidy, Cases, impossible, leadPositive, everyTrigSolution } from '../engine/techniques';
 import { evaluate } from '../engine/ast';
 import { sound } from './sound';
 import { ms } from './prefs';
@@ -184,11 +184,4 @@ export function syncDefs(this: App) {
     const e = this.eqOf(i);
     if (e.rel === 'def' && e.lhs.k === 'call' && e.lhs.arg.k === 'sym') DEFS.set(e.lhs.name, { param: e.lhs.arg.name, body: e.rhs });
   }
-}
-
-export function substituteFrom(this: App, j: number) {
-  const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
-  const r = substitute(this.eq, this.eqOf(j), aimed?.k === 'sym' ? aimed.name : null, `Equation ${j + 1}`);
-  if (!isErr(r)) this.flyFrom(j);
-  this.applyTidy(r, 1.2);
 }

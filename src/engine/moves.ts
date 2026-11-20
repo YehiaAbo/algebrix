@@ -229,7 +229,9 @@ export function applyBoth(e: Eq, text: string, others: Eq[] = []): MoveResult {
     L = appendTerms(e.lhs, [op === '-' ? negate(x) : x]);
     R = appendTerms(e.rhs, [op === '-' ? negate(c) : c]);
   } else if (op === '*') {
-    const pre = (f: Node, s: Node): Node => (s.k === 'mul' ? { ...s, factors: [f, ...s.factors] } : mul([f, s]));
+    // a differential goes at the end, the way it is written: x y dx
+    const last = x.k === 'sym' && isDiff(x.name);
+    const pre = (f: Node, s: Node): Node => (last ? (s.k === 'mul' ? { ...s, factors: [...s.factors, f] } : mul([s, f])) : s.k === 'mul' ? { ...s, factors: [f, ...s.factors] } : mul([f, s]));
     L = pre(x, e.lhs); R = pre(c, e.rhs);
     factor = env => evaluate(x, env);
   } else {
@@ -310,6 +312,9 @@ export function verify(before: Eq, r: MoveOk): string | null {
     return verify(before, slope);
   }
   const vars = symbols(eq(before.lhs, add([before.rhs, r.eq.lhs, r.eq.rhs])));
+  // a letter in the bounds of a Σ or ∏ counts terms, so it takes whole numbers
+  const whole = new Set<string>();
+  for (const q of [before, r.eq]) walk(q, n => { if (n.k === 'sum') [n.lo, n.hi].forEach(b => symbols(b).forEach(w => whole.add(w))); });
   let checked = 0;
   // with nothing to vary, one look is enough (and integrals in several dimensions aren't cheap)
   const enough = vars.length ? 6 : 1;
@@ -317,7 +322,7 @@ export function verify(before: Eq, r: MoveOk): string | null {
     // small values first, then positive ones (logs, roots), then wide ones
     const span = i < 40 ? () => rand() * 9 - 4.5 : i < 80 ? () => rand() * 9 + 0.05 : () => rand() * 120 - 60;
     const env: Env = {};
-    for (const v of vars) env[v] = Math.round(span() * 1000) / 1000 + 0.137;
+    for (const v of vars) env[v] = whole.has(v) ? 1 + Math.floor(rand() * 8) : Math.round(span() * 1000) / 1000 + 0.137;
     const pairs: [number, number][] = r.check ? r.check(env) : (() => {
       const d0 = evaluate(before, env), d1 = evaluate(r.eq, env), f = r.factor(env);
       return Number.isFinite(f) && Number.isFinite(d0) ? [[d1, f * d0]] : [[NaN, NaN]];

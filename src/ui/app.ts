@@ -39,6 +39,7 @@ import * as solvingPart from './solving';
 import * as keysPart from './keys';
 import * as persistPart from './persist';
 import * as calcPart from './calc';
+import * as generalPart from './general';
 
 export type { Slot };
 
@@ -84,6 +85,9 @@ export class App {
   private treeSlots: Slot[] | null = null;
   /** the step of another equation the next move uses (set as a piece of it flies in) */
   linkNext: Link | null = null;
+  /** what the small box is for: both sides (o), naming a piece (b), or putting in a value (p) */
+  opKind: 'both' | 'name' | 'value' = 'both';
+  valueOf: string | null = null;
 
   pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
   constructor() {
@@ -320,6 +324,7 @@ export class App {
 
   renderAll(tr: Transition | null, graphAnim = false) {
     this.syncDefs();
+    this.syncLets();
     this.renderTree();
     this.renderMain(tr);
     this.renderOriginal();
@@ -1045,5 +1050,5 @@ export class App {
 
 /** the methods that live in their own files */
 type Part<M> = { [K in keyof M]: M[K] };
-export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart>, Part<typeof calcPart> {}
-for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart, calcPart]) Object.assign(App.prototype, part);
+export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart>, Part<typeof calcPart>, Part<typeof generalPart> {}
+for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart, calcPart, generalPart]) Object.assign(App.prototype, part);

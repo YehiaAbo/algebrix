@@ -182,6 +182,8 @@ function limit(n: Lim, env: Env): number {
   const a = evaluate(n.to, env);
   if (Number.isNaN(a)) return NaN;
   const f = (x: number) => evaluate(n.arg, { ...env, [n.v]: x });
+  // the limit of partial sums Σ_{k=a}^{N} as N → ∞ is the series itself (N only counts terms)
+  if (a === Infinity && n.arg.k === 'sum' && n.arg.hi.k === 'sym' && n.arg.hi.name === n.v && !symbols(n.arg.arg).includes(n.v) && !symbols(n.arg.lo).includes(n.v)) return evaluate({ ...n.arg, hi: { k: 'sym', id: n.arg.hi.id, name: '∞' } }, env);
   if (!Number.isFinite(a)) return oneSide(f, a, a > 0 ? -1 : 1);
   if (n.side) return oneSide(f, a, n.side === '+' ? 1 : -1);
   const l = oneSide(f, a, -1), r = oneSide(f, a, 1);

@@ -70,7 +70,7 @@ function arcRule(kind: 'atan' | 'asin', k: number, m: number, V: () => Node, v: 
 
 /** the antiderivatives you'd just write down: xⁿ, 1/x, eˣ, sin, cos, sec², 1/(1+x²)…, with a
  *  linear inside (reverse chain), constant multiples and sums of them */
-function quick(u: Node, v: string): { F: Node; label: string; conditions?: string[] } | null {
+export function quick(u: Node, v: string): { F: Node; label: string; conditions?: string[] } | null {
   const V = () => sym(v);
   // what was differentiated comes back (the fundamental theorem): ∫ y′ dx = y, ∫ I′(t) dt = I(t), ∫ (uv)′ dx = uv
   if (u.k === 'sym' && /^[a-zA-Zα-ω]′$/.test(u.name) && u.name[0] !== v) return { F: sym(u.name.slice(0, -1)), label: 'fundamental theorem' };
@@ -183,7 +183,8 @@ function rational(u: Node): { p: Node; label: string } | null {
 export function intStep(e: Eq, sel: string | null): MoveResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
-  if (holdsCalc(T)) return { error: 'Work out what is inside the integral first.' };
+  const ftc = !T.lo && T.arg.k === 'deriv' && T.arg.v === T.v && !T.arg.partial;
+  if (holdsCalc(T) && !ftc) return { error: 'Work out what is inside the integral first.' };
   if (!(T.lo && T.hi) && findPath(e, T.id)?.some(n => n !== T && n.k === 'int' && n.lo && n.hi)) return { error: 'The inside integral has no bounds, so its + C would end up inside the outer one. Give it bounds too.' };
   const v = T.v, def = !!(T.lo && T.hi);
   // a named letter tied to v (u = x² inside ∫ … dx) isn't a constant: finish the substitution first
@@ -273,6 +274,18 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     return { move, side: def ? undefined : eq(sym(u), fresh(g)), u, g };
   }
   return { move: { error: aimed ? `Its derivative isn't there, so u = that doesn't work. Aim at another inside piece.` : 'No inside function whose derivative is also there. Try by parts (C + b).' } };
+}
+
+/** the inside g that u-substitution would name: aimed, else the one whose derivative is there too */
+export function uCandidate(e: Eq, sel: string | null): Node | null {
+  const T = target(e, sel, 'int');
+  if (!T) return null;
+  const r = uSub(e, sel);
+  if (isErr(r.move) || !r.g) return null;
+  const k = key(r.g);
+  let hit: Node | null = null;
+  walk(T.arg, n => { if (!hit && key(n) === k) hit = n; });
+  return hit;
 }
 
 const withKids = (n: Node, f: (c: Node) => Node): Node => { const ks = children(n); return ks.length ? withChildren(n, ks.map(f)) : n; };

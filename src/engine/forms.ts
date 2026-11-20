@@ -1,14 +1,17 @@
 // Equivalent forms of the aimed expression (or the whole equation), for the
 // forms strip. Every candidate goes through the same numeric check as a move.
-import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate, isLeibniz2 } from './ast';
+import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate, isLeibniz2, symbols, cloneFresh, deriv } from './ast';
+import { dependsOn, derivative } from './calculus';
+import { quick } from './integrate';
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, combineFractions, standardOrder, hasExpandable } from './rewrite';
 import { verify, MoveOk, MoveResult, relAfter, isErr, neverZero } from './moves';
 import { toText } from './print';
-import { isLeibniz, toLeibniz, toPrime, toDifferentials } from './leibniz';
+import { isLeibniz, toLeibniz, toPrime, toDifferentials, letters } from './leibniz';
 import { gcd } from './terms';
 import { combineLogs } from './techniques';
+import { sumForms } from './sums';
 import { longDivide, partialFractions, rationalize, trigForms, completeSquare, Range, factorFully } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
@@ -17,7 +20,8 @@ const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
   'factored': 'f', 'split into terms': 't', 'highest power first': 'o', 'log rules': 'l', 'as powers': 'p', 'as roots': 'r',
   'one log': 'l', 'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
-  'as dy/dx': 'y', 'as y′': 'y', 'as d²y/dx²': 'y', 'as y″': 'y', 'as differentials': 'k',
+  'as dy/dx': 'y', 'as y′': 'y', 'as d²y/dx²': 'y', 'as y″': 'y', 'as differentials': 'k', 'product rule backwards': 'b',
+  'split the sum': 't', 'split the product': 't', 'as a limit of partial sums': 'm',
 };
 
 const one = () => 1;
@@ -135,6 +139,19 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   at('partial fractions', () => partialFractions(target));
   at('rationalized', () => rationalize(target));
   for (const f of trigForms(target)) at(`trig: ${f.name}`, () => f.node, f.range);
+  // f·g′ + f′·g is the product rule read backwards: d/dx(f·g) (the step in an integrating factor)
+  const back = productBackwards(target, e);
+  if (back) at('product rule backwards', () => back);
+  // Σ and ∏: on the aimed one, or the one the aimed piece sits in
+  const path = findPath(e, target.id) ?? [];
+  const up = path[path.length - 2];
+  // aimed at the ∏ inside ln(∏ …): the log's forms too
+  const S = up?.k === 'fn' && up.name === 'ln' && target.k === 'sum' && target.prod ? up : sumForms(target).length ? target : [...path].reverse().find(n => n.k === 'sum');
+  for (const f of S ? sumForms(S) : []) {
+    const n = out.length;
+    push(f.name, replace(e, S!.id, f.node), newHints(), one, sel ? f.node.id : null);
+    if (out.length > n && f.conditions) out[n].conditions = [...(out[n].conditions ?? []), ...f.conditions];
+  }
   return out;
 }
 
@@ -203,5 +220,28 @@ function asRoots(n: Node): Node | null {
   const e = n.exp;
   if (e.k === 'frac' && e.num.k === 'num' && e.num.v === 1 && e.den.k === 'num' && e.den.v === 2) return sqrt(n.base, n.id);
   if (e.k === 'num' && e.v < 0) return frac(num(1), e.v === -1 ? n.base : pow(n.base, num(-e.v, e.id)), n.id);
+  return null;
+}
+
+/** f·g′ + f′·g → d/dx(f·g): for each factor of a term, its antiderivative is tried as g */
+function productBackwards(n: Node, e: Eq): Node | null {
+  if (n.k !== 'add' || n.terms.length !== 2) return null;
+  const x = letters(e)?.x ?? symbols(n).find(s => !s.endsWith('′')) ?? 'x';
+  const names = symbols(e);
+  const dep = names.filter(s => names.includes(s + '′'));
+  const sample = (k: number): Env => Object.fromEntries([...names, x].map((s, i) => [s, 0.3 + 0.7 * Math.sin(k * 3.1 + i * 1.7)]));
+  const same = (a: Node, b: Node) => [1, 2, 3, 4].every(k => { const p = evaluate(a, sample(k)), q = evaluate(b, sample(k)); return Number.isFinite(p) && Math.abs(p - q) <= 1e-9 * (1 + Math.abs(q)); });
+  for (const t of n.terms) {
+    const fs = t.k === 'mul' ? t.factors : [t];
+    for (let i = 0; i < fs.length; i++) {
+      const rest = fs.filter((_, j) => j !== i);
+      if (!rest.some(r => dependsOn(r, x, dep))) continue;
+      const g = quick(fs[i], x);
+      if (!g) continue;
+      const P = mul([...rest.map(r => cloneFresh(r)), g.F]);
+      const dP = derivative(P, x, dep);
+      if (dP && same(dP, n)) return deriv(x, simplify(P, newHints()), dep.length ? dep : undefined);
+    }
+  }
   return null;
 }
