@@ -127,7 +127,11 @@ export class TreeView {
       s.el.classList.toggle('live', it.live);
       s.el.classList.toggle('off', !it.live);
       s.el.classList.toggle('fold', !it.id);
-      s.el.title = it.id ? `${it.label ? it.label + ' · ' : ''}click to go to this step` : `${it.ids.length} steps: click to see them all`;
+      s.el.title = it.id ? `${it.label ? it.label + ' · ' : ''}${it.back ? `came back here ${it.back}× · ` : ''}click to go to this step` : `${it.ids.length} steps: click to see them all`;
+      // a round trip (reorder and back) counts here instead of growing a branch
+      let badge = s.el.querySelector<HTMLElement>('.tback');
+      if (it.back && !badge) { badge = document.createElement('span'); badge.className = 'tback'; s.el.append(badge); }
+      if (badge) { if (it.back) { const t = `↺${it.back}`; if (badge.textContent !== t) { badge.textContent = t; badge.animate([{ transform: 'scale(1.5)' }, { transform: 'none' }], { duration: ms(260), easing: 'cubic-bezier(.3,1.6,.5,1)' }); } } else badge.remove(); }
       s.el.style.width = `${it.w}px`;
       s.el.style.height = `${it.h}px`;
     }

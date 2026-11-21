@@ -100,4 +100,18 @@ export const tests = {
     const n = await p.evaluate(() => document.querySelectorAll('.bubble').length);
     assert(n <= 1, `one name at a time, not ${n}`);
   },
+
+  async 'a reorder and back returns to the step with a ↺ count, and the aim stays on the piece'(h) {
+    const { load, key, until, p, assert } = h;
+    await load('2x + 3 = 7');
+    await dig(h, '3');
+    await key('Shift+ArrowLeft');
+    await until(s => s.eq === '3 + 2x = 7', 'reordered');
+    await key('Shift+ArrowRight');
+    await until(s => s.eq === '2x + 3 = 7' && s.aim === '3', 'back, still aimed at 3');
+    const badge = await p.evaluate(() => document.querySelector('.titem .tback')?.textContent);
+    assert(badge === '↺1', `the start step counts the round trip: ${badge}`);
+    const steps = await p.evaluate(() => window.algebrix.slot.steps.length);
+    assert(steps === 2, `no third step: ${steps}`);
+  },
 };

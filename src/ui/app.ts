@@ -515,18 +515,19 @@ export class App {
     this.grouped = null;
     const before = this.eq;
     const wasSolved = solvedFor(before);
-    const link = this.linkNext, out = { again: false };
+    const link = this.linkNext, out: { again: boolean; back?: number } = { again: false };
     this.linkNext = null;
     const { answer } = sheet.addStep(this, r, { link, out });
     // the aim follows the work, so the arrows keep going without a fresh Space
-    this.sel = nav.aimAfter(before, r.eq, this.sel, r.select);
+    this.sel = nav.aimAfter(before, this.eq, this.sel, out.back ? undefined : r.select);
     sound.move(pitch);
     // judged first, so a wrong answer is drawn as one
     const now = solvedFor(r.eq);
     const bad = now ? this.judge(this.cur) : null;
     this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
     if (!opts.quietLabel) this.bubble(r.label, false, r.focus ?? this.sel);
-    if (out.again && !r.auto) this.say('Same as a step you already took, so you are back on it (the tree keeps one of each).');
+    // a round trip shows as ↺n on the step in the tree; no words needed
+    if (!out.back && out.again && !r.auto) this.say('Same as a step you already took, so you are back on it (the tree keeps one of each).');
     if (relOf(r.eq) === '≟' && isProved(r.eq)) { setTimeout(() => sound.solved(), 140); this.say('Both sides match. Proved ∎'); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); this.save(); return true; }
     if (answer) this.say(answer);
     if (bad) { this.say(bad, true); this.renderRail(); }

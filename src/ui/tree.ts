@@ -72,6 +72,8 @@ export const here = (sl: Slot): Link => ({ slot: (ensureIds(sl), sl.uid!), step:
 export interface TNode {
   id: string; eq: Eq; label: string; dir: '⇔' | '⇒'; answer?: string;
   parent: string | null; kids: string[]; born: number; link?: Link;
+  /** how many times a move came back to this step (a reorder undone) instead of growing a branch */
+  back?: number;
 }
 export interface Tree {
   uid: string; nodes: Map<string, TNode>; root: string;
@@ -103,6 +105,7 @@ export function treeOf(sl: Slot): Tree {
         });
         if (prev) nodes.get(prev)!.kids.push(id);
       }
+      if (st.back) nodes.get(id)!.back = st.back;
       for (const r of run) vis.set(r.id!, id);
       ids.push(id);
       prev = id;
@@ -127,6 +130,7 @@ export interface Item {
   label: string; dir: '⇔' | '⇒';
   /** the step you're on in this equation, on the line you're on, or off it (a line you left) */
   now: boolean; live: boolean;
+  back?: number;
 }
 export interface Edge { from: string; to: string; label: string; dir: '⇔' | '⇒'; live: boolean; fold: boolean }
 export interface Arrow { from: string; to: string }
@@ -181,7 +185,7 @@ export function layoutTree(trees: Tree[], measure: (col: number, n: TNode) => Bo
       };
       const place = (nid: string) => {
         const n = t.nodes.get(nid)!, b = measure(c, n);
-        const it = add({ key: `${t.uid}:${nid}`, lane, row: row++, w: b.w, h: b.h, id: nid, ids: [nid], label: n.label, dir: n.dir, now: nid === t.at, live: onLine.has(nid) });
+        const it = add({ key: `${t.uid}:${nid}`, lane, row: row++, w: b.w, h: b.h, id: nid, ids: [nid], label: n.label, dir: n.dir, now: nid === t.at, live: onLine.has(nid), back: n.back });
         if (prev) edges.push({ from: prev.key, to: it.key, label: n.label, dir: n.dir, live: it.live, fold: false });
         prev = it;
         for (const k of n.kids.slice(1)) forks.push({ id: k, row, item: it });

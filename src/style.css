@@ -553,6 +553,7 @@ body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
   transition: color .2s, background-color .2s, box-shadow .2s;
 }
 .titem::before { content: ''; position: absolute; inset: -4px -9px; border-radius: 8px; transition: background-color .2s; }
+.titem .tback { position: absolute; left: 100%; margin-left: 7px; top: calc(50% - 8px); font: 600 10px/1 var(--ui-font, system-ui); color: var(--muted); background: var(--bg); border-radius: 6px; padding: 2px 3px; pointer-events: none; }
 .titem:hover::before { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .titem .mini { position: relative; }
 .titem.off { color: var(--muted); opacity: .5; }

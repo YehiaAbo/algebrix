@@ -94,3 +94,28 @@ describe('cases are alternatives', () => {
     expect(areCases(sheet(), 1, 2)).toBe(false);
   });
 });
+
+describe('a move that comes back to an earlier step goes back to it (user: the tree explodes over reorders)', () => {
+  it('reorder twice: back on the start, counted, nothing new', () => {
+    const s = start('a + b = 1');
+    addStep(s, move('b + a = 1'));
+    const out = { again: false, back: 0 };
+    addStep(s, move('a + b = 1'), { out });
+    expect(s.slots[0].at).toBe(0);
+    expect(s.slots[0].steps).toHaveLength(2);
+    expect(out.back).toBe(1);
+    expect(s.slots[0].steps[0].back).toBe(1);
+    // and again: the count goes up
+    addStep(s, move('b + a = 1'));
+    addStep(s, move('a + b = 1'), { out });
+    expect(s.slots[0].steps[0].back).toBe(2);
+    expect(s.slots[0].steps).toHaveLength(2);
+  });
+  it('a move that undoes one further back returns there too', () => {
+    const s = start('2x = 6');
+    addStep(s, move('x = 3'));
+    addStep(s, move('2x = 6'));
+    expect(s.slots[0].at).toBe(0);
+    expect(now(s)).toBe('2x = 6');
+  });
+});

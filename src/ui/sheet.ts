@@ -29,10 +29,20 @@ export function place(s: Sheet, eq: Eq, asNew: boolean, from?: Link): string | n
  *  answer written out. The steps after the current one leave the line you're on but stay in the
  *  tree; a move that gives the same as a step already taken from here goes back to that step
  *  (out.again) instead of copying it. link: the step in another equation the move used */
-export function addStep(s: Sheet, r: MoveOk, opts: { link?: Link | null; out?: { again: boolean } } = {}): Step {
+export function addStep(s: Sheet, r: MoveOk, opts: { link?: Link | null; out?: { again: boolean; back?: number } } = {}): Step {
   const slot = s.slots[s.cur];
   ensureIds(slot);
   const path = slot.steps.slice(0, slot.at + 1), k = key(r.eq);
+  // back where you were a few steps ago (a reorder undone, x then ÷ x): go back to that step and
+  // count it, so the tree doesn't grow a new branch for a round trip
+  const back = slot.at > 0 && !opts.link ? path.findIndex(st => key(st.eq) === k) : -1;
+  if (back >= 0 && back < slot.at) {
+    const st = slot.steps[back];
+    st.back = (st.back ?? 0) + 1;
+    slot.at = back;
+    if (opts.out) opts.out.back = st.back;
+    return st;
+  }
   for (const line of linesOf(slot)) {
     const next = line[slot.at + 1];
     if (next && key(next.eq) === k && path.every((st, i) => line[i].id === st.id)) {
