@@ -24,7 +24,7 @@ partial fractions: 1 · complex fractions: 2
 | A07 | OS 5.5 #35 | 4x⁴ + 4x³ − 25x² − x + 6 = 0 | ±1/2, 2, −3 | ✓ 11-21 | (C4: Tab f is still a one-press shortcut) |
 | A08 | OS 6.6 #21 | e^(2x) − e^x − 132 = 0 | ln 12 | ✓ 11-21 | |
 | A09 | OS 6.6 #45 | ln x + ln(x − 3) = ln(7x) | 10 (0 extraneous) | ✓ 11-21 | |
-| A10 | OS 6.6 #20 | 2^(x+1) = 5^(2x−1) | ln 10 / ln(25/2) ≈ 0.9117 (even #, sympy only) | ◐ 11-21 | C5 |
+| A10 | OS 6.6 #20 | 2^(x+1) = 5^(2x−1) | ln 10 / ln(25/2) ≈ 0.9117 (even #, sympy only) | ✓ 11-21 | |
 | A11 | OS 7.3 #37 | x² + y² − 6y = 7, x² + y = 1 | (±√((√73 − 5)/2), (7 − √73)/2) | ✓ 11-21 | (C10 found here) |
 | A12 | OS 7.3 #51 | x² − xy − 2y² − 6 = 0, x² + y² = 1 | no solution | ✗ 11-21 | C6 |
 | A13 | OS 7.4 #27 | (5x² + 20x + 8)/(2x(x + 1)²) | 4/x − 3/(2(x + 1)) + 7/(2(x + 1)²) | ✗ 11-21 | C9 |

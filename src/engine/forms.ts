@@ -72,6 +72,15 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
       const clear = (s: Node) => simplify(expandAll(mul([num(L), s]), h), h);
       push(`clear fractions (× ${L})`, eq(clear(e.lhs), clear(e.rhs)), h, () => L, null);
     }
+    const ll = logRules(e.lhs), lr = relOf(e) === 'expr' ? null : logRules(e.rhs);
+    if (ll || lr) push('log rules', eq(ll ?? e.lhs, lr ?? e.rhs), newHints(), one, null);
+    const cl1 = combineLogs(e.lhs), cr1 = relOf(e) === 'expr' ? null : combineLogs(e.rhs);
+    if (cl1 || cr1) {
+      h = newHints();
+      push('one log', eq(cl1 ? simplify(cl1.n, h) : e.lhs, cr1 ? simplify(cr1.n, h) : e.rhs), h, one, null);
+      const f = out.find(x => x.name === 'one log');
+      if (f) f.conditions = [...(f.conditions ?? []), ...(cl1?.conditions ?? []), ...(cr1?.conditions ?? [])];
+    }
     h = newHints();
     const fl = factorFully(e.lhs, h), fr = factorFully(e.rhs, h);
     if (fl || fr) push('factored', eq(fl ?? e.lhs, fr ?? e.rhs), h, one, null);
@@ -84,18 +93,10 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     // with nothing to multiply out, "expanded" is really a full simplify (the quadratic formula's answer)
     push(hasExpandable(e) ? 'expanded' : 'simplified', eq(expandAll(e.lhs, h), expandAll(e.rhs, h)), h, one, null);
     h = newHints();
-    push('simplified', eq(simplify(e.lhs, h), simplify(e.rhs, h)), h, one, null);
-    h = newHints();
     if (relOf(e) !== 'expr') push('sides swapped', eq(e.rhs, e.lhs), h, () => -1, null);
-    const ll = logRules(e.lhs), lr = relOf(e) === 'expr' ? null : logRules(e.rhs);
-    if (ll || lr) push('log rules', eq(ll ?? e.lhs, lr ?? e.rhs), newHints(), one, null);
-    const cl1 = combineLogs(e.lhs), cr1 = relOf(e) === 'expr' ? null : combineLogs(e.rhs);
-    if (cl1 || cr1) {
-      h = newHints();
-      push('one log', eq(cl1 ? simplify(cl1.n, h) : e.lhs, cr1 ? simplify(cr1.n, h) : e.rhs), h, one, null);
-      const f = out.find(x => x.name === 'one log');
-      if (f) f.conditions = [...(f.conditions ?? []), ...(cl1?.conditions ?? []), ...(cr1?.conditions ?? [])];
-    }
+    // after the named rules, so a rule that also simplifies keeps its own name and key
+    h = newHints();
+    push('simplified', eq(simplify(e.lhs, h), simplify(e.rhs, h)), h, one, null);
     // identities on a whole side, so sin²x + cos²x needs no aiming
     for (const side of ['lhs', 'rhs'] as const) for (const f of trigForms(e[side])) push(`trig: ${f.name}`, side === 'lhs' ? eq(f.node, e.rhs) : eq(e.lhs, f.node), newHints(), one, null, f.range);
     return out;
@@ -130,7 +131,6 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     const s = target.k === 'frac' ? distributeNode(target, h) : null;
     return s && s.k === 'add' ? { ...s, terms: s.terms.map(t => simplify(t, h)) } : null;
   });
-  at('simplified', h => { const r = simplify(target, h); return key(r) === key(target) ? null : r; });
   at('highest power first', () => standardOrder(target));
   at('log rules', () => logRules(target));
   // ln x + ln y = ln(xy), only where each is positive
@@ -140,6 +140,8 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   at('as a power of a power', () => splitPower(target));
   at('powers combined', h => (target.k === 'pow' && target.base.k === 'pow' ? pow(target.base.base, simplify(mul([target.exp, target.base.exp]), h), target.id) : null));
   at('as roots', () => asRoots(target));
+  // after the named rules, so a rule that also simplifies (ln 2^x → x ln 2) keeps its own name and key
+  at('simplified', h => { const r = simplify(target, h); return key(r) === key(target) ? null : r; });
   at('long division', () => longDivide(target));
   at('partial fractions', () => partialFractions(target));
   at('rationalized', () => rationalize(target));

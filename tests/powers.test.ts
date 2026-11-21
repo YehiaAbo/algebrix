@@ -76,3 +76,9 @@ describe('(−a)² = a²', () => {
     expect(simp('(-y)^3')).toBe('(−y)^3');
   });
 });
+
+describe('a named rule keeps its key when it also simplifies (playtest C5)', () => {
+  it('Tab l on ln of a power', () => {
+    expect(formOf('ln(2^(x+1)) = ln(5^(2x-1))', 'ln(2^(x + 1))', 'log rules')).toBe('(x + 1) ln(2) = ln(5^(2x − 1))');
+  });
+});
