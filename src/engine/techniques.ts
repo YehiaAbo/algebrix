@@ -3,7 +3,7 @@
 // in several steps, substitute one equation into another, split |X| = B.
 import { Node, Eq, find, children, withChildren, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf } from './ast';
 import { parseExpr } from './parse';
-import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd } from './terms';
+import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd, termInfo, buildTerm } from './terms';
 import { simplify, newHints, nonneg as isNonneg } from './simplify';
 import { expandAll, hasExpandable, findExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
 import { toText } from './print';
@@ -634,7 +634,7 @@ export function splitCases(e: Eq, v?: string): Cases | null {
 export function quadraticFormula(e: Eq, v: string): Cases | { error: string } {
   if (relOf(e) !== '=') return { error: 'The quadratic formula needs an equation.' };
   const P = polyOf(expandAll(add([fresh(e.lhs), negate(fresh(e.rhs))]), newHints()));
-  if (!P || P.v !== v || P.c.length !== 3) return { error: `The quadratic formula needs a${v}² + b${v} + c = 0.` };
+  if (!P || P.v !== v || P.c.length !== 3) return quadraticLetters(e, v);
   const [c, b, a] = P.c;
   const D = radd(rmul(b, b), rmul(rat(-4), rmul(a, c)));
   if (D.p < 0) return { error: `b² − 4ac = ${D.q === 1 ? D.p : `${D.p}/${D.q}`} is negative, so there are no real solutions.` };
@@ -651,6 +651,51 @@ export function quadraticFormula(e: Eq, v: string): Cases | { error: string } {
   const ok = checked(e, first);
   if (isErr(ok)) return ok;
   return { first: ok, rest: one_ ? [] : [E2], why: 'two cases' };
+}
+
+/** a, b, c as expressions in the other letters: x² + xy − 2y² = 0 has a = 1, b = y, c = −2y². */
+function coeffsIn(n: Node, v: string): Node[] | null {
+  const s = simplify(expandAll(n, newHints()), newHints());
+  const by: Node[][] = [[], [], []];
+  for (const t of s.k === 'add' ? s.terms : [s]) {
+    const i = termInfo(t);
+    let deg = 0;
+    const rest: Node[] = [];
+    for (const m of i.mono) {
+      if (m.k === 'sym' && m.name === v) deg += 1;
+      else if (m.k === 'pow' && m.base.k === 'sym' && m.base.name === v && m.exp.k === 'num' && Number.isInteger(m.exp.v) && m.exp.v > 0) deg += m.exp.v;
+      else if (has(m, v)) return null;
+      else rest.push(m);
+    }
+    if (deg > 2) return null;
+    by[deg].push(buildTerm(i.coef, rest, t));
+  }
+  if (!by[2].length) return null;
+  return by.map(ts => (ts.length ? simplify(ts.length === 1 ? ts[0] : add(ts), newHints()) : num(0)));
+}
+
+/** The formula with letters in a, b, c: the same two cases, each checked like any move. */
+function quadraticLetters(e: Eq, v: string): Cases | { error: string } {
+  const need = { error: `The quadratic formula needs a${v}² + b${v} + c = 0.` };
+  const C = coeffsIn(add([fresh(e.lhs), negate(fresh(e.rhs))]), v);
+  if (!C) return need;
+  const [c, b, a] = C.map(n => `(${toText(n)})`);
+  const D = simplify(parseExpr(`${b}^2 - 4*${a}*${c}`), newHints());
+  const others = symbols(D);
+  if (others.length) {
+    const vals = Array.from({ length: 40 }, (_, i) => evaluate(D, Object.fromEntries(others.map((o, j) => [o, Math.sin(i * 7.3 + j * 1.9) * 5 + 0.37]))));
+    if (vals.every(x => Number.isFinite(x) && x < 0)) return { error: `b² − 4ac = ${toText(D)} is never above 0, so a real ${v} needs it to be 0.` };
+  }
+  const root = (sign: '+' | '-') => eq(sym(v), parseExpr(`(-${b} ${sign} sqrt(${b}^2 - 4*${a}*${c}))/(2*${a})`));
+  const E1 = root('+'), E2 = root('-');
+  const ev = (q: Eq, env: Env) => evaluate(q.lhs, env) - evaluate(q.rhs, env);
+  const first: MoveOk = {
+    eq: E1, label: 'quadratic formula: + and − cases', hints: newHints(), factor: one, select: null,
+    check: env => [[evaluate(C[2], env) * ev(E1, env) * ev(E2, env), ev(e, env)]],
+  };
+  const ok = checked(e, first);
+  if (isErr(ok)) return ok;
+  return { first: ok, rest: [E2], why: 'two cases' };
 }
 
 /* ---------- substitution between equations ---------- */

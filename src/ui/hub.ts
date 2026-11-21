@@ -25,9 +25,12 @@ export function techniques(this: App): Tech[] {
     run: () => (aimVar ? this.solveFor(aimVar) : this.askVar()),
   }];
   out.push({ key: 'a', label: 'split into cases', ok: !!splitCases(eq), run: () => this.split() });
-  const qv = aimVar ?? vars.find(v => !isErr(quadraticFormula(eq, v) as never));
+  const qerr = (v: string) => { const r = quadraticFormula(eq, v); return 'error' in r ? r.error : ''; };
+  const qv = aimVar ?? vars.find(v => !qerr(v)) ?? vars.find(v => qerr(v).startsWith('b² − 4ac'));
   const q = qv ? quadraticFormula(eq, qv) : null;
   if (q && !('error' in q)) out.push({ key: 'g', label: `quadratic formula for ${qv}`, ok: true, run: () => this.split(undefined, q) });
+  // b² − 4ac below 0 is worth hearing, not a silent "doesn't apply"
+  else if (q && q.error.startsWith('b² − 4ac')) out.push({ key: 'g', label: `quadratic formula for ${qv}`, ok: true, run: () => this.refuse(q.error) });
   const hasCall = (() => { let c = false; walk(eq, n => { if (n.k === 'call' && DEFS.has(n.name)) c = true; }); return c; })();
   if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
   if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });

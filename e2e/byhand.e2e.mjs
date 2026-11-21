@@ -62,4 +62,16 @@ export const tests = {
     await key('Enter');
     await until(s => s.eq === '(x − 2)(4x^3 + 12x^2 − x − 3) = 0', 'x − 2 taken out, nothing left over');
   },
+
+  async 'Tab + g works with letters in a, b, c, and says when b² − 4ac is never above 0'(h) {
+    const { load, hold, until, p, assert } = h;
+    await load('x^2 + x y - 2y^2 = 0');
+    await hold('Tab', 'g');
+    await until(s => s.slots === 2 && s.eq.startsWith('x = '), 'two cases for x, in y');
+    await load('-5x^2 - x y - 8y^2 = 0');
+    await hold('Tab', 'g');
+    await until(() => true, '');
+    const bar = await p.evaluate(() => window.algebrix.message?.text ?? '');
+    assert(bar.includes('never above 0'), `the bar says why there is nothing to split: ${bar}`);
+  },
 };
