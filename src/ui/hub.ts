@@ -4,6 +4,7 @@ import { find, symbols, relOf, DEFS } from '../engine/ast';
 import { unfold } from '../engine/goals';
 import { applyMove, isErr } from '../engine/moves';
 import { formsFor } from '../engine/forms';
+import { polyTarget } from '../engine/polytools';
 import { splitCases, eliminate, quadraticFormula } from '../engine/techniques';
 import { layout } from '../render/layout';
 import { Stage } from '../render/stage';
@@ -30,6 +31,8 @@ export function techniques(this: App): Tech[] {
   const hasCall = (() => { let c = false; walk(eq, n => { if (n.k === 'call' && DEFS.has(n.name)) c = true; }); return c; })();
   if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
   if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
+  // q on a fraction is long division (a form); on a polynomial it takes out a factor you type
+  if (aimed?.k !== 'frac' && polyTarget(eq, this.sel)) out.push({ key: 'q', label: 'take out a factor…', ok: true, run: () => this.openDivide() });
   this.slots.forEach((_, j) => {
     if (j === this.cur) return;
     const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));

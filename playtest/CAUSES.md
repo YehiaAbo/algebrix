@@ -7,10 +7,8 @@ first. A fixed cause collapses to one line with its commit.
 
 - **C3 No hand route for a sign question.** (move) A product or quotient ≤ 0 has no "split
   into cases" or sign chart you drive; only `e` answers it. A06.
-- **C4 Can't test a root or divide by your own factor.** (move) Rational root theorem by
-  hand needs "put in x = 2" on a polynomial and "divide by (x − 2)"; p refuses on an equation
-  in one letter and long division takes no divisor. Meanwhile Tab f factors a quartic in one
-  press (does the thinking). A07.
+- **C4 Tab f still factors a quartic in one press.** (shortcut) Taking out your own factor works now
+  (below), but the one-press full factoring sits right beside it and does the thinking. A07.
 - **C5 Log rules don't apply to an aimed ln(a^b).** (find) Tab l says the form doesn't
   apply, yet `e` uses the power rule. A10.
 - **C6 Two-equation systems go silent.** (show) `e` and Tab k on a system do nothing, with
@@ -24,6 +22,7 @@ first. A fixed cause collapses to one line with its commit.
 
 ## Fixed
 
+- C4a No way to test a root or divide by your own factor: Tab + q on a polynomial takes out a factor you type and shows what is left over. A07 by hand.
 - C10 Cases were treated as a system: subbing or adding one case into another now resists, and Tab shows "(n) is another case".
 - C2 (−a)² stayed as it was: s drops the minus under an even power (023fef5).
 - C1 Exponent laws only went one way: Tab p splits or combines a power, f i undoes any fractional power, s cancels a root (A01 A02 A08 A11, siblings 2.6 #10 #42 #44, 6.6 #27) (023fef5).

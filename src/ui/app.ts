@@ -86,8 +86,10 @@ export class App {
   /** the step of another equation the next move uses (set as a piece of it flies in) */
   linkNext: Link | null = null;
   /** what the small box is for: both sides (o), naming a piece (b), or putting in a value (p) */
-  opKind: 'both' | 'name' | 'value' = 'both';
+  opKind: 'both' | 'name' | 'value' | 'divide' = 'both';
   valueOf: string | null = null;
+  /** the polynomial Tab q takes a factor out of */
+  divideAt: string | null = null;
 
   pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
   constructor() {

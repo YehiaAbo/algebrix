@@ -1,5 +1,5 @@
-// Exponent laws both ways, by keyboard: Tab + p splits a power so a quadratic form shows, b
-// names the inside, and f + i undoes a fractional power.
+// Techniques by hand that playtests found missing: Tab + p splits a power so a quadratic form shows,
+// b names the inside, f + i undoes a fractional power, cases stay alternatives, and Tab + q takes out a factor.
 const dig = async ({ p, until }, target, nth = 0) => {
   await p.evaluate(([t, nth]) => {
     const a = window.algebrix, hits = [];
@@ -46,5 +46,20 @@ export const tests = {
     await h.wait(300);
     assert((await refusals()) === 1, 'subbing the other case in resists');
     assert((await h.state()).eq === before, 'and the equation stays as it was');
+  },
+
+  async 'Tab + q takes out a factor you type: the rational root theorem by hand'(h) {
+    const { load, key, hold, type, until, p, assert } = h;
+    await load('4x^4 + 4x^3 - 25x^2 - x + 6 = 0');
+    await hold('Tab', 'q');
+    await p.keyboard.press('Control+a');
+    await type('x - 1');
+    await until(() => true, '');
+    const note = await p.evaluate(() => document.querySelector('#op-note').textContent);
+    assert(note.includes('left over'), `x − 1 is not a factor, and the box says so: ${note}`);
+    await p.keyboard.press('Control+a');
+    await type('x - 2');
+    await key('Enter');
+    await until(s => s.eq === '(x − 2)(4x^3 + 12x^2 − x − 3) = 0', 'x − 2 taken out, nothing left over');
   },
 };

@@ -47,6 +47,7 @@ export function bind(this: App) {
       e.preventDefault();
       if (this.opKind === 'name') return this.commitName();
       if (this.opKind === 'value') return this.commitValue();
+      if (this.opKind === 'divide') return this.commitDivide();
       const r = this.opResult();
       if (isErr(r)) { this.refuse(r.error); return; }
       const ref = /#(\d)/.exec($<HTMLInputElement>('op-input').value);

@@ -2,9 +2,12 @@
 // holds for every value, hold Tab + n subs a piece in from equation n, and C does calculus to both
 // sides. Each is one step in the tree; the shortcuts in C are chains of these.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, LETS, isDiff, Node, key } from '../engine/ast';
+import { find, symbols, LETS, isDiff, Node, key, replace } from '../engine/ast';
+import { parseExpr } from '../engine/parse';
+import { divideOut, polyTarget } from '../engine/polytools';
+import { newHints } from '../engine/simplify';
 import { toText } from '../engine/print';
-import { isErr, MoveOk } from '../engine/moves';
+import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
 import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
@@ -113,10 +116,55 @@ export function commitValue(this: App) {
   this.say(`Equation ${this.cur + 1}: at ${this.valueOf} = ${text.trim()}. s tidies it; Tab u unfolds a function.`);
 }
 
-/** what the box shows while you type, for b and p */
+/** Tab + q on a polynomial: take out a factor you type, P = (x − 2)·Q + R */
+export function openDivide(this: App) {
+  const id = polyTarget(this.eq, this.sel);
+  if (!id) return this.refuse('Aim at a polynomial, like x³ − 2x − 4, then Tab + q takes a factor out of it.');
+  this.opKind = 'divide';
+  this.divideAt = id;
+  this.closeHub(false);
+  this.setMode('op');
+  const input = $<HTMLInputElement>('op-input');
+  const v = symbols(find(this.eq, id)!)[0] ?? 'x';
+  input.value = `${v} - 1`;
+  $('op').hidden = false;
+  this.place($('op'));
+  input.focus();
+  input.select();
+  this.onOpType();
+  this.renderHints();
+}
+
+export function divideResult(this: App): MoveResult {
+  const text = $<HTMLInputElement>('op-input').value.trim();
+  const target = this.divideAt ? find(this.eq, this.divideAt) : null;
+  if (!target) return { error: 'Aim at a polynomial first.' };
+  let d: Node;
+  try { d = parseExpr(text); } catch (e) { return { error: (e as Error).message }; }
+  const r = divideOut(target, d);
+  if ('error' in r) return r;
+  // what is left over says whether the factor was one: 0 left means its root is a root
+  const left = r.k === 'add' ? toText(r.terms[r.terms.length - 1]) : null;
+  return checked(this.eq, { eq: replace(this.eq, target.id, r), label: `take out ${toText(d)}${left ? `, ${left} left over` : ''}`, rule: 'take out a factor', hints: newHints(), factor: () => 1, select: r.id });
+}
+
+export function commitDivide(this: App) {
+  const r = this.divideResult();
+  if (isErr(r)) return this.refuse(r.error);
+  this.closeOp();
+  this.apply(r, 1.05);
+}
+
+/** what the box shows while you type, for b, p and Tab q */
 export function onNameType(this: App) {
   const note = $('op-note'), symEl = $('op-sym');
-  if (this.opKind === 'name') {
+  if (this.opKind === 'divide') {
+    const r = this.divideResult();
+    symEl.textContent = 'take out';
+    $('op').classList.toggle('bad', isErr(r));
+    note.textContent = isErr(r) ? r.error : r.label.includes('left over') ? `${r.label.split(', ')[1]}: not a factor · Enter` : 'a factor, nothing left over · Enter';
+    this.peek = isErr(r) ? null : r.eq;
+  } else if (this.opKind === 'name') {
     const r = this.nameResult();
     symEl.textContent = 'name it';
     $('op').classList.toggle('bad', 'error' in r);
@@ -241,3 +289,4 @@ export function characteristicShortcut(this: App) {
   this.save();
   this.later(ms(420), () => this.play(rest, () => this.say(`Equation ${this.cur + 1}: when e^(rx) solves it. e solves for r; each root gives e^(rx), and C g on equation 1 writes the general solution.`)));
 }
+

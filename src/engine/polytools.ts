@@ -1,7 +1,7 @@
 // Rewrites for rational expressions and trig: polynomial long division, partial
 // fractions, rationalizing a denominator, and a pack of trig identities. Each returns
 // an equivalent expression (or null); the forms strip checks every one numerically.
-import { Node, Frac, num, add, mul, frac, pow, fn, cloneFresh, key, sqrt as sqrtN, evaluate as evaluateNode } from './ast';
+import { Node, Frac, Eq, num, add, mul, frac, pow, fn, cloneFresh, key, find, symbols as symbolsOf, sqrt as sqrtN, evaluate as evaluateNode } from './ast';
 import { rat, Rat, rmul, radd, rdiv, negate, coefOf, gcd } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { expandAll, polyOf, factorize } from './rewrite';
@@ -335,4 +335,28 @@ export function factorFully(n: Node, h: Hints): Node | null {
   let changed = false;
   const fs = r.factors.flatMap(f => { const g = f.k === 'add' ? factorByRoots(f) : null; if (!g) return [f]; changed = true; return g.k === 'mul' ? g.factors : [g]; });
   return changed ? mul(fs, r.id) : r;
+}
+
+/** P written as D·Q + R, for a D you choose: take (x − 2) out of 4x⁴ + 4x³ − 25x² − x + 6 to test
+ *  whether 2 is a root (R = 0 means it is) and get the rest to work on. */
+export function divideOut(n: Node, d: Node): Node | { error: string } {
+  const P = poly(n), D = poly(d);
+  if (!P || P.c.length < 3) return { error: 'Aim at a polynomial, like x³ − 2x − 4, to take a factor out of it.' };
+  if (!D || D.c.length < 2) return { error: 'Type a factor with the letter in it, like x − 2.' };
+  if (D.v !== P.v) return { error: `Type a factor in ${P.v}, like ${P.v} − 2.` };
+  if (D.c.length > P.c.length) return { error: 'That factor has a higher power than the polynomial.' };
+  const { q, r } = divide(P.c, D.c);
+  const Q = parseExpr(polyText(P.v, q));
+  const DQ = mul([cloneFresh(d), Q]);
+  if (!r.length) return DQ;
+  const R = parseExpr(polyText(P.v, r));
+  return add([DQ, R]);
+}
+
+/** the polynomial Tab q would take a factor out of: the aimed piece, or a side that is one */
+export function polyTarget(e: Eq, sel: string | null): string | null {
+  const ok = (n: Node | null) => !!n && n.k !== 'frac' && n.k !== 'eq' && symbolsOf(n).length === 1 && !('error' in divideOut(n, parseExpr(`${symbolsOf(n)[0]} - 1`)));
+  const aimed = sel && sel !== 'eq' ? find(e, sel) : null;
+  if (aimed) return ok(aimed) ? aimed.id : null;
+  return ok(e.lhs) ? e.lhs.id : ok(e.rhs) ? e.rhs.id : null;
 }
