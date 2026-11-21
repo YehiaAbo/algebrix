@@ -3,7 +3,7 @@
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
-  isDiff, linkedTo,
+  isDiff, linkedTo, deriv, partial,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -193,7 +193,62 @@ function factorMove(e: Eq, sel: string | null): MoveResult {
 }
 
 /* ---------- reorder inside a sum or product ---------- */
+/** ∫, Σ, d/dx and lim: what a constant can slide through, and the letter it must not hold */
+type Op = Extract<Node, { k: 'int' | 'sum' | 'deriv' | 'lim' }>;
+const isOp = (n: Node | undefined): n is Op => !!n && (n.k === 'int' || (n.k === 'sum' && !n.prod) || n.k === 'deriv' || n.k === 'lim');
+const SIGN: Record<Op['k'], string> = { int: '∫', sum: 'Σ', deriv: 'd/d', lim: 'lim' };
+const opName = (o: Op) => (o.k === 'int' ? `∫ … d${o.v}` : o.k === 'deriv' ? `d/d${o.v}` : SIGN[o.k]);
+const factorsOf = (n: Node) => (n.k === 'mul' ? n.factors : [n]);
+const product = (fs: Node[], id?: string) => (fs.length === 1 ? fs[0] : mul(fs, id));
+
+/** Shift + ← →  through ∫, Σ, d/dx and lim: a constant factor slides out of one or into one,
+ *  and d/dt slides into an integral over another letter (Leibniz) or back out. */
+function slideCalc(e: Eq, sel: string | null, dir: -1 | 1): MoveResult | null {
+  const at = locate(e, sel);
+  if (!at) return null;
+  const { node, parent, path } = at;
+  const label = (what: string) => ({ hints: newHints(), factor: one, select: node.id, label: what });
+  // d/dt ∫ f dx → ∫ ∂f/∂t dx, and back
+  if (dir === 1 && node.k === 'deriv' && node.arg.k === 'int' && !node.partial) {
+    const I = node.arg, t = node.v;
+    if (I.v === t) return { error: `The integral is in ${t} itself: d/d${t} of it is the function, not a slide.` };
+    if ((I.lo && symbols(I.lo).includes(t)) || (I.hi && symbols(I.hi).includes(t))) return { error: `A bound moves with ${t}, so d/d${t} can't just slide in: the full Leibniz rule adds the bound terms (C d).` };
+    return { eq: replace(e, node.id, { ...I, id: node.id, arg: partial(t, I.arg, I.id) }), ...label(`d/d${t} into the integral (Leibniz)`) };
+  }
+  if (dir === -1 && node.k === 'int' && node.arg.k === 'deriv' && node.arg.v !== node.v) {
+    const t = node.arg.v;
+    if ((node.lo && symbols(node.lo).includes(t)) || (node.hi && symbols(node.hi).includes(t))) return { error: `A bound moves with ${t}, so d/d${t} can't just slide out.` };
+    return { eq: replace(e, node.id, deriv(t, { ...node, id: node.arg.id, arg: node.arg.arg }, undefined, node.id)), ...label(`d/d${t} out of the integral (Leibniz)`) };
+  }
+  // out: the first (or last) factor inside an operator slides out past its sign
+  const inner = parent.k === 'mul' ? parent : null;
+  const op = inner ? path[path.length - 3] : parent;
+  if (isOp(op) && (inner ? op.arg === inner : op.arg === node) && dir === -1) {
+    const fs = factorsOf(op.arg);
+    if (fs.length < 2 || fs[0] !== node) return null;
+    const bad = symbols(node).includes(op.v);
+    if (bad) return { error: `${toText(node)} depends on ${op.v}, so it can't come out of ${opName(op)}.` };
+    const out = { ...op, arg: product(fs.slice(1), inner!.id) } as Node;
+    const host = path[path.length - 4];
+    // already in a product: the factor takes its place beside the operator
+    if (host?.k === 'mul') return { eq: replace(e, host.id, { ...host, factors: host.factors.flatMap(f => (f === op ? [node, out] : [f])) }), ...label(`${toText(node)} out of ${SIGN[op.k]}`) };
+    return { eq: replace(e, op.id, mul([node, out])), ...label(`${toText(node)} out of ${SIGN[op.k]}`) };
+  }
+  // in: a factor next to an operator in a product slides into it
+  if (parent.k === 'mul' && dir === 1) {
+    const i = parent.factors.indexOf(node), nb = parent.factors[i + 1];
+    if (!isOp(nb)) return null;
+    if (symbols(node).includes(nb.v)) return { error: `${toText(node)} depends on ${nb.v}, so it can't go into ${opName(nb)}.` };
+    const into = { ...nb, arg: product([node, ...factorsOf(nb.arg)], nb.arg.k === 'mul' ? nb.arg.id : undefined) } as Node;
+    const rest = parent.factors.flatMap((f, j) => (j === i ? [] : j === i + 1 ? [into] : [f]));
+    return { eq: replace(e, parent.id, product(rest, parent.id)), ...label(`${toText(node)} into ${SIGN[nb.k]}`) };
+  }
+  return null;
+}
+
 function slide(e: Eq, sel: string | null, dir: -1 | 1): MoveResult {
+  const c = slideCalc(e, sel, dir);
+  if (c) return c;
   const at = locate(e, sel);
   if (!at || (at.parent.k !== 'add' && at.parent.k !== 'mul')) return { error: 'Only a term in a sum or a factor in a product can slide.' };
   const list = at.parent.k === 'add' ? at.parent.terms : at.parent.factors;

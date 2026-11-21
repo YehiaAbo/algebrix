@@ -119,6 +119,12 @@ export function escapeHtml(s: string) {
 }
 
 /** step names and bar messages read as math, not as typed code: sqrt(x + 2) is √(x + 2), y^2 is y² */
+const SUP: Record<string, string> = Object.fromEntries([...'0123456789+−-=()nixtkab'].map((c, i) => [c, '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁻⁼⁽⁾ⁿⁱˣᵗᵏᵃᵇ'[i]]));
+const SUB: Record<string, string> = Object.fromEntries([...'0123456789+−-=()nixtkaeo'].map((c, i) => [c, '₀₁₂₃₄₅₆₇₈₉₊₋₋₌₍₎ₙᵢₓₜₖₐₑₒ'[i]]));
+const small = (t: string, m: Record<string, string>) => ([...t].every(c => m[c]) ? [...t].map(c => m[c]).join('') : null);
 export const pretty = (s: string) => s
   .replace(/\bsqrt\(/g, '√(').replace(/\bcbrt\(/g, '∛(')
-  .replace(/\^2(?![\d.])/g, '²').replace(/\^3(?![\d.])/g, '³');
+  // ∫_{0}^{1} and Σ_{n=1}^{10}: bounds as small numbers, as they are drawn
+  .replace(/_\{([^{}]+)\}/g, (m, t) => small(t, SUB) ?? m)
+  .replace(/\^\{([^{}]+)\}/g, (m, t) => small(t, SUP) ?? m)
+  .replace(/\^([0-9]+|[a-z])(?![\w.(])/g, (m, t) => small(t, SUP) ?? m);

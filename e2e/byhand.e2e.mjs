@@ -114,4 +114,18 @@ export const tests = {
     const steps = await p.evaluate(() => window.algebrix.slot.steps.length);
     assert(steps === 2, `no third step: ${steps}`);
   },
+
+  async 'Shift slides a constant out of ∫ and back in, and d/dt into ∫ (Leibniz)'(h) {
+    const { load, key, until } = h;
+    await load('int_0^2 3x^2 dx = 8');
+    await dig(h, '3');
+    await key('Shift+ArrowLeft');
+    await until(s => s.eq === '3 ∫_{0}^{2} x^2 dx = 8', '3 slid out');
+    await key('Shift+ArrowRight');
+    await until(s => s.eq === '∫_{0}^{2} 3x^2 dx = 8', 'and back in');
+    await load('d/dt int_0^1 x^t dx = y');
+    await dig(h, 'd/dt(∫_{0}^{1} x^t dx)');
+    await key('Shift+ArrowRight');
+    await until(s => s.eq === '∫_{0}^{1} ∂/∂t(x^t) dx = y', 'd/dt inside');
+  },
 };

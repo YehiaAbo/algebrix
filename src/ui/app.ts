@@ -440,7 +440,7 @@ export class App {
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
-    parts.push(`<span class="what">${node ? escapeHtml(pretty(toText(node))) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
+    parts.push(`<span class="what" data-text="${node ? escapeHtml(toText(node)) : ''}">${node ? escapeHtml(pretty(toText(node))) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
     if (!this.sel) {
       parts.push(`<span class="hint"><kbd class="wide">Space</kbd> aim</span><span class="hint"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> walk</span>`);
     } else {
@@ -448,6 +448,11 @@ export class App {
       if (!isErr(m)) parts.push(`<span class="hint"><kbd>m</kbd> ${escapeHtml(pretty(m.label))}</span>`);
       for (const k of MOVE_KEYS.slice(1)) {
         if (k.name !== 'any' && !isErr(applyMove(k.name, this.eq, this.sel))) parts.push(`<span class="hint"><kbd>${k.key}</kbd> ${k.verb}</span>`);
+      }
+      // Shift slides through ∫ Σ d/dx lim: say where, since it is more than a reorder there
+      for (const [name, arrow] of [['slideL', '←'], ['slideR', '→']] as const) {
+        const r = applyMove(name, this.eq, this.sel);
+        if (!isErr(r) && r.label !== 'reorder') parts.push(`<span class="hint"><kbd class="wide">⇧${arrow}</kbd> ${escapeHtml(pretty(r.label))}</span>`);
       }
     }
     parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>Tab</kbd> algebra</span><span class="hint"><kbd>C</kbd> calculus</span><span class="hint"><kbd>e</kbd> solve</span><span class="hint"><kbd>f</kbd> functions</span>`);

@@ -15,8 +15,8 @@ export async function helpers(p, url) {
     const a = window.algebrix, t = a.tour;
     return {
       eq: window.toText(a.eq), mode: a.mode, cur: a.cur, slots: a.slots.length,
-      // the readout shows √ and ²; tests name pieces as typed text
-      aim: document.querySelector('#hints .what')?.textContent.replace(/√\(/g, 'sqrt(').replace(/∛\(/g, 'cbrt(').replace(/²/g, '^2').replace(/³/g, '^3') ?? null,
+      // the readout shows √ and ²; tests name pieces as typed text, kept beside it
+      aim: (e => e ? (e.dataset.text || e.textContent) : null)(document.querySelector('#hints .what')),
       tour: t.active ? t.tour.id : null, step: t.i + 1,
     };
   });
