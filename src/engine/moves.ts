@@ -3,7 +3,7 @@
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
-  isDiff, linkedTo, deriv, partial, pow, sqrt, fn,
+  isDiff, linkedTo, deriv, partial, pow, sqrt, fn, children, withChildren,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -525,12 +525,59 @@ export function relAfter(before: Eq, r: MoveOk): Rel | { error: string } {
   return { error: 'I can’t tell if that is positive or negative, so I don’t know which way the inequality points. Set the variable’s domain in the rail, or split into cases.' };
 }
 
+/** before and after with each ∫ₐᵇ, lim and Σ that is in both (the same, untouched) as a letter */
+function asAtoms(before: Eq, after: Eq): [Eq, Eq] | null {
+  const keys = new Map<string, string>();
+  const inAfter = new Set<string>();
+  walk(after, n => { inAfter.add(key(n)); });
+  walk(before, n => {
+    if (((n.k === 'int' && n.lo) || n.k === 'lim' || n.k === 'sum') && inAfter.has(key(n)) && !keys.has(key(n))) keys.set(key(n), `⟦${keys.size}⟧`);
+  });
+  if (!keys.size) return null;
+  const swap = (n: Node): Node => {
+    const k = keys.get(key(n));
+    if (k) return { k: 'sym', id: n.id, name: k } as Node;
+    const ks = children(n);
+    return ks.length ? withChildren(n, ks.map(swap)) : n;
+  };
+  return [swap(before) as Eq, swap(after) as Eq];
+}
+
+/** the one place two trees differ: the smallest pair of pieces such that the rest is the same */
+function changed(before: Node, after: Node): [Node, Node] | null {
+  if (key(before) === key(after)) return null;
+  const kb = children(before), ka = children(after);
+  if (before.k !== after.k || kb.length !== ka.length) return [before, after];
+  const diff = kb.map((c, i) => key(c) !== key(ka[i]));
+  const i = diff.indexOf(true);
+  if (i < 0 || diff.lastIndexOf(true) !== i) return [before, after];
+  // the node itself (an operator, the letter of a dx, a bound held outside the children) must match too
+  if (key(withChildren(before, kb.map((c, j) => j === i ? ka[i] : c))) !== key(after)) return [before, after];
+  return changed(kb[i], ka[i]);
+}
+
 export function checked(e: Eq, r: MoveResult): MoveResult {
   if (isErr(r)) return r;
   const rel = relAfter(e, r);
   if (typeof rel !== 'string') return rel;
   if (relOf(r.eq) !== rel) r = { ...r, eq: eq(r.eq.lhs, r.eq.rhs, rel) };
-  const problem = verify(e, r);
+  let problem = verify(e, r);
+  // a piece that has no value (a divergent ∫, a limit that doesn't exist) and that the move leaves
+  // whole: algebra around it holds whatever it is, so check with it as an unknown letter
+  // (a name or a substitution first puts its letters back: if that gives the equation exactly, it holds)
+  if (problem?.startsWith('could not check') && !r.check) {
+    const put = (n: Eq) => Object.entries(r.ties ?? {}).reduce<Node>((a, [u, w]) => substitute(a, u, w), n) as Eq;
+    const b = put(e), a = put(r.eq);
+    if (key(b) === key(a)) problem = null;
+    else {
+      const ab = asAtoms(b, a);
+      if (ab) problem = verify(ab[0], { ...r, eq: ab[1], ties: undefined });
+      // a move inside such a piece (splitting the fraction under a divergent ∫): the one piece it
+      // changed must be the same expression before and after, for every value of its letters
+      const d = problem && relOf(a) === relOf(b) ? changed(b, a) : null;
+      if (d && d[0].k !== 'eq') problem = verify(eq(d[0], { k: 'num', id: 'z0', v: 0 } as Node), { ...r, eq: eq(d[1], { k: 'num', id: 'z1', v: 0 } as Node), ties: undefined, factor: () => 1 });
+    }
+  }
   if (problem) {
     console.error('[algebrix] refused move', r.label, problem);
     return { error: 'The engine refused this: it would not keep the equation true.' };

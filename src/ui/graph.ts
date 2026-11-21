@@ -359,6 +359,8 @@ export class Graph {
       : same ? `The two sides are the same curve: it holds for every ${v} where both are defined.`
       : roots.length
       ? `Sides cross at <b>${v} ${roots.every(exact) ? '=' : '≈'} ${roots.slice(0, 3).map(fmt).join(', ')}</b>${roots.length > 3 ? '…' : ''}. ${roots.length > 1 ? 'Those points never move' : 'That point never moves'} while the steps are reversible.`
+      // one side has no value anywhere (a divergent ∫, a limit that doesn't exist): say that, not "never cross"
+      : [l, r].some(ys => ys.every(y => !Number.isFinite(y))) ? `The ${l.every(y => !Number.isFinite(y)) ? 'left' : 'right'} side has no finite value for any ${v}: an integral that diverges, or a limit that doesn't exist.`
       : 'The two sides never cross in view. Drag or scroll to look around.';
     if (this.extra) this.note.innerHTML += ` <span class="graph-warn">${this.extra}</span>`;
     this.grid(X, Y, ux, (py: number) => this.toUnits(0, py)[1], v, '');

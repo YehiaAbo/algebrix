@@ -141,6 +141,8 @@ export function judge(this: App, i: number): string | null {
   if (relOf(origin) !== '=' || relOf(e) !== '=') return null;
   if (symbols(rhs).length || symbols(origin).some(s => s !== v)) return null;
   const x = evaluate(rhs, {});
+  // what it equals has no value at all (a divergent ∫): the rail says so; nothing to test
+  if (!Number.isFinite(x)) return null;
   const dom = this.domains[v];
   const outside = dom === 'positive' ? !(x > 0) : dom === 'nonneg' ? !(x >= 0) : dom === 'integer' ? Math.abs(x - Math.round(x)) > 1e-9 : false;
   if (outside) { slot.bad = `${v} = ${toText(rhs)} isn't ${DOMAIN_TEXT[dom!]}, so it is left out.`; return slot.bad; }

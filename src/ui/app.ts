@@ -92,6 +92,7 @@ export class App {
   /** the polynomial Tab q takes a factor out of */
   divideAt: string | null = null;
   oneAt: string | null = null;
+  graphTimer = 0;
   /** Shift+P playing the steps back: where it stops, and the next beat */
   replaying: { to: number; timer: number } | null = null;
 
@@ -165,7 +166,11 @@ export class App {
     if (lay.w > W - 2 * pad) { S = Math.max(22, S * (W - 2 * pad) / lay.w); lay = layout(eq, S); }
     const h = lay.asc + lay.desc;
     if (h > H - 40) { S = Math.max(22, S * (H - 40) / h); lay = layout(eq, S); }
+    // the = sits at the centre so it stays put between steps, unless that pushes a lopsided
+    // equation (I = a long integral) well off centre: then the whole line is held near the middle
     let ox = W / 2 - (lay.eqX ?? lay.w / 2);
+    const drift = W * 0.04;
+    ox = Math.min(Math.max(ox, W / 2 - lay.w / 2 - drift), W / 2 - lay.w / 2 + drift);
     ox = Math.min(Math.max(ox, pad), Math.max(pad, W - pad - lay.w));
     if (lay.w > W - 2 * pad) ox = (W - lay.w) / 2;
     const oy = Math.round(Math.max(H * 0.56 - (lay.asc + lay.desc) / 2, Math.min(230, H * 0.4)));
@@ -253,7 +258,7 @@ export class App {
     if (relOf(e) === '≟') return isProved(e) ? { text: '∎', cls: 'solved' } : { text: 'prove', cls: 'goal' };
     if (relOf(e) === 'def') return { text: 'definition', cls: 'goal' };
     if (st.answer) return { text: st.answer, cls: 'solved ans' };
-    if (solvedFor(e)) return sl.bad ? { text: 'not a solution', cls: 'solved no' } : { text: '✓', cls: 'solved' };
+    if (solvedFor(e)) return sl.bad ? { text: 'not a solution', cls: 'solved no' } : noValue(e) ? { text: 'no value', cls: 'solved no' } : { text: '✓', cls: 'solved' };
     return null;
   }
 
@@ -402,7 +407,7 @@ export class App {
       const li = document.createElement('li');
       const conds = (this.step?.conditions ?? []).filter(c => new RegExp(`(^|[^a-zα-ω])${v}([^a-zα-ω]|$)`).test(c));
       const dom = this.domains[v] ?? 'real';
-      li.innerHTML = `<span class="var">${varHtml(v)}</span><button class="dom" title="Click to change what ${escapeHtml(v)} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? (this.slot?.bad ? '<span class="solved no">not a solution</span>' : '<span class="solved">solved</span>') : ''}`;
+      li.innerHTML = `<span class="var">${varHtml(v)}</span><button class="dom" title="Click to change what ${escapeHtml(v)} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? (this.slot?.bad ? '<span class="solved no">not a solution</span>' : noValue(eq) ? '<span class="solved no" title="What it equals has no finite value: an integral that diverges, or a limit that does not exist">no value</span>' : '<span class="solved">solved</span>') : ''}`;
       li.querySelector('.dom')!.addEventListener('click', () => this.cycleDomain(v));
       if (conds.length) li.title = conds.join(', ');
       vars.append(li);
@@ -441,7 +446,7 @@ export class App {
     }
     if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`; return; }
     if (this.mode === 'fnask') { host.innerHTML = `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`; return; }
-    if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
+    if (this.mode === 'op') { host.innerHTML = `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter, a function like I(t), or what it equals.', value: 'Type the value to put in.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     parts.push(`<span class="what" data-text="${node ? escapeHtml(toText(node)) : ''}">${node ? escapeHtml(pretty(toText(node))) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
@@ -989,7 +994,9 @@ export class App {
     this.preview = got.eq;
     this.renderMain(null);
     // a □ still to fill isn't a variable: keep the last graph until it is
-    if (!symbols(got.eq).includes('□')) this.graph.draw(this.preview, false);
+    // and graph it once you pause: a ∫ or Σ half typed can cost a lot to draw, every key
+    clearTimeout(this.graphTimer);
+    if (!symbols(got.eq).includes('□')) { const g = got.eq; this.graphTimer = window.setTimeout(() => { if (this.preview === g) this.graph.draw(g, false); }, 260); }
     this.renderRail();
     if (got.partial) this.typingTimer = window.setTimeout(() => { try { parseEquation(src, true); } catch (e) { err.textContent = (e as Error).message; } }, 1400);
   }
@@ -1005,6 +1012,9 @@ export class App {
     x = Math.max(12, Math.min(W - hw - 12, x));
     let y = anchor ? anchor.y - hh - 26 : 40;
     if (y < 8) y = anchor ? anchor.y + anchor.h + 22 : 8;
+    // a short window: never past the bottom of the stage (covering some of the equation beats hiding the panel)
+    const H = $('stage').clientHeight;
+    y = Math.max(8, Math.min(y, H - hh - 8));
     host.style.left = `${x}px`;
     host.style.top = `${y}px`;
   }
@@ -1067,3 +1077,15 @@ export class App {
 type Part<M> = { [K in keyof M]: M[K] };
 export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart>, Part<typeof calcPart>, Part<typeof generalPart>, Part<typeof replayPart> {}
 for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart, calcPart, generalPart, replayPart]) Object.assign(App.prototype, part);
+
+/** solved for a letter, but what it equals has no finite value (∫₀¹ dx/x, a limit that doesn't exist) */
+const valueless = new Map<string, boolean>();
+function noValue(e: Eq): boolean {
+  const v = solvedFor(e);
+  if (!v) return false;
+  const r = e.lhs.k === 'sym' && e.lhs.name === v ? e.rhs : e.lhs;
+  if (symbols(r).length) return false;
+  const k = key(r);
+  if (!valueless.has(k)) valueless.set(k, !Number.isFinite(evaluate(r, {})));
+  return valueless.get(k)!;
+}

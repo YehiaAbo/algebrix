@@ -222,4 +222,23 @@ export const tests = {
     const other = await p.evaluate(() => window.toText(window.algebrix.slots[1].steps[0].eq));
     assert(other === '1 = 2A + B', `the numbers beside it: ${other}`);
   },
+
+  async 'an integral with no value: typed in, m moves it, the rail says no value, x = e^u subs in'(h) {
+    const { load, key, hold, type, aim, until, p, assert } = h;
+    await load('y = 1');
+    await key('i'); await p.keyboard.press('Control+a'); await key('Backspace');
+    await type('I = int_1^0 (x^2 + 1)/ln x dx'); await key('Enter');
+    await until(s => s.eq === 'I = ∫_{1}^{0} (x^2 + 1)/ln(x) dx', 'typed in');
+    const rail = await p.evaluate(() => document.querySelector('#vars .solved')?.textContent);
+    assert(rail === 'no value', `the rail says it has no value, not solved: ${rail}`);
+    await aim('I');
+    await key('m');
+    await until(s => s.eq === '0 = ∫_{1}^{0} (x^2 + 1)/ln(x) dx − I', 'm moves I across');
+    await key('u');
+    await key('n'); await type('x = e^u'); await key('Enter');
+    await until(s => s.slots === 2, 'the name is equation 2');
+    await key('1');
+    await hold('Tab', '2');
+    await until(s => s.eq === 'I = ∫_{0}^{−∞} (e^u((e^u)^2 + 1))/u du', 'dx, the integrand and the bounds change');
+  },
 };

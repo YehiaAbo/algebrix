@@ -3,7 +3,7 @@
 // for every value, and ∫ both sides. With the facts (the derivative and integral rules, the
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
-import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn } from './ast';
+import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim } from './ast';
 import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
@@ -171,6 +171,18 @@ export function subIn(e: Eq, src: Eq, sel: string | null, name: string): MoveRes
     return { error: `${name} is about differentials, but there is no integral in ${ds.map(d => d.slice(1)).join(' or ')} here.` };
   }
   const here = symbols(e);
+  // a name for the letter an integral runs over (x = e^u, u = x² with ∫ … dx here): x lives only
+  // inside the integral, so sub in goes through the differentials of the name, bounds and all
+  const lets = symbols(src).filter(w => !here.includes(w));
+  for (const X of lets) {
+    const T = intIn(e, sel, X);
+    const W = symbols(src).filter(w => w !== X);
+    if (!T || W.length !== 1 || here.includes(W[0])) continue;
+    const d = differentialsBoth(src);
+    if (isErr(d)) return d;
+    const g = solvedForm(src, W)?.expr, h = solvedForm(src, [X])?.expr;
+    return changeVariable(e, T, d.eq, 'd' + X, 'd' + W[0], name, { g, h });
+  }
   const L = solvedFor(src);
   const letter = L ?? (src.lhs.k === 'sym' ? src.lhs.name : src.rhs.k === 'sym' ? src.rhs.name : null);
   if (letter) {
@@ -209,7 +221,7 @@ function boundAt(e: Eq, m: Node, v: string): boolean {
 
 /** ∫ f dX with a·dX = b·dW (from differentiating a name): dX = (b/a) dW, so ∫ f·(b/a) dW.
  *  Bounds move with the name when the new letter is named from the old (u = g(x): g(lo), g(hi)). */
-function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: string): MoveResult {
+function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: string, named: { g?: Node; h?: Node } = {}): MoveResult {
   const X = dX.slice(1), W = dW.slice(1);
   // src is linear in the two differentials: lhs − rhs = A·dX + B·dW
   const D = add([cloneFresh(src.lhs), neg(cloneFresh(src.rhs))]);
@@ -218,10 +230,17 @@ function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: st
   // dX = −(B/A) dW
   const ratio = tidy(frac(mul([num(-1), cloneFresh(B)]), cloneFresh(A)));
   if (symbols(ratio).some(isDiff)) return { error: `${name} isn't of the form du = … dx.` };
-  const integrand = tidy(mul([fresh(T.arg), ratio]));
+  let integrand = tidy(mul([fresh(T.arg), ratio]));
+  // a name typed as its own equation (x = e^u, u = x²): the integral is written all in the new letter
+  if (named.g || named.h) {
+    const body = named.g ? swapAll(T.arg, copiesOf(T.arg, named.g), () => sym(W)) : T.arg;
+    integrand = tidy(mul([fresh(body), cloneFresh(ratio)]));
+    if (dependsOn(integrand, X) && named.h) integrand = tidy(substitute(integrand, X, named.h));
+    if (dependsOn(integrand, X)) return { error: `Couldn't write the integral all in ${W}: ${X} is left over. Name ${W} the other way round (${X} = …${W}…).` };
+  }
   let lo: Node | undefined, hi: Node | undefined;
   if (T.lo && T.hi) {
-    const g = LETS.get(W), h = LETS.get(X);
+    const g = named.g ?? LETS.get(W), h = named.h ?? LETS.get(X);
     if (g) { lo = tidy(substitute(cloneFresh(g), X, T.lo)); hi = tidy(substitute(cloneFresh(g), X, T.hi)); }
     else if (h) {
       // x = sin θ: the new bounds are the θ that give the old ones (θ = sin⁻¹ of each)
@@ -229,20 +248,36 @@ function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: st
       if (!lo || !hi) return { error: `Couldn't work out which ${W} gives ${X} = ${t(T.lo)} and ${t(T.hi)}. Work out the integral first and put ${X} back.` };
     }
     else return { error: `To change the bounds too, name ${W} from ${X} (like ${W} = …${X}…), or work out the integral first and put ${X} back.` };
+    // a bound the name sends off to infinity (u = ln x at x = 0): the limit from inside, written ∞
+    const a = evaluate(T.lo, {}), b = evaluate(T.hi, {});
+    const edge = (n: Node, at: Node, side: '+' | '-'): Node => {
+      if (!g || !Number.isNaN(evaluate(n, {}))) return n;
+      const v = evaluate(lim(X, cloneFresh(at), cloneFresh(g), side), {});
+      return v === Infinity ? sym('∞') : v === -Infinity ? neg(sym('∞')) : n;
+    };
+    lo = edge(lo!, T.lo, a < b ? '+' : '-'); hi = edge(hi!, T.hi, a < b ? '-' : '+');
   }
   const next = replace(e, T.id, int(W, integrand, lo, hi)) as Eq;
   const label = `sub in d${X} = ${t(tidy(ratio))} d${W}`;
+  const g = named.g ?? LETS.get(W), h = named.h ?? LETS.get(X);
   // definite: the values match once the name is read back in (u = x² inside ∫ … dx)
+  // a typed name: the values match, or, where the integral has no value, the rule holds at each point
+  if (lo && hi && (named.g || named.h)) {
+    const value = (env: Env): [number, number][] => { const a = evaluate(next, env), b = evaluate(e, env); return Number.isFinite(a) && Number.isFinite(b) ? [[a, b]] : check(env); };
+    return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', check: value });
+  }
   if (lo && hi) {
-    if (LETS.get(W)) return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', ties: { [W]: LETS.get(W)! } });
-    // x = h(θ): the new integral, with x read as h(θ), has the old one's value
-    const hx = LETS.get(X)!;
-    const after = substitute(next, X, hx) as Eq;
-    return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', check: env => [[evaluate(after, env), evaluate(e, env)]] });
+    const r = g ? checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', ties: { [W]: g } })
+      // x = h(θ): the new integral, with x read as h(θ), has the old one's value
+      : (() => { const after = substitute(next, X, h!) as Eq; return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', check: env => [[evaluate(after, env), evaluate(e, env)]] }); })();
+    // an integral with no value (it diverges) can't be compared by value: the rule itself still
+    // holds, f(x) dx = g(u) du at every point, and the bounds were read off the name
+    const at: Env = {};
+    symbols(T).forEach(w => { at[w] = 0.737; });
+    if (!isErr(r) || Number.isFinite(evaluate(T, at))) return r;
   }
   // indefinite: the integrands, read with the name, match: f(x) dx = g(u) du
-  const g = LETS.get(W), h = LETS.get(X);
-  const check = (env: Env): [number, number][] => {
+  function check(env: Env): [number, number][] {
     const at: Env = { ...env };
     // the old letter may be gone from both sides (∫ cos(u) dx with u = 3x): any value of it will do,
     // since the other letter is read off it
@@ -253,7 +288,7 @@ function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: st
     // dX/dW along the name, the number the ratio should be
     const slope = g ? 1 / evaluate(derivative(g, X) ?? num(NaN), at) : evaluate(derivative(h!, W) ?? num(NaN), at);
     return [[evaluate(integrand, at), evaluate(T.arg, at) * slope], [evaluate(ratio, at), slope]];
-  };
+  }
   return checked(e, { eq: next, label, hints: newHints(), factor: one, select: null, rule: 'sub in', check });
 }
 

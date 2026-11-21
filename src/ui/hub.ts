@@ -42,12 +42,15 @@ export function techniques(this: App): Tech[] {
   if (cv) out.push({ key: 'e', label: `compare coefficients of ${cv}`, ok: true, run: () => this.compareKey(cv) });
   // any piece times A/A: e⁻ˣ on top and below, a conjugate, a missing factor
   if (aimed) out.push({ key: 'm', label: 'multiply by 1…', ok: true, run: () => this.openOne() });
+  // the letters integrals here run over (x in ∫₀¹ … dx): a name for one subs in through its differentials
+  const over = new Set<string>();
+  walk(eq, n => { if (n.k === 'int') over.add(n.v); });
   this.slots.forEach((_, j) => {
     if (j === this.cur) return;
     const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));
     // another case of the same split is an alternative, not something that also holds
     const alt = areCases(this, this.cur, j);
-    out.push({ key: String(j + 1), label: alt ? `(${j + 1}) is another case` : `substitute from (${j + 1})`, ok: shares && !alt, run: () => this.substituteFrom(j) });
+    out.push({ key: String(j + 1), label: alt ? `(${j + 1}) is another case` : `substitute from (${j + 1})`, ok: (shares || symbols(this.eqOf(j)).some(v => over.has(v))) && !alt, run: () => this.substituteFrom(j) });
   });
   const partner = this.slots.findIndex((_, j) => j !== this.cur && !areCases(this, this.cur, j) && !isErr(eliminate(eq, this.eqOf(j), j + 1, aimVar ?? undefined)));
   if (this.slots.length > 1) out.push({
