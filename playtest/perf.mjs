@@ -1,0 +1,31 @@
+import { createServer } from 'vite';
+import { createRequire } from 'node:module';
+const { chromium } = createRequire(import.meta.url)('playwright');
+const root = '/home/user/algebrix';
+const server = await createServer({ root, server: { port: 0 }, logLevel: 'error' });
+await server.listen();
+const browser = await chromium.launch({ args: ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
+const p = await browser.newPage({ viewport: { width: 1440, height: 860 } });
+await p.goto(server.resolvedUrls.local[0]);
+await p.evaluate((MUTED) => { localStorage.clear(); localStorage.setItem('algebrix.toured', '1'); localStorage.setItem('algebrix.prefs', JSON.stringify({ muted: MUTED })); }, !process.env.SOUND);
+await p.reload();
+await p.waitForFunction(() => !!window.algebrix);
+const problem = process.argv[2] ?? 'int_0^1 x^2 dx = 1/3';
+await p.evaluate(() => {
+  window.__f = []; window.__lt = [];
+  let last = performance.now();
+  const loop = t => { window.__f.push(t - last); last = t; requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  new PerformanceObserver(l => l.getEntries().forEach(e => window.__lt.push([e.name, Math.round(e.duration)]))).observe({ entryTypes: ['longtask'] });
+});
+const tt = Date.now();
+await p.keyboard.press('i'); await p.keyboard.press('Control+a'); await p.keyboard.type(problem, { delay: 20 }); await p.keyboard.press('Enter');
+await p.waitForTimeout(600);
+const typed = await p.evaluate(() => { const lt = window.__lt.slice(); window.__lt = []; window.__f = []; return lt; });
+console.log('typing long tasks', JSON.stringify(typed), 'ms', Date.now() - tt);
+const keys = (process.argv[3] ?? 'Space ArrowRight ArrowRight ArrowUp m u m u s u').split(' ');
+const t0 = Date.now();
+for (const k of keys) { const s = Date.now(); await p.keyboard.press(k); await p.waitForTimeout(400); }
+const r = await p.evaluate(() => { const f = window.__f.slice(2).sort((a,b)=>a-b); return { n: f.length, p50: f[Math.floor(f.length/2)], p95: f[Math.floor(f.length*.95)], max: f[f.length-1], longtasks: window.__lt }; });
+console.log(JSON.stringify(r));
+await browser.close(); await server.close();

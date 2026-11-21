@@ -4,7 +4,7 @@
 // surface stay the same at every step: visual proof that no move broke anything.
 // Desmos-style handling: drag to pan (or turn, in 3D), scroll to zoom at the cursor,
 // double-click to reset, hover a curve or a point to read its coordinates.
-import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num } from '../engine/ast';
+import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num, key } from '../engine/ast';
 import { toText } from '../engine/print';
 import { asPrime } from '../engine/leibniz';
 import { supHtml, escapeHtml } from './shared';
@@ -55,6 +55,52 @@ export class Graph {
   /** curve morph between steps (1 variable): samples taken before the step, and progress */
   private morph: { l: number[]; r: number[]; t: number } | null = null;
   private last: { l: number[]; r: number[] } | null = null;
+  /** samples already worked out, by what and where: animation frames and repeats reuse them */
+  private memo = new Map<string, unknown>();
+  private jobs = new Map<string, number>();
+  private viewKey() { return `${this.view.cx}|${this.view.cy}|${this.view.span}|${this.W}|${this.H}`; }
+  private cached<T>(k: string, f: () => T): T {
+    if (this.memo.has(k)) return this.memo.get(k) as T;
+    const v = f();
+    if (this.memo.size > 80) this.memo.clear();
+    this.memo.set(k, v);
+    return v;
+  }
+  /** ms for one evaluation: x² is microseconds, an integral at every point is milliseconds */
+  private cost(k: string, f: () => unknown): number {
+    return this.cached('cost ' + k, () => { const t0 = performance.now(); for (let i = 0; i < 3; i++) f(); return Math.max(0.0005, (performance.now() - t0) / 3); });
+  }
+  /** a grid of samples. Cheap ones are worked out now; slow ones fill in over the next frames,
+   *  so the keys never freeze, and the graph redraws when they are done. */
+  private sampleGrid(k: string, n: number, m: number, f: (i: number, j: number) => number): number[][] | null {
+    const hit = this.memo.get(k) as number[][] | undefined;
+    if (hit) return hit;
+    if (this.jobs.has(k)) return null;
+    // a view panned or zoomed away from: its unfinished samples are no use now
+    const here = this.viewKey();
+    for (const [j, t] of this.jobs) if (!j.endsWith(here)) { clearTimeout(t); this.jobs.delete(j); }
+    const F: number[][] = Array.from({ length: m + 1 }, () => []);
+    let at = 0;
+    const total = (n + 1) * (m + 1);
+    const run = (budget: number) => {
+      const t0 = performance.now();
+      for (; at < total; at++) {
+        if ((at & 7) === 0 && performance.now() - t0 > budget) return false;
+        const j = Math.floor(at / (n + 1)), i = at % (n + 1);
+        F[j][i] = f(i, j);
+      }
+      return true;
+    };
+    if (run(20)) { this.cached(k, () => F); return F; }
+    const slice = () => {
+      if (!this.jobs.has(k)) return;
+      if (run(12)) { this.jobs.delete(k); this.cached(k, () => F); this.render(); }
+      else this.jobs.set(k, window.setTimeout(slice, 0));
+    };
+    this.jobs.set(k, window.setTimeout(slice, 0));
+    return null;
+  }
+  private stopJobs() { for (const t of this.jobs.values()) clearTimeout(t); this.jobs.clear(); }
   private fade = 1;
   /** said under the graph after its own note (the app's warnings, like an answer that fails the original) */
   extra = '';
@@ -200,6 +246,7 @@ export class Graph {
     // dy/dx and dy = … dx draw like y′: the same slope field
     eq = asPrime(eq);
     const fresh = !this.eq || symbols(this.eq).join() !== symbols(eq).join();
+    if (!this.eq || key(this.eq) !== key(eq)) this.stopJobs();
     this.eq = eq;
     this.others = others;
     const morph = animate && this.last ? { ...this.last, t: 0 } : null;
@@ -277,23 +324,30 @@ export class Graph {
 
   private render1(eq: Eq, v: string, X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number) {
     const { W } = this, c = this.ctx;
-    const N = Math.ceil(W / 1.5);
-    const xs = Array.from({ length: N + 1 }, (_, i) => ux((i / N) * W));
-    const sample = (n: Node) => xs.map(x => evaluate(n, { [v]: x }));
-    const l = sample(eq.lhs), r = sample(eq.rhs);
+    const K = `1 ${key(eq)} ${v} ${this.viewKey()}`;
+    // an integral at every point is slow: fewer points then, so a key press never freezes
+    const per = this.cost(K, () => evaluate(eq.lhs, { [v]: ux(W * 0.37) }) + evaluate(eq.rhs, { [v]: ux(W * 0.37) }));
+    const N = Math.max(60, Math.min(Math.ceil(W / 1.5), Math.floor(120 / per)));
+    const { xs, l, r, roots, same } = this.cached(K, () => {
+      const xs = Array.from({ length: N + 1 }, (_, i) => ux((i / N) * W));
+      const sample = (n: Node) => xs.map(x => evaluate(n, { [v]: x }));
+      const l = sample(eq.lhs), r = sample(eq.rhs);
+      const f = (x: number) => evaluate(eq.lhs, { [v]: x }) - evaluate(eq.rhs, { [v]: x });
+      const roots: number[] = [];
+      // the same curve on both sides (I′(t) = 1/(t + 1)): it holds for every value, no crossings to mark
+      const both = l.map((y, i) => [y, r[i]]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
+      const same = relOf(eq) === '=' && both.length > 20 && both.filter(([a, b]) => Math.abs(a - b) <= 1e-6 * (1 + Math.abs(a))).length >= 0.9 * both.length;
+      const steps = per > 0.2 ? 30 : 60;
+      if (!same) for (const i of findRoots(i => l[i] - r[i], N)) {
+        let a = xs[Math.floor(i)], b = xs[Math.min(N, Math.ceil(i + 1e-9))];
+        if (f(a) === 0) b = a;
+        for (let k = 0; k < steps && b - a > 1e-13; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
+        const x0 = Math.round(((a + b) / 2) * 1e9) / 1e9;
+        if (!roots.some(x => Math.abs(x - x0) < 1e-6)) roots.push(x0);
+      }
+      return { xs, l, r, roots, same };
+    });
     this.last = { l, r };
-    const f = (x: number) => evaluate(eq.lhs, { [v]: x }) - evaluate(eq.rhs, { [v]: x });
-    const roots: number[] = [];
-    // the same curve on both sides (I′(t) = 1/(t + 1)): it holds for every value, no crossings to mark
-    const both = l.map((y, i) => [y, r[i]]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
-    const same = relOf(eq) === '=' && both.length > 20 && both.filter(([a, b]) => Math.abs(a - b) <= 1e-6 * (1 + Math.abs(a))).length >= 0.9 * both.length;
-    if (!same) for (const i of findRoots(i => l[i] - r[i], N)) {
-      let a = xs[Math.floor(i)], b = xs[Math.min(N, Math.ceil(i + 1e-9))];
-      if (f(a) === 0) b = a;
-      for (let k = 0; k < 60 && b - a > 1e-13; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
-      const x0 = Math.round(((a + b) / 2) * 1e9) / 1e9;
-      if (!roots.some(x => Math.abs(x - x0) < 1e-6)) roots.push(x0);
-    }
     const rel = relOf(eq);
     // a lone expression or a definition is one curve: y = it
     const single = rel === 'expr' ? 'l' : rel === 'def' ? 'r' : null;
@@ -446,11 +500,13 @@ export class Graph {
     for (const o of extra) this.implicit(o, hx, vy, ux, uy, css('--graph-b'), 0.75);
     if (isIneq(eq)) {
       // shade the region where it holds; a strict inequality gets a dashed boundary
-      const c = this.ctx, cell = 4;
+      const K = `in ${key(eq)} ${hx} ${vy} ${this.viewKey()}`;
+      const per = this.cost(K, () => holds(eq, { [hx]: ux(this.W * 0.37), [vy]: uy(this.H * 0.61) }));
+      const c = this.ctx, cell = Math.max(4, Math.ceil(Math.sqrt(this.W * this.H * per / 1500)));
+      const n = Math.ceil(this.W / cell), m = Math.ceil(this.H / cell);
+      const G = this.sampleGrid(K, n, m, (i, j) => (holds(eq, { [hx]: ux(i * cell + cell / 2), [vy]: uy(j * cell + cell / 2) }) ? 1 : 0));
       c.fillStyle = css('--graph-a'); c.globalAlpha = 0.13 * this.fade;
-      for (let py = 0; py < this.H; py += cell) for (let px = 0; px < this.W; px += cell) {
-        if (holds(eq, { [hx]: ux(px + cell / 2), [vy]: uy(py + cell / 2) })) c.fillRect(px, py, cell, cell);
-      }
+      if (G) for (let j = 0; j < m; j++) for (let i = 0; i < n; i++) if (G[j][i]) c.fillRect(i * cell, j * cell, cell, cell);
       c.globalAlpha = this.fade;
     }
     this.implicit(eq, hx, vy, ux, uy, css('--graph-a'), 1, relOf(eq) === '<' || relOf(eq) === '>');
@@ -648,12 +704,12 @@ export class Graph {
 
   private implicit(eq: Eq, hx: string, vy: string, ux: (p: number) => number, uy: (p: number) => number, color: string, alpha: number, dashed = false) {
     const { W, H } = this, c = this.ctx;
-    const n = 150, m = Math.round(n * H / W);
-    const F: number[][] = [];
-    for (let j = 0; j <= m; j++) {
-      F.push([]);
-      for (let i = 0; i <= n; i++) F[j].push(evaluate(eq, { [hx]: ux(i / n * W), [vy]: uy(j / m * H) }));
-    }
+    const K = `2 ${key(eq)} ${hx} ${vy} ${this.viewKey()}`;
+    const per = this.cost(K, () => evaluate(eq, { [hx]: ux(W * 0.37), [vy]: uy(H * 0.61) }));
+    // about 1.5 s of work at most, done in the background when it is that slow
+    const n = Math.max(30, Math.min(150, Math.floor(Math.sqrt((1500 / per) * W / H)))), m = Math.round(n * H / W);
+    const F = this.sampleGrid(K, n, m, (i, j) => evaluate(eq, { [hx]: ux(i / n * W), [vy]: uy(j / m * H) }));
+    if (!F) return;
     c.strokeStyle = color; c.lineWidth = alpha < 1 ? 2 : 2.5; c.lineCap = 'round';
     c.globalAlpha = alpha * this.fade;
     c.beginPath();
