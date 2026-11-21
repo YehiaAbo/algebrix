@@ -137,6 +137,7 @@ export function onNameType(this: App) {
 
 /** hold Tab + n: a piece of this equation replaced using equation n */
 export function substituteFrom(this: App, j: number) {
+  if (sheet.areCases(this, this.cur, j)) return this.refuse(`Equation ${j + 1} is another case of the same split: one or the other holds, not both, so it can't go into this one.`);
   const r = subIn(this.eq, this.eqOf(j), this.sel, `Equation ${j + 1}`);
   if (!isErr(r)) this.flyFrom(j);
   this.applyTidy(r, 1.2);

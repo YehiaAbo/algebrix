@@ -81,3 +81,15 @@ export function removeCurrent(s: Sheet): boolean {
   s.cur = Math.min(s.cur, s.slots.length - 1);
   return true;
 }
+
+/** are equations i and j cases of one split (u = A or u = B)? Cases are alternatives, not a
+ *  system, so one can't be put into the other. A case starts with the label "case n" and
+ *  comes from a step of the equation that was split (which goes on as the first case). */
+export function areCases(s: Sheet, i: number, j: number): boolean {
+  const a = s.slots[i], b = s.slots[j];
+  if (!a || !b || i === j) return false;
+  const isCase = (sl: Slot) => !!sl.from && sl.steps[0].label.startsWith('case ');
+  if (isCase(b) && b.from!.slot === a.uid) return true;
+  if (isCase(a) && a.from!.slot === b.uid) return true;
+  return isCase(a) && isCase(b) && a.from!.slot === b.from!.slot && a.from!.step === b.from!.step;
+}

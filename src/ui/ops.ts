@@ -3,6 +3,7 @@
 import { Node, find, findPath } from '../engine/ast';
 import { toText } from '../engine/print';
 import { applyBothChecked, isErr, MoveResult, checked } from '../engine/moves';
+import { areCases } from './sheet';
 import { wrapBoth, Wrap } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
 import { absOf, coefOf } from '../engine/terms';
@@ -49,6 +50,8 @@ export function opResult(this: App): MoveResult {
   if (v.length <= 1) return { error: 'Type what to apply, like 7 or 3x.' };
   const w = wrapOf(v);
   if (w) return 'error' in w ? w : checked(this.eq, wrapBoth(this.eq, w.f, w.arg));
+  const j = Number(/#\s*(\d)/.exec(v)?.[1] ?? 0) - 1;
+  if (j >= 0 && areCases(this, this.cur, j)) return { error: `Equation ${j + 1} is another case of the same split: one or the other holds, not both.` };
   return applyBothChecked(this.eq, v, this.slots.map((_, j) => this.eqOf(j)));
 }
 

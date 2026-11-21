@@ -4,7 +4,7 @@ import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { newHints } from '../src/engine/simplify';
 import { MoveOk } from '../src/engine/moves';
-import { Sheet, place, addStep, undo, redo, removeCurrent, eqOf, MAX_EQUATIONS } from '../src/ui/sheet';
+import { Sheet, place, addStep, undo, redo, removeCurrent, eqOf, MAX_EQUATIONS, areCases } from '../src/ui/sheet';
 
 const move = (src: string, extra: Partial<MoveOk> = {}): MoveOk => ({ eq: parseEquation(src), label: src, hints: newHints(), factor: () => 1, ...extra });
 const start = (src: string): Sheet => { const s: Sheet = { slots: [], cur: 0 }; place(s, parseEquation(src), true); return s; };
@@ -73,5 +73,24 @@ describe('equations', () => {
     expect(removeCurrent(s)).toBe(true);
     expect(s.cur).toBe(0);
     expect(now(s)).toBe('x = 1');
+  });
+});
+
+describe('cases are alternatives', () => {
+  // equation 1 was split at its step s1; equation 2 is the other case; equation 3 names u
+  const sheet = (): Sheet => ({ cur: 0, slots: [
+    { uid: 'A', at: 1, sel: null, steps: [{ eq: parseEquation('u^2 + 5u = 12'), label: 'start', conditions: [], id: 's1' }, { eq: parseEquation('u = 1'), label: 'quadratic formula', conditions: [], id: 's2' }] },
+    { uid: 'B', at: 0, sel: null, from: { slot: 'A', step: 's1' }, steps: [{ eq: parseEquation('u = 2'), label: 'case 2', conditions: [] }] },
+    { uid: 'C', at: 0, sel: null, from: { slot: 'A', step: 's1' }, named: 'letter', steps: [{ eq: parseEquation('u = x^2'), label: 'name it', conditions: [] }] },
+    { uid: 'D', at: 0, sel: null, from: { slot: 'A', step: 's1' }, steps: [{ eq: parseEquation('u = 3'), label: 'case 3', conditions: [] }] },
+  ] });
+  it('a case and the equation it split from', () => {
+    expect(areCases(sheet(), 0, 1)).toBe(true);
+    expect(areCases(sheet(), 1, 0)).toBe(true);
+  });
+  it('two cases of one split', () => expect(areCases(sheet(), 1, 3)).toBe(true));
+  it('but a named letter is not a case', () => {
+    expect(areCases(sheet(), 0, 2)).toBe(false);
+    expect(areCases(sheet(), 1, 2)).toBe(false);
   });
 });

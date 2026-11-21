@@ -5,10 +5,6 @@ first. A fixed cause collapses to one line with its commit.
 
 ## Open
 
-- **C10 Cases are treated as a system.** (check, ⚠) The two cases of a split (u = A, u = B)
-  are separate equations, and Tab + number subs one case into the other, giving a false
-  A = B as a step. Cases are "or", not "and"; sub in between siblings should refuse. Found
-  retesting A11.
 - **C3 No hand route for a sign question.** (move) A product or quotient ≤ 0 has no "split
   into cases" or sign chart you drive; only `e` answers it. A06.
 - **C4 Can't test a root or divide by your own factor.** (move) Rational root theorem by
@@ -28,5 +24,6 @@ first. A fixed cause collapses to one line with its commit.
 
 ## Fixed
 
+- C10 Cases were treated as a system: subbing or adding one case into another now resists, and Tab shows "(n) is another case".
 - C2 (−a)² stayed as it was: s drops the minus under an even power (023fef5).
 - C1 Exponent laws only went one way: Tab p splits or combines a power, f i undoes any fractional power, s cancels a root (A01 A02 A08 A11, siblings 2.6 #10 #42 #44, 6.6 #27) (023fef5).

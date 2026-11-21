@@ -33,4 +33,18 @@ export const tests = {
     await key('s');
     await until(s => s.eq === 'x − 1 = 16', '8^(4/3) is 16');
   },
+
+  async 'two cases of one split are alternatives: one can not be subbed into the other'(h) {
+    const { load, hold, until, countRefusals, refusals, assert } = h;
+    await load('u^2 + 5u - 12 = 0');
+    await hold('Tab', 'g');
+    await until(s => s.slots === 2, 'the quadratic formula gives two cases');
+    await dig(h, 'u');
+    await countRefusals();
+    const before = (await h.state()).eq;
+    await hold('Tab', '2');
+    await h.wait(300);
+    assert((await refusals()) === 1, 'subbing the other case in resists');
+    assert((await h.state()).eq === before, 'and the equation stays as it was');
+  },
 };

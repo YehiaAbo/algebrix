@@ -10,6 +10,7 @@ import { Stage } from '../render/stage';
 import { walk } from '../engine/ast';
 import { sound } from './sound';
 import { $, Tech, Hub, escapeHtml } from './shared';
+import { areCases } from './sheet';
 import { CALC_GROUPS } from './calc';
 import type { App } from './app';
 
@@ -32,9 +33,11 @@ export function techniques(this: App): Tech[] {
   this.slots.forEach((_, j) => {
     if (j === this.cur) return;
     const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));
-    out.push({ key: String(j + 1), label: `substitute from (${j + 1})`, ok: shares, run: () => this.substituteFrom(j) });
+    // another case of the same split is an alternative, not something that also holds
+    const alt = areCases(this, this.cur, j);
+    out.push({ key: String(j + 1), label: alt ? `(${j + 1}) is another case` : `substitute from (${j + 1})`, ok: shares && !alt, run: () => this.substituteFrom(j) });
   });
-  const partner = this.slots.findIndex((_, j) => j !== this.cur && !isErr(eliminate(eq, this.eqOf(j), j + 1, aimVar ?? undefined)));
+  const partner = this.slots.findIndex((_, j) => j !== this.cur && !areCases(this, this.cur, j) && !isErr(eliminate(eq, this.eqOf(j), j + 1, aimVar ?? undefined)));
   if (this.slots.length > 1) out.push({
     key: 'k', label: partner >= 0 ? `eliminate${aimVar ? ' ' + aimVar : ''} with (${partner + 1})` : 'eliminate with another equation', ok: partner >= 0,
     run: () => {
