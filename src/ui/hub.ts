@@ -1,7 +1,7 @@
 // The algebra hub (Tab): techniques by key, and forms to browse and apply.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { find, symbols, relOf, DEFS } from '../engine/ast';
-import { unfold } from '../engine/goals';
+import { unfold, fold } from '../engine/goals';
 import { applyMove, isErr } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { polyTarget } from '../engine/polytools';
@@ -33,7 +33,10 @@ export function techniques(this: App): Tech[] {
   // b² − 4ac below 0 is worth hearing, not a silent "doesn't apply"
   else if (q && q.error.startsWith('b² − 4ac')) out.push({ key: 'g', label: `quadratic formula for ${qv}`, ok: true, run: () => this.refuse(q.error) });
   const hasCall = (() => { let c = false; walk(eq, n => { if (n.k === 'call' && DEFS.has(n.name)) c = true; }); return c; })();
-  if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
+  // u both ways: a call unfolds into its body; a piece written like a function you defined folds into it
+  const folded = !aimed || aimed.k === 'call' || !DEFS.size ? null : fold(eq, this.sel);
+  if (folded && !isErr(folded)) out.push({ key: 'u', label: `${folded.label}`, ok: true, run: () => this.apply(fold(this.eq, this.sel), 1.1) });
+  else if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
   if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
   // q on a fraction is long division (a form); on a polynomial it takes out a factor you type
   if (aimed?.k !== 'frac' && polyTarget(eq, this.sel)) out.push({ key: 'q', label: 'take out a factor…', ok: true, run: () => this.openDivide() });

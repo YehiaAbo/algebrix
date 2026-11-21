@@ -262,4 +262,16 @@ export const tests = {
     await key('f', 'ArrowLeft', 'ArrowDown', 'Enter');
     await until(s => s.eq === 'g(x + 1) = g(5)', 'your g, from the Yours tab');
   },
+
+  async 'Tab u folds a piece written like your function into it, and unfolds it back'(h) {
+    const { load, key, hold, type, until } = h;
+    await load('I(t) = int_0^1 (x^t - 1)/ln x dx');
+    await key('n'); await type('y = int_0^1 (x^5 - 1)/ln x dx'); await key('Enter');
+    await until(s => s.slots === 2, 'a second equation');
+    await key('ArrowRight', 'ArrowRight');
+    await hold('Tab', 'u');
+    await until(s => s.eq === 'y = I(5)', 'folded into I(5)');
+    await hold('Tab', 'u');
+    await until(s => s.eq === 'y = ∫_{0}^{1} (x^5 − 1)/ln(x) dx', 'and unfolded back');
+  },
 };

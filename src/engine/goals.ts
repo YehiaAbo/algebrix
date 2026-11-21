@@ -1,5 +1,5 @@
 // What a piece of work is for: an identity to prove, a function to unfold or invert.
-import { Node, Eq, eq, sym, call, cloneFresh, find, key, walk, evaluate, symbols, replace, Env } from './ast';
+import { Node, Eq, eq, sym, call, cloneFresh, find, key, walk, evaluate, symbols, replace, Env, children, withChildren } from './ast';
 import { MoveResult, checked, sampleIn, solvedFor } from './moves';
 import { isolate } from './techniques';
 import { newHints } from './simplify';
@@ -48,6 +48,37 @@ export function unfold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
 
 import { DEFS } from './ast';
 const defsOf = () => DEFS;
+
+/** the A with body[p := A] written exactly as n, read off where p sits (x^t against x^5: t is 5) */
+function match(body: Node, p: string, n: Node, got: { a?: Node }): boolean {
+  if (body.k === 'sym' && body.name === p) {
+    if (got.a) return key(got.a) === key(n);
+    got.a = n;
+    return true;
+  }
+  let has = false;
+  walk(body, m => { if (m.k === 'sym' && m.name === p) has = true; });
+  if (!has) return key(body) === key(n);
+  const kb = children(body), kn = children(n);
+  if (body.k !== n.k || kb.length !== kn.length) return false;
+  // what isn't a child (the operator, the letter of dx) has to match too
+  if (key(withChildren(body, kn)) !== key(n)) return false;
+  return kb.every((c, i) => match(c, p, kn[i], got));
+}
+
+/** fold, unfold backwards: a piece written out like a function you defined becomes that function
+ *  of something (∫₀¹ (x⁵ − 1)/ln x dx with I(t) = ∫₀¹ (xᵗ − 1)/ln x dx is I(5)) */
+export function fold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
+  const P = sel && sel !== 'eq' ? find(e, sel) : null;
+  if (!P || P.k === 'eq') return { error: 'Aim at the piece to fold into a function you defined.' };
+  for (const [F, d] of defs) {
+    const got: { a?: Node } = {};
+    if (P.k === 'call' || !match(d.body, d.param, P, got) || !got.a) continue;
+    const c = call(F, cloneFresh(got.a));
+    return checked(e, { eq: replace(e, P.id, c), label: `fold into ${F}(${toText(got.a)})`, hints: newHints(), factor: () => 1, select: c.id, rule: 'fold' });
+  }
+  return { error: `${toText(P)} isn't written like any function you defined. Define one (I(t) = …), then fold.` };
+}
 
 /** f(x) = body → f⁻¹(x) = …, by solving y = body for x */
 export function inverseFunction(d: Eq): Eq | { error: string } {
