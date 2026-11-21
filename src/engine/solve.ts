@@ -19,8 +19,10 @@ export function solveAll(e: Eq, v: string): Solved | { error: string } {
   const visit = (cur: Eq, depth: number): string | null => {
     if (depth > 4) return 'too many cases';
     const r = solvedFor(cur) === v ? [] : isolate(cur, v);
-    if (!Array.isArray(r)) return r.error;
+    // a case with no real answers (x² + 3 = 0) adds none; the other cases still count
+    if (!Array.isArray(r)) return depth && /no real/.test(r.error) ? null : r.error;
     steps += r.length;
+    if ((r as { stuck?: string }).stuck && depth && /no real/.test((r as { stuck?: string }).stuck!)) return null;
     let end = r.length ? r[r.length - 1].eq : cur;
     const t = tidy(end);
     if (t) end = t.eq;

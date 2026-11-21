@@ -213,7 +213,7 @@ function denominatorLcm(e: Eq): number {
 
 
 /** ln(ab) → ln a + ln b, ln(a/b) → ln a − ln b, ln(aⁿ) → n·ln a, applied once at the top */
-function logRules(n: Node): Node | null {
+export function logRules(n: Node): Node | null {
   if (n.k !== 'fn' || (n.name !== 'ln' && n.name !== 'log')) {
     if (n.k === 'add' || n.k === 'mul') {
       const ks = n.k === 'add' ? n.terms : n.factors;

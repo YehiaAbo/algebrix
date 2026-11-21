@@ -9,6 +9,7 @@ import { expandAll, hasExpandable, findExpandable, factorCommon, factorize, poly
 import { toText } from './print';
 import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked, neverZero } from './moves';
 import { factorFully } from './polytools';
+import { logRules } from './forms';
 
 const t = (n: Node) => toText(n);
 const one = () => 1;
@@ -468,6 +469,19 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     seen.add(key(cur));
     const hl = has(cur.lhs, v), hr = has(cur.rhs, v);
     if (!hl && !hr) return stuck(`${v} cancelled out.`);
+    // one root left with the letter in it: get it alone on its side, so squaring removes it
+    const roots: Node[] = [];
+    walk(cur, n => { if (n.k === 'sqrt' && has(n, v)) roots.push(n); });
+    if (roots.length === 1) {
+      const rs = (['lhs', 'rhs'] as const).find(k => cur[k].k === 'add' && findPath(cur[k], roots[0].id));
+      const terms = rs ? (cur[rs] as Extract<Node, { k: 'add' }>).terms : [];
+      const other = terms.find(t => !findPath(t, roots[0].id));
+      if (other && push(moveAcross(cur, other.id))) continue;
+      // 2√(x + 2) = −2x − 4: the number in front goes, then the root stands alone
+      const ms = (['lhs', 'rhs'] as const).find(k => cur[k].k === 'mul' && findPath(cur[k], roots[0].id));
+      const c = ms ? (cur[ms] as Extract<Node, { k: 'mul' }>).factors.find(f => !has(f, v)) : null;
+      if (c && push(divideBoth(cur, c.id))) continue;
+    }
     const poly = polyOf(expandAll(add([cur.lhs, negate(fresh(cur.rhs))]), newHints()));
     const lone = hl !== hr ? cur[hl ? 'lhs' : 'rhs'] : null;
     const peelable = !!lone && !!inverseOf(lone) && lone.k !== 'frac';
@@ -487,13 +501,17 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
       // x³ = x + 1: a root of each side would only go round in circles, so say where it crosses
       if (hl && hr) return stuck(noNiceFactors(cur, v, poly.c));
     }
+    // log₉(3 − x) = log₉(4x − 8) is ln(3 − x)/ln 9 = ln(4x − 8)/ln 9: × ln 9 first, then e undoes ln
+    if (hl && hr && cur.lhs.k === 'frac' && cur.rhs.k === 'frac' && key(cur.lhs.den) === key(cur.rhs.den) && !has(cur.lhs.den, v) && push(multiplyBoth(cur, cur.lhs.den.id))) continue;
     if (hl && hr) {
       // 2^x = 3^(x − 1): an exponential each side, so ln both sides brings both exponents down
       const expo = (n: Node) => n.k === 'pow' && !has(n.base, v) && has(n.exp, v) || (n.k === 'mul' && n.factors.some(f => f.k === 'pow' && !has(f.base, v) && has(f.exp, v)) && n.factors.every(f => f.k === 'pow' || !has(f, v)));
       if (expo(cur.lhs) && expo(cur.rhs) && !(cur.lhs.k === 'pow' && cur.rhs.k === 'pow' && key(cur.lhs.base) === key(cur.rhs.base))) {
         const lnd = wrapBoth(cur, 'ln');
         if (push(lnd)) {
-          const h = newHints(), tidyLn = (n: Node) => simplify(expandAll(simplify(n, h), h), h);
+          // ln(4·2^(x + 2)) is ln 4 + (x + 2) ln 2, so the letter comes down out of every log
+          const logsOut = (n: Node) => { for (let i = 0; i < 4; i++) { const r = logRules(n); if (!r) break; n = simplify(r, newHints()); } return n; };
+          const h = newHints(), tidyLn = (n: Node) => simplify(expandAll(logsOut(simplify(n, h)), h), h);
           push({ eq: eq(tidyLn(cur.lhs), tidyLn(cur.rhs)), label: 'expand', hints: h, factor: one, select: null });
           continue;
         }
@@ -540,6 +558,8 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     if (side.k === 'add') {
       const rest = side.terms.filter(x => !has(x, v));
       if (rest.length) ok = push(moveAcross(cur, rest[0].id));
+      // √(3x + 7) + √(x + 2) = 1: one root across, so each side can be squared in turn
+      else if (side.terms.filter(t => t.k === 'sqrt').length >= 2) ok = push(moveAcross(cur, side.terms.filter(t => t.k === 'sqrt')[1].id));
       else if (hasExpandable(side)) { const h = newHints(); ok = push({ eq: replace(cur, side.id, expandAll(side, h)), label: 'expand', hints: h, factor: one, select: null }); }
       else {
         const h = newHints();
@@ -566,9 +586,46 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
     } else if (inverseOf(side) || (side.k === 'fn' && side.name !== 'abs')) {
       ok = push(peel(cur, side.id));
     }
+    if (!ok) { const q = powerQuadratic(cur, v); if (q && push(q)) continue; }
     if (!ok) return stuck(`I can't isolate ${v} here yet. Try factoring or another form.`);
   }
   return stuck(`Gave up isolating ${v}.`);
+}
+
+/** e²ˣ − eˣ − 6 = 0 is u² − u − 6 with u = eˣ, and x^(2/3) − 5x^(1/3) + 6 with u = x^(1/3):
+ *  factor it as that quadratic (or cubic), keeping the power, so it splits into cases */
+export function powerQuadratic(e: Eq, v: string): MoveOk | null {
+  if (relOf(e) !== '=') return null;
+  const h = newHints();
+  const zero = simplify(expandAll(add([fresh(e.lhs), negate(fresh(e.rhs))]), h), h);
+  const terms = zero.k === 'add' ? zero.terms : [zero];
+  const cands: Node[] = [];
+  walk(zero, n => { if (n.k === 'pow' && has(n, v) && !cands.some(c => key(c) === key(n))) cands.push(n); });
+  const xs = [0.37, 0.71, 1.13];
+  const ratOf = (x: number) => { for (const d of [1, 2, 3, 4, 6, 8, 12]) if (Math.abs(x * d - Math.round(x * d)) < 1e-9) return { p: Math.round(x * d), q: d }; return null; };
+  for (const g of cands) {
+    const gv = xs.map(x => evaluate(g, { [v]: x }));
+    if (!gv.every(y => Number.isFinite(y) && Math.abs(y - 1) > 1e-6)) continue;
+    const c: number[] = [];
+    let ok = true;
+    for (const t of terms) {
+      const tv = xs.map(x => evaluate(t, { [v]: x }));
+      const n = [0, 1, 2, 3, 4].find(n => { const r = tv.map((y, i) => y / gv[i] ** n); return r.every(y => Number.isFinite(y) && Math.abs(y - r[0]) < 1e-9 * (1 + Math.abs(r[0]))); });
+      if (n === undefined) { ok = false; break; }
+      c[n] = (c[n] ?? 0) + tv[0] / gv[0] ** n;
+    }
+    if (!ok || c.length < 3) continue;
+    const coeffs = [...c].map(x => ratOf(x ?? 0));
+    if (coeffs.some(r => !r)) continue;
+    const P = add(coeffs.map((r, n) => { const k = r!.q === 1 ? num(r!.p) : frac(num(r!.p), num(r!.q)); return n === 0 ? k : mul([k, n === 1 ? sym('u') : pow(sym('u'), num(n))]); }).filter((_, n) => coeffs[n]!.p !== 0));
+    const f = factorFully(simplify(P, newHints()), newHints());
+    if (!f || f.k !== 'mul') continue;
+    const back = (n: Node): Node => (n.k === 'sym' && n.name === 'u' ? fresh(g) : (children(n).length ? withChildren(n, children(n).map(back)) : n));
+    const out = eq(back(f), num(0));
+    const r = checked(e, { eq: tidy(out)?.eq ?? out, label: `factor as a quadratic in ${toText(g)}`, hints: newHints(), factor: one, select: null });
+    if (!isErr(r)) return r;
+  }
+  return null;
 }
 
 /** −S with the sign pushed into each term, keeping a positive term first: −(7y − 20) → 20 − 7y */
