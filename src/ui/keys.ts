@@ -98,6 +98,8 @@ export function bind(this: App) {
     if (chip) {
       const ev = new KeyboardEvent('keydown', { key: chip.dataset.k! });
       if (this.mode === 'hub') this.hubKey(ev);
+      // a chip with no key of its own (your functions): pick it by its place in the row
+      else if (this.mode === 'fnpal' && !chip.dataset.k && chip.dataset.i) this.choose(this.palTabs()[this.pal.tab].items[Number(chip.dataset.i)]);
       else if (this.mode === 'fnpal') this.palKey(ev);
     }
     const tab = t.closest<HTMLElement>('.pal-tab');

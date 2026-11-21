@@ -241,4 +241,25 @@ export const tests = {
     await hold('Tab', '2');
     await until(s => s.eq === 'I = ∫_{0}^{−∞} (e^u((e^u)^2 + 1))/u du', 'dx, the integrand and the bounds change');
   },
+
+  async 'f then = types any function of each side, and your own functions sit in a Yours tab'(h) {
+    const { load, key, type, until, p, assert } = h;
+    await load('ln(x - 1) = 2');
+    await key('f'); await key('=');
+    await type('e^_');
+    await until(() => true, '');
+    const note = await p.evaluate(() => document.querySelector('#pal-note').textContent);
+    assert(note.includes('Enter applies'), `the preview is live: ${note}`);
+    await key('Enter');
+    await until(s => s.eq === 'e^(ln(x − 1)) = e^2', 'e^_ on both sides');
+    await key('u');
+    await key('f'); await key('=');
+    await type('_^2 + 1'); await key('Enter');
+    await until(s => s.eq === 'ln(x − 1)^2 + 1 = 2^2 + 1', '_^2 + 1 on both sides');
+    await load('g(t) = 2t + 1');
+    await key('n'); await type('x + 1 = 5'); await key('Enter');
+    await until(s => s.slots === 2, 'a second equation');
+    await key('f', 'ArrowLeft', 'ArrowDown', 'Enter');
+    await until(s => s.eq === 'g(x + 1) = g(5)', 'your g, from the Yours tab');
+  },
 };

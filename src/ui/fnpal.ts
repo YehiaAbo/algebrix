@@ -1,8 +1,8 @@
 // The function palette (f): apply a function to both sides, with a live preview.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { Node, findPath } from '../engine/ast';
+import { Node, findPath, DEFS } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
-import { peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem } from '../engine/techniques';
+import { peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
 import { sound } from './sound';
 import { $, escapeHtml } from './shared';
@@ -10,10 +10,19 @@ import type { App } from './app';
 
 /** tab and item being browsed; moved = the person browsed with the arrows */
 
+/** = in the f menu: type any function of each side (a name, or an expression with _ for each side) */
+const TYPED: WrapItem = { key: '=', f: 'square', label: 'any function', show: 'F(□)', ask: 'F(□)', tpl: '' };
+
+/** the menu's tabs: the usual ones, then the functions you defined (I(t) = …), if any */
+export function palTabs(this: App): { name: string; items: WrapItem[] }[] {
+  const yours = [...DEFS.keys()].map(F => ({ key: '', f: 'square' as const, label: `your ${F}`, show: `${F}( )`, tpl: F }));
+  return yours.length ? [...FN_TABS, { name: 'Yours', items: yours }] : FN_TABS;
+}
+
 export function openPal(this: App, sticky: boolean) {
   this.flush();
   const inv = inverseOf(this.peelSide());
-  const tab = inv ? FN_TABS.findIndex(t => t.items.some(x => x.f === inv.f)) : -1;
+  const tab = inv ? this.palTabs().findIndex(t => t.items.some(x => !x.tpl && x.f === inv.f)) : -1;
   this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null };
   this.chordUsed = false;
   this.setMode('fnpal');
@@ -31,21 +40,26 @@ export function renderPal(this: App) {
   const pe = peel(this.eq, this.sel);
   const lead = document.createElement('div');
   lead.className = 'hub-row';
-  lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button>`;
+  lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button><button class="chip lead" data-k="="><kbd>=</kbd>type any function</button>`;
   host.append(lead);
   const tabs = document.createElement('div');
   tabs.className = 'pal-tabs';
   tabs.className = 'pal-tabs' + (P.moved ? '' : ' focus');
-  tabs.innerHTML = FN_TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('');
+  const TABS = this.palTabs();
+  tabs.innerHTML = TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('');
   host.append(tabs);
   const row = document.createElement('div');
   row.className = 'hub-row pal-items';
-  row.innerHTML = FN_TABS[P.tab].items.map((w, j) => `<button class="chip${inv?.f === w.f ? ' rec' : ''}${P.moved && j === P.i ? ' on' : ''}" data-k="${w.key}"><kbd>${w.key}</kbd><span class="fx">${w.show}</span><span class="pal-name">${w.label}</span></button>`).join('');
+  row.innerHTML = TABS[P.tab].items.map((w, j) => `<button class="chip${!w.tpl && inv?.f === w.f ? ' rec' : ''}${P.moved && j === P.i ? ' on' : ''}" data-k="${w.key}" data-i="${j}">${w.key ? `<kbd>${w.key}</kbd>` : ''}<span class="fx">${w.show}</span><span class="pal-name">${w.label}</span></button>`).join('');
   host.append(row);
   if (P.ask) {
     const ask = document.createElement('div');
     ask.className = 'pal-ask';
-    ask.innerHTML = `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">type a number, Enter applies</span>`;
+    const typed = P.ask === TYPED;
+    ask.className = 'pal-ask' + (typed ? ' typed' : '');
+    ask.innerHTML = typed
+      ? `<span>each side →</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a function of each side" placeholder="e^_   _^2 + 1   ln   I"><span id="pal-note" class="op-note">a name, or _ for each side</span>`
+      : `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">type a number, Enter applies</span>`;
     host.append(ask);
   }
   const tip = document.createElement('div');
@@ -72,13 +86,16 @@ export function peelSide(this: App): Node {
 
 /** what an item would do, tidied, for the live preview */
 export function palResult(this: App, w: WrapItem, arg?: Node): MoveResult {
-  const r = checked(this.eq, wrapBoth(this.eq, w.f, arg));
-  return r;
+  if (w.tpl !== undefined) {
+    const F = arg ?? fnTemplate(w.tpl);
+    return 'error' in F ? F : checked(this.eq, applyFn(this.eq, F));
+  }
+  return checked(this.eq, wrapBoth(this.eq, w.f, arg));
 }
 
 export function palPeek(this: App) {
   const P = this.pal;
-  const w = FN_TABS[P.tab].items[P.i];
+  const w = this.palTabs()[P.tab].items[P.i];
   const r = w.ask ? null : this.palResult(w);
   this.peek = r && !isErr(r) ? r.eq : null;
   this.renderMain({ quick: true });
@@ -89,15 +106,17 @@ export function palKey(this: App, e: KeyboardEvent) {
   const k = e.key;
   if (k === 'Escape') return this.closePal(true);
   if (e.repeat) return;
-  const items = FN_TABS[P.tab].items;
+  const TABS = this.palTabs();
+  const items = TABS[P.tab].items;
   // arrows only: ← → pick a category, ↓ steps into it, ← → pick a function (live preview), ↑ steps back out
   const dx = k === 'ArrowRight' || k === 'Tab' ? 1 : k === 'ArrowLeft' ? -1 : 0;
-  if (dx && !P.moved) { P.tab = (P.tab + dx + FN_TABS.length) % FN_TABS.length; sound.tick(1); return this.renderPal(); }
+  if (dx && !P.moved) { P.tab = (P.tab + dx + TABS.length) % TABS.length; sound.tick(1); return this.renderPal(); }
   if (dx && P.moved) { P.i = (P.i + dx + items.length) % items.length; sound.tick(2); this.renderPal(); return this.palPeek(); }
   if (k === 'ArrowDown' && !P.moved) { P.moved = true; P.i = 0; sound.tick(2); this.renderPal(); return this.palPeek(); }
   if (k === 'ArrowUp' && P.moved) { P.moved = false; sound.tick(1); this.peek = null; this.renderMain({ quick: true }); return this.renderPal(); }
   if (k === 'Enter') { if (P.moved) return this.choose(items[P.i]); P.moved = true; P.i = 0; this.renderPal(); return this.palPeek(); }
   if (k === 'i') return this.palInverse();
+  if (k === '=') return this.choose(TYPED);
   if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
   const w = WRAPS.find(x => x.key === k);
   if (w) return this.choose(w);
@@ -107,7 +126,7 @@ export function palKey(this: App, e: KeyboardEvent) {
 export function palRelease(this: App) {
   const P = this.pal;
   if (P.sticky || P.ask) return;
-  if (P.moved) return this.choose(FN_TABS[P.tab].items[P.i]);
+  if (P.moved) return this.choose(this.palTabs()[P.tab].items[P.i]);
   P.sticky = true;
   this.renderPal();
 }
@@ -121,9 +140,11 @@ export function choose(this: App, w: WrapItem) {
   if (w.ask) {
     this.pal.ask = w;
     this.pal.sticky = true;
-    this.pal.tab = FN_TABS.findIndex(t => t.items.includes(w));
-    this.pal.i = FN_TABS[this.pal.tab].items.indexOf(w);
-    this.pal.moved = true;
+    if (w !== TYPED) {
+      this.pal.tab = this.palTabs().findIndex(t => t.items.includes(w));
+      this.pal.i = this.palTabs()[this.pal.tab].items.indexOf(w);
+      this.pal.moved = true;
+    }
     this.setMode('fnask');
     sound.tick(2);
     this.renderPal();
@@ -135,6 +156,7 @@ export function choose(this: App, w: WrapItem) {
 
 export function askArg(this: App): Node | { error: string } {
   const v = $<HTMLInputElement>('pal-input').value.trim();
+  if (this.pal.ask === TYPED) return fnTemplate(v);
   if (!v) return { error: 'Type a number.' };
   try { return parseExpr(v); } catch (e) { return { error: (e as Error).message }; }
 }
@@ -142,7 +164,7 @@ export function askArg(this: App): Node | { error: string } {
 export function askPreview(this: App) {
   const a = this.askArg();
   const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
-  $('pal-note').textContent = isErr(r) ? r.error : 'Enter applies';
+  $('pal-note').textContent = isErr(r) ? (this.pal.ask === TYPED && !$<HTMLInputElement>('pal-input').value.trim() ? 'a name, or _ for each side' : r.error) : r.label + ': Enter applies';
   $('pal-note').classList.toggle('bad', isErr(r) && !!$<HTMLInputElement>('pal-input').value.trim());
   this.peek = !isErr(r) ? r.eq : null;
   this.renderMain({ quick: true });

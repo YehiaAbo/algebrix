@@ -20,7 +20,7 @@ const has = (n: Node, v: string) => symbols(n).includes(v);
 export type Wrap = 'square' | 'cube' | 'power' | 'recip' | 'sqrt' | 'cbrt' | 'root'
   | 'exp' | 'pow10' | 'powb' | 'ln' | 'log' | 'logb' | 'sin' | 'cos' | 'tan' | 'asin' | 'acos' | 'atan';
 
-export interface WrapItem { key: string; f: Wrap; label: string; show: string; ask?: string }
+export interface WrapItem { key: string; f: Wrap; label: string; show: string; ask?: string; tpl?: string }
 /** The f menu: tabs of functions you can apply to both sides. `ask` items need a number typed in. */
 export const FN_TABS: { name: string; items: WrapItem[] }[] = [
   { name: 'Powers', items: [
@@ -116,6 +116,52 @@ export function wrapBoth(e: Eq, f: Wrap, arg: Node = num(2)): MoveResult {
   };
 }
 const FN_LABEL: Partial<Record<Wrap, string>> = { asin: 'sin⁻¹', acos: 'cos⁻¹', atan: 'tan⁻¹' };
+
+/* ---------- any function on both sides ---------- */
+
+const HOLE = '□';
+/** what you typed as a function of each side: a name (ln, sin, I) or an expression with □ in it.
+ *  _ and () stand for □ too, since □ is hard to type. */
+export function fnTemplate(text: string): Node | { error: string } {
+  const src = text.trim().replace(/\(\s*\)/g, `(${HOLE})`).replace(/_/g, HOLE);
+  if (!src) return { error: 'Type a function: a name like ln or I, or an expression with _ for each side, like e^_ or _^2 + 1.' };
+  let F: Node;
+  // a name on its own: that function of each side
+  const name = /^([A-Za-zα-ω]+)$/.exec(src);
+  try { F = name ? parseExpr(`${name[1]}(${HOLE})`) : parseExpr(src); } catch (err) { return { error: (err as Error).message }; }
+  if (!symbols(F).includes(HOLE)) return { error: name ? `${name[1]} isn't a function here. Define it first (${name[1]}(t) = …), or write it with _ for each side.` : 'Write _ where each side goes, like e^_ or 1/(_ + 1).' };
+  return F;
+}
+
+/** F(each side): F(L) = F(R). Holds whenever L = R; the way back needs F one-to-one, so a
+ *  function that isn't (□², sin) is marked as one that can add solutions, and where F needs
+ *  its input positive or ≥ 0 that is recorded for each side. */
+export function applyFn(e: Eq, F: Node): MoveResult {
+  if (relOf(e) !== '=') return { error: 'A function on both sides is for an equation (=).' };
+  // the side itself goes into the first □ (it keeps its pieces, so they are carried in); copies into any others
+  const put = (s: Node) => { let used = false; const go = (m: Node): Node => m.k === 'sym' && m.name === HOLE ? (used ? fresh(s) : (used = true, s)) : withChildren(m, children(m).map(go)); return go(fresh(F)); };
+  const L = put(e.lhs), R = put(e.rhs);
+  const params = symbols(F).filter(v => v !== HOLE);
+  const at = (v: number, env: Env = {}) => evaluate(F, { ...Object.fromEntries(params.map(p => [p, 0.7])), ...env, [HOLE]: v });
+  // one-to-one, read off a fine sweep: every step the same way where it is defined
+  const grid = Array.from({ length: 97 }, (_, i) => -6 + i / 8);
+  const ys = grid.map(v => at(v));
+  const ok = ys.map((y, i) => [grid[i], y] as const).filter(([, y]) => Number.isFinite(y));
+  const steps = ok.slice(1).map(([, y], i) => Math.sign(y - ok[i][1]));
+  const conditions: string[] = [];
+  if (steps.some(d => d === 0) || new Set(steps).size > 1) conditions.push('this can add solutions: check answers');
+  // undefined below 0 (ln, √): the sides have to be where F is defined
+  const neg = ok.length && grid.filter(v => v < 0).every(v => !Number.isFinite(at(v)));
+  if (neg && ok.length) {
+    const rel = Number.isFinite(at(0)) ? '≥ 0' : '> 0';
+    [e.lhs, e.rhs].filter(s => hasSymbols(s) && !(rel === '≥ 0' ? isNonneg(s) : neverZero(s) && isNonneg(s))).forEach(s => conditions.push(`${t(s)} ${rel}`));
+  }
+  const show = t(F);
+  return {
+    eq: eq(L, R), label: `${show} both sides`, hints: newHints(), factor: one, select: null, conditions,
+    check: env => [[evaluate(L, env), at(evaluate(e.lhs, env), env)], [evaluate(R, env), at(evaluate(e.rhs, env), env)]],
+  };
+}
 
 /** The function that undoes the outer layer of a side, if there is one. */
 export function inverseOf(side: Node): { f: Wrap; arg?: Node } | null {
