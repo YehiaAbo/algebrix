@@ -2,7 +2,7 @@
 // fractions, rationalizing a denominator, and a pack of trig identities. Each returns
 // an equivalent expression (or null); the forms strip checks every one numerically.
 import { Node, Frac, Eq, num, add, mul, frac, pow, fn, cloneFresh, key, find, symbols as symbolsOf, sqrt as sqrtN, evaluate as evaluateNode } from './ast';
-import { rat, Rat, rmul, radd, rdiv, negate, coefOf, gcd } from './terms';
+import { rat, Rat, rmul, radd, rdiv, negate, coefOf, gcd, safe } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { expandAll, polyOf, factorize } from './rewrite';
 import { parseExpr } from './parse';
@@ -105,7 +105,7 @@ export function partialFractions(n: Node): Node | null {
     if (!N.length) return null;
   }
   const roots = rationalRoots(Q.c).sort((x, y) => y.p / y.q - x.p / x.q);
-  if (roots.length !== Q.c.length - 1) return null;
+  if (roots.length !== Q.c.length - 1) return repeatedFractions(v, N, Q.c, roots, lead);
   const dQ = derive(Q.c);
   let text = '';
   for (const r of roots) {
@@ -117,6 +117,51 @@ export function partialFractions(n: Node): Node | null {
     const term = `${Math.abs(A.p)}/${den}`;
     text += text === '' ? (A.p < 0 ? '-' : '') + term : (A.p < 0 ? ' - ' : ' + ') + term;
   }
+  const pf = parseExpr(text);
+  const parts = [...lead, ...(pf.k === 'add' ? pf.terms : [pf])];
+  return parts.length === 1 ? parts[0] : add(parts);
+}
+
+/** a repeated factor: A/(x − r) + B/(x − r)² + …, one term for each power. The numbers come
+ *  from N/Q at as many points as there are unknowns, solved exactly. */
+function repeatedFractions(v: string, N: Rat[], Qc: Rat[], roots: Rat[], lead: Node[]): Node | null {
+  const neg = (r: Rat) => rat(-r.p, r.q);
+  // multiplicity of each root, by dividing it out of Q
+  const powers: { r: Rat; k: number }[] = [];
+  let rest = Qc;
+  for (const r of roots) {
+    let k = 0;
+    for (;;) { const d = divide(rest, [neg(r), rat(1)]); if (d.r.length) break; rest = d.q; k++; }
+    for (let j = 1; j <= k; j++) powers.push({ r, k: j });
+  }
+  if (powers.length !== Qc.length - 1) return null;
+  const n = powers.length;
+  const pts: Rat[] = [];
+  for (let x = 2; pts.length < n; x++) if (!roots.some(r => r.q === 1 && r.p === x)) pts.push(rat(x));
+  const pow_ = (b: Rat, k: number) => Array.from({ length: k }).reduce<Rat>(s => rmul(s, b), rat(1));
+  const M = pts.map(x => [...powers.map(({ r, k }) => rdiv(rat(1), pow_(radd(x, neg(r)), k))), rdiv(evalPoly(N, x), evalPoly(Qc, x))]);
+  // Gauss–Jordan with fractions
+  for (let c = 0; c < n; c++) {
+    const p = M.findIndex((row, i) => i >= c && !isZero(row[c]));
+    if (p < 0) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    const piv = M[c][c];
+    M[c] = M[c].map(x => rdiv(x, piv));
+    for (let i = 0; i < n; i++) if (i !== c && !isZero(M[i][c])) { const f = M[i][c]; M[i] = M[i].map((x, j) => radd(x, rmul(neg(f), M[c][j]))); }
+  }
+  if (M.some(row => row.some(x => !safe(x.p) || !safe(x.q)))) return null;
+  let text = '';
+  powers.forEach(({ r, k }, i) => {
+    // A/(x − p/q)^k = A·q^k/(qx − p)^k
+    const A = rmul(M[i][n], rat(r.q ** k));
+    if (isZero(A)) return;
+    const lin = r.p === 0 ? v : `${r.q === 1 ? '' : r.q}${v} ${r.p > 0 ? '-' : '+'} ${Math.abs(r.p)}`;
+    const base = k === 1 ? (r.p === 0 ? lin : `(${lin})`) : r.p === 0 ? `${v}^${k}` : `(${lin})^${k}`;
+    const den = A.q === 1 ? base : `(${A.q}${base})`;
+    const term = `${Math.abs(A.p)}/${den}`;
+    text += text === '' ? (A.p < 0 ? '-' : '') + term : (A.p < 0 ? ' - ' : ' + ') + term;
+  });
+  if (!text) return null;
   const pf = parseExpr(text);
   const parts = [...lead, ...(pf.k === 'add' ? pf.terms : [pf])];
   return parts.length === 1 ? parts[0] : add(parts);

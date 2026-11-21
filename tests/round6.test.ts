@@ -90,6 +90,9 @@ describe('polynomial tools', () => {
     ['1/(x^2 - 1)', '1/(2(x − 1)) − 1/(2(x + 1))'],
     ['(3x + 5)/((x + 1)(x + 2))', '2/(x + 1) + 1/(x + 2)'],
     ['(x + 7)/(x^2 - x - 6)', '2/(x − 3) − 1/(x + 2)'],
+    // a repeated factor gets a term for each power (playtest A13)
+    ['(5x^2 + 20x + 8)/(2x(x + 1)^2)', '4/x − 3/(2(x + 1)) + 7/(2(x + 1)^2)'],
+    ['1/(x^2(x - 1))', '1/(x − 1) − 1/x − 1/(x^2)'],
   ])('partial fractions %s', (src, want) => {
     const r = partialFractions(E(src))!;
     expect(T(r)).toBe(want);

@@ -219,3 +219,12 @@ describe('found by the blind review', () => {
   });
 });
 void key; void ({} as Node);
+
+describe('p refuses a value that makes a bottom 0 (playtest A13)', () => {
+  it('says which bottom', () => {
+    const e = parseEquation('5x^2 + 8 = 2x(x+1)^2 (A/x + B/(x+1))');
+    const r = putValue(e, 'x', '0');
+    expect('error' in r && r.error).toMatch(/x = 0 makes .* 0/);
+    expect('error' in putValue(e, 'x', '1')).toBe(false);
+  });
+});

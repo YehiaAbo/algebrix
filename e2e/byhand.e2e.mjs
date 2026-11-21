@@ -74,4 +74,17 @@ export const tests = {
     const bar = await p.evaluate(() => window.algebrix.message?.text ?? '');
     assert(bar.includes('never above 0'), `the bar says why there is nothing to split: ${bar}`);
   },
+
+  async 'partial fractions with a repeated factor: Tab + v, and p will not put in a value that zeroes a bottom'(h) {
+    const { load, key, hold, until, p, assert } = h;
+    await load('(5x^2 + 20x + 8)/(2x(x + 1)^2)');
+    await hold('Tab', 'v');
+    await until(s => s.eq === '4/x − 3/(2(x + 1)) + 7/(2(x + 1)^2)', 'one term for each power of x + 1');
+    await load('5x^2 + 20x + 8 = 2x(x + 1)^2(A/x + B/(x + 1))');
+    await dig(h, 'x', 0);
+    await key('p');
+    await until(() => true, '');
+    const note = await p.evaluate(() => document.querySelector('#op-note').textContent);
+    assert(note.includes('makes x 0'), `the box says x = 0 zeroes a bottom: ${note}`);
+  },
 };

@@ -287,6 +287,10 @@ export function putValue(e: Eq, v: string, text: string): Eq | { error: string }
   if (!symbols(e).includes(v)) return { error: `There is no ${v} here to put a value in for.` };
   if (!holdsForEvery(e, v)) return { error: `This says which ${v} works, not something true for every ${v}, so a value can't just be put in. To check a value, press e.` };
   const next = substitute(e, v, a) as Eq;
+  // A/x at x = 0 is not a value of anything: say which bottom it zeroes instead of giving A/0
+  let zero: Node | null = null;
+  walk(e, n => { if (!zero && n.k === 'frac' && symbols(n.den).includes(v)) { const d = substitute(n.den, v, a); if (!symbols(d).length && evaluate(d, {}) === 0) zero = n.den; } });
+  if (zero) return { error: `${v} = ${toText(a)} makes ${toText(zero)} 0, and it is on a bottom here. Multiply it out first, or pick another value.` };
   return eq(next.lhs, next.rhs);
 }
 
