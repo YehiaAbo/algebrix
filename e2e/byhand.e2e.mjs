@@ -128,4 +128,15 @@ export const tests = {
     await key('Shift+ArrowRight');
     await until(s => s.eq === '∫_{0}^{1} ∂/∂t(x^t) dx = y', 'd/dt inside');
   },
+
+  async 'Tab on an integral offers by parts with each choice of u, previewed, next to the algebra'(h) {
+    const { load, key, until, p, assert } = h;
+    await load('int x e^x dx');
+    await dig(h, '∫ xe^x dx');
+    await key('Tab');
+    const names = await p.evaluate(() => [...document.querySelectorAll('#forms .form-name, #forms .chip')].map(e => e.textContent).join(' | '));
+    assert(names.includes('u = x') && names.includes('u = e^x'), `both choices of u: ${names}`);
+    await key('ArrowRight', 'Tab');
+    await until(s => s.eq === 'xe^x − ∫ e^x dx', 'by parts with u = x');
+  },
 };

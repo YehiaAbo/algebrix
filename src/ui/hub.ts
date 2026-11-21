@@ -12,7 +12,7 @@ import { walk } from '../engine/ast';
 import { sound } from './sound';
 import { $, Tech, Hub, escapeHtml } from './shared';
 import { areCases } from './sheet';
-import { CALC_GROUPS } from './calc';
+import { CALC_GROUPS, calcForms } from './calc';
 import type { App } from './app';
 
 export function techniques(this: App): Tech[] {
@@ -56,8 +56,11 @@ export function techniques(this: App): Tech[] {
 
 export function openHub(this: App, sticky: boolean, calc = false) {
   this.flush();
-  const forms = calc ? [] : formsFor(this.eq, this.sel);
   const techs = calc ? this.calcTechniques() : this.techniques();
+  // the calculus rules for the aimed piece come first; a key another form or technique needs stays theirs
+  const algebra = calc ? [] : formsFor(this.eq, this.sel);
+  const taken = new Set([...algebra.map(f => f.chord), ...techs.map(t => t.key)]);
+  const forms = calc ? [] : [...calcForms(this.eq, this.sel).map(f => (taken.has(f.chord) ? { ...f, chord: '' } : f)), ...algebra];
   // C opens on the section with something to do (the first one, if nothing applies)
   const first = techs.find(t => t.lead && t.ok) ?? techs.find(t => t.ok) ?? techs[0];
   const tab = calc ? Math.max(0, CALC_GROUPS.findIndex(g => g.name === first?.group)) : 0;
