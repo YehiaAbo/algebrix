@@ -272,14 +272,14 @@ export function stepIn(this: App, j: number, r: MoveOk) {
 
 /** C + u, the shortcut: name the inside u, take the differentials of u = g, and sub them in.
  *  Three general steps, each in the tree; e then integrates in u and puts x back. */
-export function uSubShortcut(this: App) {
-  const g = uCandidate(this.eq, this.sel);
-  if (!g) { const r = uSub(this.eq, this.sel).move; return this.refuse(isErr(r) ? r.error : 'No inside function whose derivative is also there.'); }
-  if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
+export function uSubShortcut(this: App, then?: () => void): boolean {
+  const g = uCandidate(this.eq, then ? null : this.sel);
+  if (!g) { if (then) return false; const r = uSub(this.eq, this.sel).move; this.refuse(isErr(r) ? r.error : 'No inside function whose derivative is also there.'); return false; }
+  if (this.slots.length >= 9) { if (!then) this.refuse('Nine equations is the limit for now.'); return false; }
   const taken = new Set(this.lettersInUse());
   const letter = ['u', 'w', 's', 'v', 'z'].find(c => !taken.has(c)) ?? 'q';
   const n = nameIt(this.eq, g.id, letter, [...taken]);
-  if ('error' in n) return this.refuse(n.error);
+  if ('error' in n) { if (!then) this.refuse(n.error); return false; }
   this.addName(n);
   const j = this.slots.length - 1;
   this.later(ms(560), () => {
@@ -290,9 +290,11 @@ export function uSubShortcut(this: App) {
     this.later(ms(560), () => {
       this.sel = null;
       this.substituteFrom(j);
+      if (then) { this.say(`u-substitution, as three moves: name ${letter} = ${toText(n.def.rhs)}, its differentials, sub them in.`); this.later(ms(560), then); return; }
       this.say(`u-substitution, as three moves: name ${letter} = ${toText(n.def.rhs)}, its differentials, sub them in. Now C i integrates in ${letter}, and e puts ${symbols(n.def.rhs).join(', ')} back.`);
     });
   });
+  return true;
 }
 
 /** C + s, the shortcut: in differentials, then everything in y on the left */

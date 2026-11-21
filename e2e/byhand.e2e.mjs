@@ -187,4 +187,13 @@ export const tests = {
     await key('e');
     await until(s => /ln\|e\^\(−x\) \+ 1\|/.test(s.eq), 'e finishes it with u = e^(−x) + 1');
   },
+
+  async 'e plays a u-substitution as its three general moves: name u, differentials, sub in'(h) {
+    const { load, key, until, p, assert } = h;
+    await load('int 2x cos(x^2) dx');
+    await key('e');
+    await until(s => s.eq === 'sin(x^2) + C', 'worked out, with x² back for u');
+    const st = await p.evaluate(() => ({ slots: window.algebrix.slots.length, named: window.algebrix.slots[1]?.steps.map(s => s.label) }));
+    assert(st.slots === 2 && st.named.length === 2, `u = x² is its own equation, with its differentials: ${JSON.stringify(st)}`);
+  },
 };

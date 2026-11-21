@@ -255,6 +255,14 @@ export function finishCalculus(this: App) {
     this.solveKey();
   };
   if (!steps.length) return then();
+  // a u-substitution is played as the general moves it is made of (name u, its differentials,
+  // sub them in), each in the tree, and then e carries on in u
+  const iu = steps.findIndex(st => st.rule === 'u-substitution');
+  if (iu >= 0 && this.slots.length < 8) {
+    const go = () => { if (!this.uSubShortcut(() => this.finishCalculus())) this.play(steps.slice(iu) as MoveOk[], then); };
+    if (iu === 0) return go();
+    return this.play(steps.slice(0, iu) as MoveOk[], go);
+  }
   this.play(steps as MoveOk[], then);
 }
 

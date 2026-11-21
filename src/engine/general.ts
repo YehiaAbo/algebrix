@@ -368,7 +368,8 @@ export function differentialsBoth(e: Eq): MoveResult {
   };
   const L = dOf(e.lhs), R = dOf(e.rhs);
   if (!L || !R) return { error: 'There is no derivative rule for something in here yet.' };
-  const next = eq(tidy(L), tidy(R));
+  // a derivative can share pieces with what it came from (−e^(−x) and e^(−x)): fresh ids for all
+  const next = cloneFresh(eq(tidy(L), tidy(R)));
   const F = add([cloneFresh(e.lhs), neg(cloneFresh(e.rhs))]);
   const ws = vars(F);
   const dF = ws.map(w => derivative(F, w));
