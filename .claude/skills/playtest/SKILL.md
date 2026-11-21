@@ -15,6 +15,13 @@ would. A problem that fails is good news: it points at a mechanic to fix.
   coverage counts by strategy.
 - `playtest/play.mjs`: the driver. `node playtest/play.mjs session.txt` runs one session
   file (its header lists the commands) and prints what the screen shows after each line.
+- `playtest/bank.mjs` (`npm run bank [file filter]`): the bulk engine check. Problems live in
+  `playtest/problems/*.txt`, one per line: `id | kind | problem | book answer | tags`, kind one
+  of `solve[:v]`, `value`, `deriv`, `antideriv` (checked up to a constant), `same`. It runs `e`
+  (finish) on each and writes `playtest/REPORT.md`. Run it first every round, and add every
+  scouted problem to a problems file before playing it. Pulling a section in bulk from OpenStax
+  works through the built-in browser: read the page's MathML exercises and the chapter's
+  answer key (solutions are matched by exercise id + `-solution`).
 - `playtest/runs/`: raw notes of the current round only (see Compress).
 
 ## The loop

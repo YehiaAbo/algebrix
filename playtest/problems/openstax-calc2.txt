@@ -1,0 +1,49 @@
+# OpenStax Calculus Volume 2, end-of-section exercises with the book's answer key (odd numbers).
+# Pulled 2026-11-21 through the browser; see playtest/SKILL notes for how.
+C2-3.1#9 | antideriv | int tan^(-1) x dx | x tan^(-1) x - (1)/(2) ln ( 1 + x^2 ) | by parts
+C2-3.1#11 | antideriv | int x sin ( 2 x ) dx | - (1)/(2) x cos ( 2 x ) + (1)/(4) sin ( 2 x ) | by parts
+C2-3.1#13 | antideriv | int x e^(- x) dx | e^(- x) ( -1 - x ) | by parts
+C2-3.1#15 | antideriv | int x^2 cos x dx | 2 x cos x + ( -2 + x^2 ) sin x | by parts
+C2-3.1#17 | antideriv | int ln ( 2 x + 1 ) dx | (1)/(2) ( 1 + 2 x ) ( -1 + ln ( 1 + 2 x ) ) | by parts
+C2-3.1#19 | antideriv | int e^x sin x dx | (1)/(2) e^x ( - cos x + sin x ) | by parts
+C2-3.1#21 | antideriv | int x e^(- x^2) dx | - (e^(- x^2))/(2) | by parts
+C2-3.1#23 | antideriv | int sin ( ln ( 2 x ) ) dx | - (1)/(2) x cos ( ln ( 2 x ) ) + (1)/(2) x sin ( ln ( 2 x ) ) | by parts
+C2-3.1#25 | antideriv | int (ln x )^2 dx | 2 x - 2 x ln x + x (ln x )^2 | by parts
+C2-3.1#27 | antideriv | int x^2 ln x dx | - (x^3)/(9) + (1)/(3) x^3 ln x | by parts
+C2-3.1#29 | antideriv | int cos^(-1) ( 2 x ) dx | - (1)/(2) sqrt(1 - 4 x^2) + x cos^(-1) ( 2 x ) | by parts
+C2-3.1#31 | antideriv | int x^2 sin x dx | - ( -2 + x^2 ) cos x + 2 x sin x | by parts
+C2-3.1#33 | antideriv | int x^3 sin x dx | - x ( -6 + x^2 ) cos x + 3 ( -2 + x^2 ) sin x | by parts
+C2-3.1#37 | antideriv | int x cosh x dx | - cosh x + x sinh x | by parts
+C2-3.1#39 | value | int_(0)^(1) x e^(-2x) dx | (1)/(4) - (3)/(4 e^2) | by parts
+C2-3.1#43 | value | int_(-pi)^(pi) x sin x dx | 2 pi | by parts
+C2-3.1#45 | value | int_(0)^(pi / 2) x^2 sin x dx | -2 + pi | by parts
+C2-3.1#47 | antideriv | int cos x ln ( sin x) dx | - sin ( x ) + ln ( sin ( x ) ) sin x | by parts
+C2-3.2#73 | antideriv | int sin^3 x cos x dx | (sin^4 x)/(4) | trig integrals
+C2-3.2#75 | antideriv | int tan^5 ( 2 x ) sec^2 ( 2 x ) dx | (1)/(12) tan^6 ( 2 x ) | trig integrals
+C2-3.2#79 | antideriv | int sin^3 x dx | - cos x + (1)/(3) cos^3 x | trig integrals
+C2-3.2#83 | antideriv | int sin^5 x cos^2 x dx | - (1)/(3) cos^3 x + (2)/(5) cos^5 x - (1)/(7) cos^7 x | trig integrals
+C2-3.2#85 | antideriv | int sqrt(sin x) cos x dx | (2)/(3) (sin x )^((3)/(2)) | trig integrals
+C2-3.2#87 | antideriv | int sec x tan x dx | sec x | trig integrals
+C2-3.2#89 | antideriv | int tan^2 x sec x dx | (1)/(2) sec x tan x - (1)/(2) ln ( sec x + tan x ) | trig integrals
+C2-3.2#97 | value | int_(0)^(pi) sin^2 x dx | (pi)/(2) | trig integrals
+C2-3.2#99 | antideriv | int cos^2 (3 x) dx | (x)/(2) + (1)/(12) sin ( 6 x ) | trig integrals
+C2-3.2#111 | value | int_(0)^(pi / 2) sqrt(1 - cos ( 2 x )) dx | sqrt(2) | trig integrals
+C2-3.3#139 | antideriv | int (dx)/(x^2 sqrt(1 - x^2)) | - (sqrt(1 - x^2))/(x) | trig substitution
+C2-3.3#143 | antideriv | int (θ^3 dθ)/(sqrt(9 - θ^2)) | - (1)/(3) sqrt(9 - θ^2) ( 18 + θ^2 ) | trig substitution
+C2-3.3#147 | antideriv | int (dx)/((x^2 - 9 )^(3 / 2)) | - (x)/(9 sqrt(-9 + x^2)) | trig substitution
+C2-3.3#151 | antideriv | int (dx)/(x^2 sqrt(x^2 + 1)) | - (sqrt(1 + x^2))/(x) | trig substitution
+C2-3.3#153 | antideriv | int (1 - x^2 )^(3 / 2) dx | (1)/(8) ( x ( 5 - 2 x^2 ) sqrt(1 - x^2) + 3 arcsin x ) | trig substitution
+C2-3.3#161 | antideriv | int (1)/(x^2 + 2 x + 1) dx | - (1)/(1 + x) | trig substitution
+C2-3.3#163 | antideriv | int (1)/(sqrt(- x^2 + 10 x)) dx | arcsin ((x - 5)/(5)) | trig substitution
+C2-3.3#165 | value | int_(-3)^(3) sqrt(9 - x^2) dx | (9 pi)/(2) | trig substitution
+C2-3.4#201 | antideriv | int (2 x^2 + 4 x + 22)/(x^2 + 2 x + 10) dx | 2 ( x + (1)/(3) arctan ( (1 + x)/(3) ) ) | partial fractions
+C2-3.4#219 | antideriv | int (dt)/(( e^t - e^(- t) )^2) | (1)/(2 - 2 e^(2 t)) | partial fractions
+C2-3.4#225 | value | int_(1)^(2) (1)/(x^2 sqrt(4 - x^2)) dx | (sqrt(3))/(4) | trig substitution
+C2-3.4#227 | antideriv | int (1)/(1 + e^x) dx | x - ln ( 1 + e^x ) | partial fractions
+C2-3.7#349 | value | int_(0)^(2) (1)/(sqrt(4 - x^2)) dx | (pi)/(2) | improper integrals
+C2-3.7#351 | value | int_(1)^(inf) x e^(- x) dx | (2)/(e) | improper integrals
+C2-3.7#359 | value | int_(-inf)^(inf) (1)/(x^2 + 1) dx | pi | improper integrals
+C2-3.7#379 | value | int_(-1)^(1) (dx)/(sqrt(1 - x^2)) | pi | improper integrals
+C2-3.7#387 | value | int_(0)^(3) (dx)/(sqrt(9 - x^2)) | (pi)/(2) | improper integrals
+C2-3.7#389 | value | int_(0)^(4) x ln ( 4 x ) dx | 8 ln ( 16 ) - 4 | improper integrals
+C2-3.7#393 | value | int_(2)^(inf) (dx)/((x^2 - 1)^(3 / 2)) | -1 + (2)/(sqrt(3)) | improper integrals

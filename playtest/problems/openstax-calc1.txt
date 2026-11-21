@@ -1,0 +1,85 @@
+# OpenStax Calculus Volume 1, end-of-section exercises with the book's answer key (odd numbers).
+# Pulled 2026-11-21 through the browser; see playtest/SKILL notes for how.
+C1-2.3#83 | value | lim x->0 ( 4 x^2 - 2 x + 3 ) | 3 | limit laws
+C1-2.3#85 | value | lim x->-2 sqrt(x^2 - 6 x + 3) | sqrt(19) | limit laws
+C1-2.3#87 | value | lim x->7 x^2 | 49 | limit laws
+C1-2.3#89 | value | lim x->0 (1)/(1 + sin x) | 1 | limit laws
+C1-2.3#91 | value | lim x->1 (2 - 7 x)/(x + 6) | - (5)/(7) | limit laws
+C1-3.3#107 | deriv | d/dx(5 x^3 - x + 1) | 15 x^2 - 1 | differentiation rules
+C1-3.3#109 | deriv | d/dx(8 x^4 + 9 x^2 - 1) | 32 x^3 + 18 x | differentiation rules
+C1-3.3#111 | deriv | d/dx(3 x ( 18 x^4 + (13)/(x + 1) )) | 270 x^4 + (39)/((x + 1 )^2) | differentiation rules
+C1-3.3#115 | deriv | d/dx((4 x^3 - 2 x + 1)/(x^2)) | (4 x^4 + 2 x^2 - 2 x)/(x^4) | differentiation rules
+C1-3.3#117 | deriv | d/dx((x + 9)/(x^2 - 7 x + 1)) | (- x^2 - 18 x + 64)/((x^2 - 7 x + 1 )^2) | differentiation rules
+C1-3.5#175 | deriv | d/dx(x^2 - sec x + 1) | 2 x - sec x tan x | trig derivatives
+C1-3.5#177 | deriv | d/dx(x^2 cot x) | 2 x cot x - x^2 csc^2 x | trig derivatives
+C1-3.5#179 | deriv | d/dx((sec x)/(x)) | (x sec x tan x - sec x)/(x^2) | trig derivatives
+C1-3.5#181 | deriv | d/dx(( x + cos x ) ( 1 - sin x )) | ( 1 - sin x ) ( 1 - sin x ) - cos x ( x + cos x ) | trig derivatives
+C1-3.5#183 | deriv | d/dx((1 - cot x)/(1 + cot x)) | (2 csc^2 x)/((1 + cot x )^2) | trig derivatives
+C1-3.6#229 | deriv | d/dx((5 - 2 x )^(-2)) | (4)/((5 - 2 x )^3) | chain rule
+C1-3.6#231 | deriv | d/dx((2 x^3 - x^2 + 6 x + 1 )^3) | 6 (2 x^3 - x^2 + 6 x + 1 )^2 ( 3 x^2 - x + 3 ) | chain rule
+C1-3.6#233 | deriv | d/dx((tan x + sin x )^(-3)) | -3 (tan x + sin x )^(-4) * ( sec^2 x + cos x ) | chain rule
+C1-3.6#235 | deriv | d/dx(sin ( cos 7 x )) | -7 cos ( cos 7 x ) * sin 7 x | chain rule
+C1-3.6#237 | deriv | d/dx(cot^3 ( 4 x + 1 )) | -12 cot^2 ( 4 x + 1 ) * csc^2 ( 4 x + 1 ) | chain rule
+C1-3.7#279 | deriv | d/dx(sin^(-1) ( x^2 )) | (2 x)/(sqrt(1 - x^4)) | inverse function derivatives
+C1-3.7#283 | deriv | d/dx(( 1 + tan^(-1) x )^3) | (3 ( 1 + tan^(-1) x )^2)/(1 + x^2) | inverse function derivatives
+C1-3.7#285 | deriv | d/dx((1)/(tan^(-1) ( x ))) | (-1)/(( 1 + x^2 ) ( tan^(-1) x )^2) | inverse function derivatives
+C1-3.9#331 | deriv | d/dx(x^2 e^x) | 2 x e^x + x^2 e^x | exp and log derivatives
+C1-3.9#333 | deriv | d/dx(e^(x^3 ln x)) | e^(x^3 ln x) ( 3 x^2 ln x + x^2 ) | exp and log derivatives
+C1-3.9#335 | deriv | d/dx((e^x - e^(- x))/(e^x + e^(- x))) | (4)/(( e^x + e^(- x) )^2) | exp and log derivatives
+C1-3.9#337 | deriv | d/dx(2^(4 x) + 4 x^2) | 2^(4 x + 2) * ln 2 + 8 x | exp and log derivatives
+C1-3.9#339 | deriv | d/dx(x^(pi) * pi^x) | pi x^(pi - 1) * pi^x + x^(pi) * pi^x ln pi | exp and log derivatives
+C1-3.9#341 | deriv | d/dx(ln sqrt(5 x - 7)) | (5)/(2 ( 5 x - 7 )) | exp and log derivatives
+C1-3.9#343 | deriv | d/dx(log ( sec x )) | (tan x)/(ln 10) | exp and log derivatives
+C1-3.9#347 | deriv | d/dx((sin 2 x )^(4 x)) | (sin 2 x )^(4 x) ( 4 ln ( sin 2 x ) + 8 x cot 2 x ) | log differentiation
+C1-3.9#351 | deriv | d/dx(x^(cot x)) | x^(cot x) ( - csc^2 x ln x + (cot x)/(x) ) | log differentiation
+C1-3.9#353 | deriv | d/dx(x^(-1 / 2) (x^2 + 3 )^(2 / 3) (3 x - 4 )^4) | x^(-1 / 2) (x^2 + 3 )^(2 / 3) (3 x - 4 )^4 * ( (-1)/(2 x) + (4 x)/(3 ( x^2 + 3 )) + (12)/(3 x - 4) ) | log differentiation
+C1-4.8#367 | value | lim x->3 (x^2 - 9)/(x - 3) | 6 | lhopital
+C1-4.8#369 | value | lim x->0 ((1 + x )^(-2) - 1)/(x) | -2 | lhopital
+C1-4.8#371 | value | lim x->pi (x - pi)/(sin x) | -1 | lhopital
+C1-4.8#375 | value | lim x->0 (sin x - tan x)/(x^3) | - (1)/(2) | lhopital
+C1-4.8#377 | value | lim x->0 (e^x - x - 1)/(x^2) | (1)/(2) | lhopital
+C1-4.8#379 | value | lim x->1 (x - 1)/(ln x) | 1 | lhopital
+C1-4.8#383 | value | lim x->inf x sin ( (1)/(x) ) | 1 | lhopital
+C1-4.8#387 | value | lim x->inf x^2 e^(- x) | 0 | lhopital
+C1-4.8#389 | value | lim x->0 (1 + 1 / x)/(1 - 1 / x) | -1 | lhopital
+C1-4.8#391 | value | lim x->inf x e^(1 / x) | inf | lhopital
+C1-4.8#395 | value | lim x->inf ( 1 - (1)/(x) )^x | (1)/(e) | lhopital
+C1-4.10#491 | antideriv | int sin x dx | - cos x | antiderivatives
+C1-4.10#493 | antideriv | int (3 x^2 + 2)/(x^2) dx | 3 x - (2)/(x) | antiderivatives
+C1-4.10#497 | antideriv | int (14 x^3 + 2 x + 1)/(x^3) dx | 14 x - (2)/(x) - (1)/(2 x^2) | antiderivatives
+C1-5.3#171 | value | int_(-2)^(3) ( x^2 + 3 x - 5 ) dx | - (35)/(6) | FTC
+C1-5.3#173 | value | int_(2)^(3) ( t^2 - 9 ) ( 4 - t^2 ) dt | (62)/(15) | FTC
+C1-5.3#175 | value | int_(0)^(1) x^99 dx | (1)/(100) | FTC
+C1-5.3#177 | value | int_(1 / 4)^4 ( x^2 - (1)/(x^2) ) dx | (1125)/(64) | FTC
+C1-5.3#179 | value | int_(1)^(4) (1)/(2 sqrt(x)) dx | 1 | FTC
+C1-5.3#181 | value | int_(1)^(16) (dt)/(t^(1 / 4)) | (28)/(3) | FTC
+C1-5.3#183 | value | int_(0)^(pi / 2) sin θ dθ | 1 | FTC
+C1-5.3#185 | value | int_(0)^(pi / 4) sec θ tan θ dθ | sqrt(2) - 1 | FTC
+C1-5.3#187 | value | int_(pi / 4)^(pi / 2) csc^2 θ dθ | 1 | FTC
+C1-5.3#189 | value | int_(-2)^(-1) ( (1)/(t^2) - (1)/(t^3) ) dt | (7)/(8) | FTC
+C1-5.5#271 | antideriv | int x (1 - x )^99 dx | ((1 - x )^101)/(101) - ((1 - x )^100)/(100) | substitution
+C1-5.5#273 | antideriv | int (11 x - 7 )^(-3) dx | - (1)/(22(11x - 7)^2) | substitution
+C1-5.5#275 | antideriv | int cos^3 θ sin θ dθ | - (cos^4 θ)/(4) | substitution
+C1-5.5#277 | antideriv | int cos^2 ( pi t ) sin ( pi t ) dt | - (cos^3 ( pi t ))/(3 pi) | substitution
+C1-5.5#279 | antideriv | int t sin ( t^2 ) cos ( t^2 ) dt | - (1)/(4) cos^2 ( t^2 ) | substitution
+C1-5.5#281 | antideriv | int (x^2)/((x^3 - 3 )^2) dx | - (1)/(3 ( x^3 - 3 )) | substitution
+C1-5.5#283 | antideriv | int (y^5)/((1 - y^3 )^(3 / 2)) dy | - (2 ( y^3 - 2 ))/(3 sqrt(1 - y^3)) | substitution
+C1-5.5#287 | antideriv | int ( sin^2 θ - 2 sin θ ) (sin^3 θ - 3 sin^2 θ )^3 cos θ dθ | (1)/(12) (sin^3 θ - 3 sin^2 θ )^4 | substitution
+C1-5.5#293 | value | int_(0)^(1) (x)/(sqrt(1 + x^2)) dx | sqrt(2) - 1 | substitution
+C1-5.5#295 | value | int_(0)^(1) (t^2)/(sqrt(1 + t^3)) dt | (2)/(3) ( sqrt(2) - 1 ) | substitution
+C1-5.5#297 | value | int_(0)^(pi / 4) (sin θ)/(cos^4 θ) dθ | (1)/(3) ( 2 sqrt(2) - 1 ) | substitution
+C1-5.6#321 | antideriv | int e^(-3 x) dx | (-1)/(3) e^(-3 x) | exp and log integrals
+C1-5.6#323 | antideriv | int 3^(- x) dx | - (3^(- x))/(ln 3) | exp and log integrals
+C1-5.6#325 | antideriv | int (2)/(x) dx | 2 ln x | exp and log integrals
+C1-5.6#327 | antideriv | int (1)/(sqrt(x)) dx | 2 sqrt(x) | exp and log integrals
+C1-5.6#329 | antideriv | int (dx)/(x (ln x )^2) | - (1)/(ln x) | exp and log integrals
+C1-5.6#331 | antideriv | int (dx)/(x ln x ln ( ln x )) | ln ( ln ( ln x ) ) | exp and log integrals
+C1-5.6#333 | antideriv | int (cos x - x sin x)/(x cos x) dx | ln ( x cos x ) | exp and log integrals
+C1-5.6#335 | antideriv | int ln ( cos x ) tan x dx | - (1)/(2) ( ln ( cos ( x ) ) )^2 | exp and log integrals
+C1-5.6#337 | antideriv | int x^2 e^(- x^3) dx | (- e^(- x^3))/(3) | exp and log integrals
+C1-5.6#339 | antideriv | int e^(tan x) sec^2 x dx | e^(tan x) | exp and log integrals
+C1-5.6#343 | antideriv | int x^2 ln( x^2 ) dx | (2)/(9) x^3 ( ln ( x^3 ) - 1 ) | exp and log integrals
+C1-5.6#349 | antideriv | int (sin ( 3 x ) - cos ( 3 x ))/(sin ( 3 x ) + cos ( 3 x )) dx | - (1)/(3) ln |sin ( 3 x ) + cos ( 3 x )| | exp and log integrals
+C1-5.6#353 | antideriv | int ln ( csc x ) cot x dx | - (1)/(2) ( ln ( csc x ) )^2 | exp and log integrals
+C1-5.6#355 | value | int_(1)^(2) (1 + 2 x + x^2)/(3 x + 3 x^2 + x^3) dx | (1)/(3) ln ( (26)/(7) ) | exp and log integrals
+C1-5.6#357 | value | int_(0)^(pi / 3) (sin x - cos x)/(sin x + cos x) dx | ln ( sqrt(3) - 1 ) | exp and log integrals
