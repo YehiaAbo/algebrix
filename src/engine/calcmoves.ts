@@ -7,8 +7,9 @@ import { dependsOn, derivative, limit2, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
-import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries, trigRewrite } from './integrate';
+import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries, trigRewrite, trigSub } from './integrate';
 import { toText } from './print';
+import { timesOne } from './general';
 import { distributeNode, expandAll } from './rewrite';
 
 const one = () => 1;
@@ -382,7 +383,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
   const active = { ...subs };
   let cur = e;
   // by parts on a side that is one integral: if that integral comes back (eˣ sin x), solve for it
-  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string } | null = null, parts = 0, trigs = 0;
+  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string } | null = null, parts = 0, trigs = 0, tsubs = 0;
   for (let i = 0; i < 60; i++) {
     const t = nextCalc(cur);
     let r: MoveResult;
@@ -418,7 +419,9 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       if (isErr(r)) {
         const s = uSub(cur, t.id);
         if (!isErr(s.move) && s.u && s.g) { r = s.move; if (s.side) active[s.u] = s.g; }
+        else if (t.k === 'int' && expOver(cur, t)) r = expOver(cur, t)!;
         else if (!isErr(trigRewrite(cur, t.id)) && trigs++ < 4) r = trigRewrite(cur, t.id);
+        else if (t.k === 'int' && tsubs < 1 && !isErr(trigSub(cur, t.id).move)) { const ts = trigSub(cur, t.id); r = ts.move; tsubs++; if (ts.u && ts.g && !t.lo) active[ts.u] = ts.g; }
         // a polynomial inside: multiply it out, never by parts (that only goes round)
         else if (polyInside(t) && expandInside(cur, t, true)) r = expandInside(cur, t, true)!;
         else {
@@ -468,6 +471,18 @@ function cameBack(e: Eq, side: 'lhs' | 'rhs', f: Node, v: string, t: Node): Move
 const inInt = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'int' && !hasCalc(n.arg)) f = true; }); return f; };
 /** a limit whose inside has no derivatives left to take */
 const inLim = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'lim' && !hasCalc(n.arg)) f = true; }); return f; };
+
+/** ∫ 1/(1 + eˣ): × e⁻ˣ/e⁻ˣ (Tab m), when that lets u-substitution in */
+function expOver(e: Eq, t: Node): MoveOk | null {
+  if (t.k !== 'int' || t.arg.k !== 'frac' || t.arg.den.k !== 'add') return null;
+  const ex = t.arg.den.terms.flatMap(x => (x.k === 'pow' && x.base.k === 'sym' && x.base.name === 'e' && dependsOn(x.exp, t.v) ? [x] : []));
+  if (ex.length !== 1) return null;
+  const r = timesOne(e, t.arg.id, `e^(${toText(neg(cloneFresh((ex[0] as Extract<Node, { k: 'pow' }>).exp)))})`);
+  if (isErr(r)) return null;
+  let T2: Node | null = null;
+  walk(r.eq, n => { if (!T2 && n.k === 'int') T2 = n; });
+  return T2 && !isErr(uSub(r.eq, (T2 as Node).id).move) ? r : null;
+}
 
 /** ∫ (1 − u²)²u² du: only sums, products and whole powers of the letter and numbers */
 function polyInside(t: Node): boolean {

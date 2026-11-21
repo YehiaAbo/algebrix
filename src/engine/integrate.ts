@@ -9,6 +9,7 @@ import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
 import { newHints, simplify } from './simplify';
 import { times, plus, prettyDerivative } from './calcmoves';
 import { partialFractions, longDivide } from './polytools';
+import { expandAll } from './rewrite';
 
 const one = () => 1;
 /** a letter raised, for labels: eˣ, eʸ, eᵗ */
@@ -56,6 +57,16 @@ function quadK(n: Node, v: string, s: 1 | -1): { k: number; m: number } | null {
   if (!(k > 0) || !(m > 0) || !Number.isFinite(k) || !Number.isFinite(m)) return null;
   for (const x of [0.5, 1.3, -2.1]) if (Math.abs(at(x) - (k + s * m * x * x)) > 1e-9 * (1 + Math.abs(k))) return null;
   return { k, m };
+}
+/** a x² + b x + c with a square to complete: k ± m (x + h)², the sign of x² being s */
+function quadShift(n: Node, v: string, s: 1 | -1): { k: number; m: number; h: Node } | null {
+  const at = (x: number) => evaluate(n, { [v]: x });
+  const C = at(0), A = (at(1) + at(-1)) / 2 - C, B = (at(1) - at(-1)) / 2;
+  if (!Number.isFinite(A + B + C) || Math.abs(B) < 1e-12 || Math.sign(A) !== s) return null;
+  for (const x of [0.5, 1.3, -2.1, 3.7]) if (Math.abs(at(x) - (A * x * x + B * x + C)) > 1e-9 * (1 + Math.abs(C))) return null;
+  const k = C - (B * B) / (4 * A), hv = B / (2 * A), h = ratNode(hv);
+  if (!(k > 0) || !h) return null;
+  return { k, m: Math.abs(A), h };
 }
 /** √q as an exact node: 2, 1/2, √3, √2/2 */
 const rootOf = (q: number): Node => tidy(sqrtN(ratNode(q) ?? num(q)));
@@ -123,6 +134,9 @@ export function quick(u: Node, v: string): { F: Node; label: string; conditions?
       const cs = u.den.factors.filter(f => !dependsOn(f, v)), vs = u.den.factors.filter(f => dependsOn(f, v));
       if (cs.length && vs.length) {
         const q = quick(frac(fresh(u.num), vs.length === 1 ? fresh(vs[0]) : mul(vs.map(fresh))), v);
+        // a plain number below divides the way you'd write it: −ln|u|, not ln|u|/(−1)
+        const c = cs.every(x => x.k === 'num') ? cs.reduce((p, x) => p * (x as Extract<Node, { k: 'num' }>).v, 1) : NaN;
+        if (q && Number.isFinite(c) && c !== 0) return { F: over(q.F, c), label: q.label };
         return q && { F: frac(q.F, cs.length === 1 ? fresh(cs[0]) : mul(cs.map(fresh))), label: q.label };
       }
     }
@@ -134,8 +148,11 @@ export function quick(u: Node, v: string): { F: Node; label: string; conditions?
     else if (d.k === 'pow' && !dependsOn(d.exp, v)) { const n = exponent(d.exp); if (n !== null) q = powerOf(d.base, -n); }
     // k − x² under a root, k + x² below, in any order: sin⁻¹ and tan⁻¹ (scaled when k isn't 1)
     else if (d.k === 'sqrt' && quadK(d.arg, v, -1)) { const { k, m } = quadK(d.arg, v, -1)!; q = arcRule('asin', k, m, V, v); }
+    // −x² + 10x is 25 − (x − 5)², x² + 2x + 10 is (x + 1)² + 9: the square completed, then the same rules
+    else if (d.k === 'sqrt' && quadShift(d.arg, v, -1)) { const { k, m, h } = quadShift(d.arg, v, -1)!; q = arcRule('asin', k, m, () => tidy(add([V(), h])), `(${toText(tidy(add([V(), h])))})`); q.label += ', the square completed'; }
     else if (d.k === 'sqrt') q = powerOf(d.arg, -0.5);
     else if (quadK(d, v, 1)) { const { k, m } = quadK(d, v, 1)!; q = arcRule('atan', k, m, V, v); }
+    else if (quadShift(d, v, 1)) { const { k, m, h } = quadShift(d, v, 1)!; q = arcRule('atan', k, m, () => tidy(add([V(), h])), `(${toText(tidy(add([V(), h])))})`); q.label += ', the square completed'; }
     else q = powerOf(d, -1);
     return q && { F: times(...c, q.F), label: q.label };
   }
@@ -292,9 +309,76 @@ export function uCandidate(e: Eq, sel: string | null): Node | null {
 const withKids = (n: Node, f: (c: Node) => Node): Node => { const ks = children(n); return ks.length ? withChildren(n, ks.map(f)) : n; };
 
 /** back from u to x once the u-integral is done: the check puts u = g in */
+/** a trig function of an inverse one, read off the triangle: cos(sin⁻¹ x) = √(1 − x²) */
+function triangle(n: Node): Node {
+  const m = withKids(n, triangle);
+  if (m.k !== 'fn' || m.arg.k !== 'fn' || !['sin', 'cos', 'tan'].includes(m.name) || !['asin', 'acos', 'atan'].includes(m.arg.name)) return m;
+  const x = () => fresh((m.arg as Extract<Node, { k: 'fn' }>).arg);
+  const r1 = () => sqrtN(add([num(1), neg(pow(x(), num(2)))])), r2 = () => sqrtN(add([num(1), pow(x(), num(2))]));
+  const T: Record<string, () => Node> = {
+    'sin asin': x, 'cos acos': x, 'tan atan': x, 'cos asin': r1, 'sin acos': r1,
+    'tan asin': () => frac(x(), r1()), 'tan acos': () => frac(r1(), x()), 'sin atan': () => frac(x(), r2()), 'cos atan': () => frac(num(1), r2()),
+  };
+  return T[`${m.name} ${m.arg.name}`]?.() ?? m;
+}
+
 export function backSub(e: Eq, u: string, g: Node): MoveResult {
-  const next = substitute(e, u, g) as Eq;
+  const inverse = g.k === 'fn' && ['asin', 'acos', 'atan'].includes(g.name);
+  const raw = substitute(e, u, g) as Eq;
+  const next = inverse ? (fresh(tidy(triangle(raw))) as Eq) : raw;
   return checked(e, { eq: next, label: `back to ${symbols(g).join(', ')}: ${u} = ${toText(g)}`, hints: newHints(), factor: one, select: null, rule: 'substitute back', check: env => [[evaluate(next, env), evaluate(e, { ...env, [u]: evaluate(g, env) })]] });
+}
+
+/* ---------- trig substitution ---------- */
+
+/** √(k − m x²), √(k + m x²) or √(m x² − k) (or that to a half power): x = a sin θ, a tan θ or
+ *  a sec θ, so the root is a cos θ, a sec θ or a tan θ, and dx comes along. One step that plays
+ *  what b (x = 3 sin θ), C k and sub in do by hand. Returns θ and what it is in x, for going back. */
+export function trigSub(e: Eq, sel: string | null): { move: MoveResult; u?: string; g?: Node } {
+  const T = target(e, sel, 'int');
+  if (!T) return { move: { error: 'No integral here.' } };
+  const v = T.v, f = T.arg;
+  let R: Node | null = null;
+  walk(f, n => {
+    if (R) return;
+    const q = n.k === 'sqrt' ? n.arg : n.k === 'pow' && n.exp.k === 'frac' && isNum(n.exp.den, 2) && n.exp.num.k === 'num' ? n.base : null;
+    if (q && dependsOn(q, v) && (quadK(q, v, -1) || quadK(q, v, 1) || quadK(neg(fresh(q)), v, -1))) R = n;
+  });
+  if (!R) return { move: { error: 'No √(a² − x²), √(a² + x²) or √(x² − a²) here.' } };
+  const r = R as Node;
+  const q = r.k === 'sqrt' ? r.arg : (r as Extract<Node, { k: 'pow' }>).base;
+  const half = r.k === 'sqrt' ? 1 : ((r as Extract<Node, { k: 'pow' }>).exp as Extract<Node, { k: 'frac' }>).num as Extract<Node, { k: 'num' }>;
+  const n = typeof half === 'number' ? 1 : half.v;
+  const th = ['θ', 'φ', 'ψ'].find(c => !symbols(e).includes(c))!;
+  const TH = () => sym(th), sin = () => fn('sin', TH()), cos = () => fn('cos', TH()), tan = () => fn('tan', TH());
+  let kind: 'sin' | 'tan' | 'sec', k: number, m: number;
+  if (quadK(q, v, -1)) { kind = 'sin'; ({ k, m } = quadK(q, v, -1)!); }
+  else if (quadK(q, v, 1)) { kind = 'tan'; ({ k, m } = quadK(q, v, 1)!); }
+  else { kind = 'sec'; ({ k, m } = quadK(neg(fresh(q)), v, -1)!); }
+  const a = rootOf(k / m), rk = rootOf(k);
+  // x, the root, and dx/dθ, each in θ
+  const X = kind === 'sin' ? times(a, sin()) : kind === 'tan' ? times(a, tan()) : frac(fresh(a), cos());
+  const root = kind === 'sin' ? times(rk, cos()) : kind === 'tan' ? frac(fresh(rk), cos()) : times(rk, tan());
+  const dX = kind === 'sin' ? times(fresh(a), cos()) : kind === 'tan' ? frac(fresh(a), pow(cos(), num(2))) : frac(times(fresh(a), sin()), pow(cos(), num(2)));
+  const swap = (x: Node): Node => (x === r ? (n === 1 ? root : pow(fresh(root), num(n))) : x.k === 'sym' && x.name === v ? fresh(X) : withKids(x, swap));
+  // (3 sin θ)³ is 27 sin³ θ, so the rules can see the power of sin
+  const spread = (x: Node): Node => {
+    const y = withKids(x, spread);
+    return y.k === 'pow' && y.base.k === 'mul' && y.exp.k === 'num' && Number.isInteger(y.exp.v) ? mul(y.base.factors.map(b => pow(fresh(b), num((y.exp as Extract<Node, { k: 'num' }>).v)))) : y;
+  };
+  const Q = tidy(spread(tidy(times(swap(f), dX))));
+  if (dependsOn(Q, v)) return { move: { error: 'The substitution leaves some x behind.' } };
+  // θ in x: sin⁻¹(x/a), tan⁻¹(x/a), and for sec, cos⁻¹(a/x) (x > a)
+  const ratio = () => (isNum(a, 1) ? sym(v) : frac(sym(v), fresh(a)));
+  const g = tidy(kind === 'sin' ? fn('asin', ratio()) : kind === 'tan' ? fn('atan', ratio()) : fn('acos', frac(fresh(a), sym(v))));
+  const def = !!(T.lo && T.hi);
+  const bound = (b: Node) => tidy(substitute(fresh(g), v, b));
+  const next = def ? int(th, Q, bound(T.lo!), bound(T.hi!)) : int(th, Q);
+  const label = `trig substitution: ${v} = ${toText(X)}, so ${toText(r)} = ${toText(n === 1 ? root : pow(fresh(root), num(n)))}`;
+  const dg = derivative(g, v);
+  const check = def || !dg ? undefined : (env: Env) => [[evaluate(Q, { ...env, [th]: evaluate(g, env) }) * evaluate(dg, env), evaluate(f, env)]] as [number, number][];
+  const move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'trig substitution', check });
+  return isErr(move) ? { move } : { move, u: th, g };
 }
 
 /* ---------- trig rewrites ---------- */
@@ -325,6 +409,15 @@ export function trigRewrite(e: Eq, sel: string | null): MoveResult {
     const sq = add([num(1), neg(pow(fn(other, fresh(p.L)), num(2)))]);
     const kept = [...fs.slice(0, i).map(fresh), k === 1 ? sq : pow(sq, num(k)), ...fs.slice(i + 1).map(fresh), fn(name, fresh(p.L))];
     return done(mul(kept), `${name}${k === 1 ? '²' : ''}${k > 1 ? `^${2 * k}` : ''} = ${k > 1 ? '(' : ''}1 − ${other}²${k > 1 ? `)^${k}` : ''}, keeping one ${name} back`, 'trig identity');
+  }
+  // an even power alone (cos⁴ θ): the half-angle identity, then multiply out
+  const ev = fs.findIndex(x => (['sin', 'cos'] as const).some(nm => { const p = powOfTrig(x, nm); return !!p && p.n >= 4 && p.n % 2 === 0; }));
+  if (ev >= 0 && fs.every((x, j) => j === ev || !dependsOn(x, v))) {
+    const x = fs[ev] as Extract<Node, { k: 'pow' }>, b = x.base as Extract<Node, { k: 'fn' }>, k = (x.exp as Extract<Node, { k: 'num' }>).v / 2;
+    const halfAngle = add([num(1), b.name === 'sin' ? neg(fn('cos', times(num(2), fresh(b.arg)))) : fn('cos', times(num(2), fresh(b.arg)))]);
+    const h = newHints();
+    const next = simplify(expandAll(mul([...fs.filter((_, j) => j !== ev).map(fresh), frac(num(1), num(2 ** k)), pow(halfAngle, num(k))]), h), h);
+    return done(next, `${b.name}² = (1 ${b.name === 'sin' ? '−' : '+'} cos 2θ)/2, then multiply out`, 'trig identity');
   }
   return { error: 'No trig identity helps here.' };
 }

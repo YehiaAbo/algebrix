@@ -253,6 +253,8 @@ export function quad(f: (x: number) => number, a: number, b: number): number {
     if (!Number.isFinite(w) || w === 0 || x === a || x === b) return 0;
     const y = f(x);
     if (Number.isFinite(y)) return y * w;
+    // 1/√(4 − x²) at x a rounding away from 2: an end you can integrate up to, worth nothing here
+    if (Math.min(Math.abs(x - a), Math.abs(x - b)) < 1e-12 * (1 + Math.abs(x))) return 0;
     return Math.abs(w) < 1e-200 ? 0 : NaN;
   };
   let h = 0.5, total = term(0);
@@ -264,6 +266,9 @@ export function quad(f: (x: number) => number, a: number, b: number): number {
     const est = total * h;
     if (Number.isNaN(est)) return NaN;
     if (Math.abs(est - prev) <= 1e-10 * (1 + Math.abs(est)) && level >= 1) return est;
+    // an end like 1/√(4 − x²) at 2 loses digits to rounding, so the levels only jitter at 1e-9:
+    // close enough for checking, while one that blows up (1/x² across 0) keeps moving
+    if (level === 6 && Math.abs(est - prev) <= 1e-7 * (1 + Math.abs(est))) return est;
     prev = est;
   }
   return NaN;

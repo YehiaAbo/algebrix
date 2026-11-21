@@ -12,6 +12,7 @@ import { parseExpr } from './parse';
 import { toText } from './print';
 import { letters, toDifferentials, hasDifferentials, integrateDifferentials } from './leibniz';
 import { splitXY } from './ode';
+import { expandAll } from './rewrite';
 import { finishCalc } from './calcmoves';
 
 const one = () => 1;
@@ -435,4 +436,22 @@ export function characteristicChain(e: Eq, y: string): MoveOk[] | { error: strin
     }
   }
   return steps;
+}
+
+/* ---------- multiply by 1 ---------- */
+
+/** Tab m: the aimed piece times A/A, which is 1. On a fraction A goes on top and below, each
+ *  multiplied out (1/(1 + eˣ) with e⁻ˣ is e⁻ˣ/(e⁻ˣ + 1), ready for u = e⁻ˣ + 1); on anything
+ *  else the piece becomes (piece·A)/A. Rationalizing and the conjugate trick are this move. */
+export function timesOne(e: Eq, sel: string | null, text: string): MoveResult {
+  let A: Node;
+  try { A = parseExpr(text); } catch (err) { return { error: (err as Error).message }; }
+  const T = sel && sel !== 'eq' ? find(e, sel) : null;
+  if (!T || T.k === 'eq') return { error: 'Aim at the piece to multiply by 1.' };
+  if (A.k === 'num' && A.v === 0) return { error: '0/0 is not 1: pick something that is never 0.' };
+  const h = newHints();
+  const times = (n: Node) => simplify(expandAll(mul([cloneFresh(n), cloneFresh(A)]), h), h);
+  const next = T.k === 'frac' ? frac(times(T.num), times(T.den)) : frac(mul([cloneFresh(T), cloneFresh(A)]), cloneFresh(A));
+  const shown = A.k === 'add' ? `(${toText(A)})` : toText(A);
+  return checked(e, { eq: replace(e, T.id, next) as Eq, label: `× ${shown}/${shown}, which is 1`, hints: h, factor: () => 1, select: next.id, rule: 'multiply by 1', conditions: symbols(A).length ? [`${toText(A)} ≠ 0`] : [] });
 }

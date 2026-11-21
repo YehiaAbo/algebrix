@@ -8,7 +8,7 @@ import { divideOut, polyTarget } from '../engine/polytools';
 import { newHints } from '../engine/simplify';
 import { toText } from '../engine/print';
 import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
-import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief } from '../engine/general';
+import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
 import { ms } from './prefs';
@@ -155,10 +155,45 @@ export function commitDivide(this: App) {
   this.apply(r, 1.05);
 }
 
-/** what the box shows while you type, for b, p and Tab q */
+/** Tab + m: multiply the aimed piece by A/A, A typed (e⁻ˣ, √x − 1, the conjugate…) */
+export function openOne(this: App) {
+  if (!this.sel || this.sel === 'eq') return this.refuse('Aim at the piece to multiply by 1 (a fraction, usually), then Tab + m.');
+  this.opKind = 'one';
+  this.oneAt = this.sel;
+  this.closeHub(false);
+  this.setMode('op');
+  const input = $<HTMLInputElement>('op-input');
+  input.value = '';
+  $('op').hidden = false;
+  this.place($('op'));
+  input.focus();
+  this.onOpType();
+  this.renderHints();
+}
+
+export function oneResult(this: App): MoveResult {
+  const text = $<HTMLInputElement>('op-input').value.trim();
+  if (!text) return { error: 'Type what goes on top and below: e^(-x), sqrt(x) - 1, …' };
+  return timesOne(this.eq, this.oneAt, text);
+}
+
+export function commitOne(this: App) {
+  const r = this.oneResult();
+  if (isErr(r)) return this.refuse(r.error);
+  this.closeOp();
+  this.apply(r, 1.05);
+}
+
+/** what the box shows while you type, for b, p, Tab q and Tab m */
 export function onNameType(this: App) {
   const note = $('op-note'), symEl = $('op-sym');
-  if (this.opKind === 'divide') {
+  if (this.opKind === 'one') {
+    const r = this.oneResult();
+    symEl.textContent = '× 1 as';
+    $('op').classList.toggle('bad', isErr(r));
+    note.textContent = isErr(r) ? r.error : `${r.label} · Enter`;
+    this.peek = isErr(r) ? null : r.eq;
+  } else if (this.opKind === 'divide') {
     const r = this.divideResult();
     symEl.textContent = 'take out';
     $('op').classList.toggle('bad', isErr(r));

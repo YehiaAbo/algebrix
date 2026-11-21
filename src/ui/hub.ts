@@ -37,6 +37,8 @@ export function techniques(this: App): Tech[] {
   if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
   // q on a fraction is long division (a form); on a polynomial it takes out a factor you type
   if (aimed?.k !== 'frac' && polyTarget(eq, this.sel)) out.push({ key: 'q', label: 'take out a factor…', ok: true, run: () => this.openDivide() });
+  // any piece times A/A: e⁻ˣ on top and below, a conjugate, a missing factor
+  if (aimed) out.push({ key: 'm', label: 'multiply by 1…', ok: true, run: () => this.openOne() });
   this.slots.forEach((_, j) => {
     if (j === this.cur) return;
     const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));

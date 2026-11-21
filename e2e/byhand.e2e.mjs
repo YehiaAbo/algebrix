@@ -175,4 +175,16 @@ export const tests = {
     await key('Shift+ArrowLeft');
     await until(s => s.eq === 'sqrt(4) sqrt(x) = 3·|x|', 'out of |…|');
   },
+
+  async 'Tab + m multiplies a fraction by 1: e^(−x) on top and below, then u-substitution fits'(h) {
+    const { load, key, hold, type, until } = h;
+    await load('int 1/(1 + e^x) dx');
+    await dig(h, '1/(1 + e^x)');
+    await hold('Tab', 'm');
+    await type('e^(-x)');
+    await key('Enter');
+    await until(s => s.eq === '∫ e^(−x)/(e^(−x) + 1) dx', 'top and bottom times e^(−x), multiplied out');
+    await key('e');
+    await until(s => /ln\|e\^\(−x\) \+ 1\|/.test(s.eq), 'e finishes it with u = e^(−x) + 1');
+  },
 };

@@ -1,10 +1,10 @@
 # Bank report
 
-147 of 172 solved by the engine (2026-11-21T04:46 UTC).
+157 of 172 solved by the engine (2026-11-21T04:51 UTC).
 
 | file | solved |
 |---|---|
-| openstax-calc2.txt | 27/47 |
+| openstax-calc2.txt | 37/47 |
 | openstax-calc1.txt | 78/83 |
 | openstax-algebra.txt | 36/36 |
 | sample.txt | 6/6 |
@@ -12,9 +12,9 @@
 | tag | solved |
 |---|---|
 | sin ( 3 x ) + cos ( 3 x ) | 0/1 |
-| partial fractions | 0/3 |
-| trig substitution | 1/9 |
-| improper integrals | 2/7 |
+| improper integrals | 4/7 |
+| partial fractions | 2/3 |
+| trig substitution | 7/9 |
 | trig integrals | 8/10 |
 | exp and log integrals | 12/14 |
 | by parts | 17/19 |
@@ -55,22 +55,12 @@
 - **C1-5.6#355** (openstax-calc1.txt:84, value) `int_(1)^(2) (1 + 2 x + x^2)/(3 x + 3 x^2 + x^3) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{1}^{2} 1/(3x + 3x^2 + x^3) dx + ∫_{1}^{2} 2x/(3x + 3x^2 + x^3) dx + ∫_{1}^{2} x^2/(3x + 3x^2 + x^3) dx)
 - **C1-5.6#357** (openstax-calc1.txt:85, value) `int_(0)^(pi / 3) (sin x - cos x)/(sin x + cos x) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{0}^{π/3} sin(x)/(sin(x) + cos(x)) dx + ∫_{0}^{π/3} −cos(x)/(sin(x) + cos(x)) dx)
 - **C2-3.1#23** (openstax-calc2.txt:10, antideriv) `int sin ( ln ( 2 x ) ) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at (∫ sin(ln(u)) du)/2)
-- **C2-3.1#29** (openstax-calc2.txt:13, antideriv) `int cos^(-1) ( 2 x ) dx`: e stops: The engine refused this: it would not keep the equation true. (at (u cos⁻¹(u) − (−2 sqrt(w)/(−2)))/2 + C)
+- **C2-3.1#29** (openstax-calc2.txt:13, antideriv) `int cos^(-1) ( 2 x ) dx`: e stops: The engine refused this: it would not keep the equation true. (at (u cos⁻¹(u) − sqrt(w))/2 + C)
 - **C2-3.2#89** (openstax-calc2.txt:27, antideriv) `int tan^2 x sec x dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ (sin(x)/cos(x))^2/cos(x) dx)
 - **C2-3.2#111** (openstax-calc2.txt:30, value) `int_(0)^(pi / 2) sqrt(1 - cos ( 2 x )) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at (∫_{0}^{π} sqrt(1 − cos(u)) du)/2)
-- **C2-3.3#139** (openstax-calc2.txt:31, antideriv) `int (dx)/(x^2 sqrt(1 - x^2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/(x^2 sqrt(1 − x^2)) dx)
-- **C2-3.3#143** (openstax-calc2.txt:32, antideriv) `int (θ^3 dθ)/(sqrt(9 - θ^2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ θ^3/sqrt(9 − θ^2) dθ)
 - **C2-3.3#147** (openstax-calc2.txt:33, antideriv) `int (dx)/((x^2 - 9 )^(3 / 2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/((x^2 − 9)^(3/2)) dx)
-- **C2-3.3#151** (openstax-calc2.txt:34, antideriv) `int (dx)/(x^2 sqrt(x^2 + 1))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/(x^2 sqrt(x^2 + 1)) dx)
-- **C2-3.3#153** (openstax-calc2.txt:35, antideriv) `int (1 - x^2 )^(3 / 2) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ (1 − x^2)^(3/2) dx)
-- **C2-3.3#163** (openstax-calc2.txt:37, antideriv) `int (1)/(sqrt(- x^2 + 10 x)) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/sqrt(−x^2 + 10x) dx)
-- **C2-3.3#165** (openstax-calc2.txt:38, value) `int_(-3)^(3) sqrt(9 - x^2) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{−3}^{3} sqrt(9 − x^2) dx)
-- **C2-3.4#201** (openstax-calc2.txt:39, antideriv) `int (2 x^2 + 4 x + 22)/(x^2 + 2 x + 10) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at 2x + ∫ 2/(x^2 + 2x + 10) dx)
+- **C2-3.3#151** (openstax-calc2.txt:34, antideriv) `int (dx)/(x^2 sqrt(x^2 + 1))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/(cos(θ)(sin(θ)/cos(θ))^2) dθ)
 - **C2-3.4#219** (openstax-calc2.txt:40, antideriv) `int (dt)/(( e^t - e^(- t) )^2)`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/((e^t − e^(−t))^2) dt)
-- **C2-3.4#225** (openstax-calc2.txt:41, value) `int_(1)^(2) (1)/(x^2 sqrt(4 - x^2)) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{1}^{2} 1/(x^2 sqrt(4 − x^2)) dx)
-- **C2-3.4#227** (openstax-calc2.txt:42, antideriv) `int (1)/(1 + e^x) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/(1 + e^x) dx)
-- **C2-3.7#349** (openstax-calc2.txt:43, value) `int_(0)^(2) (1)/(sqrt(4 - x^2)) dx`: e stops: The engine refused this: it would not keep the equation true. (at ∫_{0}^{2} 1/sqrt(4 − x^2) dx)
 - **C2-3.7#359** (openstax-calc2.txt:45, value) `int_(-inf)^(inf) (1)/(x^2 + 1) dx`: e stops: You can't plug in ∞ here. Try L'Hôpital (C + l), or divide top and bottom by the highest power (Tab). (at lim_{x→∞} tan⁻¹(x) − lim_{x→−∞} tan⁻¹(x))
-- **C2-3.7#387** (openstax-calc2.txt:47, value) `int_(0)^(3) (dx)/(sqrt(9 - x^2))`: e stops: The engine refused this: it would not keep the equation true. (at ∫_{0}^{3} 1/sqrt(9 − x^2) dx)
 - **C2-3.7#389** (openstax-calc2.txt:48, value) `int_(0)^(4) x ln ( 4 x ) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{0}^{4} x ln(4x) dx)
 - **C2-3.7#393** (openstax-calc2.txt:49, value) `int_(2)^(inf) (dx)/((x^2 - 1)^(3 / 2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{2}^{∞} 1/((x^2 − 1)^(3/2)) dx)
