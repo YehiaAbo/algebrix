@@ -4,7 +4,7 @@
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { find, symbols, LETS, isDiff, Node, key, replace } from '../engine/ast';
 import { parseExpr } from '../engine/parse';
-import { divideOut, polyTarget } from '../engine/polytools';
+import { divideOut, polyTarget, factorGuess } from '../engine/polytools';
 import { newHints } from '../engine/simplify';
 import { toText } from '../engine/print';
 import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
@@ -119,14 +119,13 @@ export function commitValue(this: App) {
 /** Tab + q on a polynomial: take out a factor you type, P = (x − 2)·Q + R */
 export function openDivide(this: App) {
   const id = polyTarget(this.eq, this.sel);
-  if (!id) return this.refuse('Aim at a polynomial, like x³ − 2x − 4, then Tab + q takes a factor out of it.');
+  if (!id) return this.refuse('Aim at a sum, like 6x + 9 or x³ − 2x − 4, then Tab + q takes out a factor you type.');
   this.opKind = 'divide';
   this.divideAt = id;
   this.closeHub(false);
   this.setMode('op');
   const input = $<HTMLInputElement>('op-input');
-  const v = symbols(find(this.eq, id)!)[0] ?? 'x';
-  input.value = `${v} - 1`;
+  input.value = factorGuess(find(this.eq, id)!);
   $('op').hidden = false;
   this.place($('op'));
   input.focus();

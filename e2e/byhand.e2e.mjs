@@ -196,4 +196,21 @@ export const tests = {
     const st = await p.evaluate(() => ({ slots: window.algebrix.slots.length, named: window.algebrix.slots[1]?.steps.map(s => s.label) }));
     assert(st.slots === 2 && st.named.length === 2, `u = x² is its own equation, with its differentials: ${JSON.stringify(st)}`);
   },
+
+  async 'Tab + q takes out a number too, and starts with the common factor typed in'(h) {
+    const { load, key, hold, type, until, p, assert } = h;
+    await load('6x + 9 = 3');
+    await hold('Tab', 'q');
+    await until(() => true, '');
+    const guess = await p.evaluate(() => document.querySelector('#op-input').value);
+    assert(guess === '3', `the guess is the common factor: ${guess}`);
+    await key('Enter');
+    await until(s => s.eq === '3(2x + 3) = 3', '3 taken out');
+    await load('2x^2 + 4x = 0');
+    await hold('Tab', 'q');
+    await p.keyboard.press('Control+a');
+    await type('2');
+    await key('Enter');
+    await until(s => s.eq === '2(x^2 + 2x) = 0', 'a 2 out of a polynomial');
+  },
 };

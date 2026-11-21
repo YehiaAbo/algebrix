@@ -385,22 +385,39 @@ export function factorFully(n: Node, h: Hints): Node | null {
 /** P written as D·Q + R, for a D you choose: take (x − 2) out of 4x⁴ + 4x³ − 25x² − x + 6 to test
  *  whether 2 is a root (R = 0 means it is) and get the rest to work on. */
 export function divideOut(n: Node, d: Node): Node | { error: string } {
+  if (d.k === 'num' && d.v === 0) return { error: 'Nothing comes out of 0. Type a factor that isn’t 0.' };
   const P = poly(n), D = poly(d);
-  if (!P || P.c.length < 3) return { error: 'Aim at a polynomial, like x³ − 2x − 4, to take a factor out of it.' };
-  if (!D || D.c.length < 2) return { error: 'Type a factor with the letter in it, like x − 2.' };
-  if (D.v !== P.v) return { error: `Type a factor in ${P.v}, like ${P.v} − 2.` };
-  if (D.c.length > P.c.length) return { error: 'That factor has a higher power than the polynomial.' };
-  const { q, r } = divide(P.c, D.c);
-  const Q = parseExpr(polyText(P.v, q));
-  const DQ = mul([cloneFresh(d), Q]);
-  if (!r.length) return DQ;
-  const R = parseExpr(polyText(P.v, r));
-  return add([DQ, R]);
+  // a factor in the letter of a polynomial: long division, with what is left over shown
+  if (P && P.c.length >= 2 && D && D.c.length >= 2 && D.v === P.v && symbolsOf(n).length === 1) {
+    if (D.c.length > P.c.length) return { error: 'That factor has a higher power than the polynomial.' };
+    const { q, r } = divide(P.c, D.c);
+    const Q = parseExpr(polyText(P.v, q));
+    const DQ = mul([cloneFresh(d), Q]);
+    if (!r.length) return DQ;
+    return add([DQ, parseExpr(polyText(P.v, r))]);
+  }
+  // anything else (3, 2x, a, sin x): each term divided by it, as on paper: 6x + 9 = 3(2x + 3)
+  const terms = n.k === 'add' ? n.terms : [n];
+  if (terms.length < 2 && n.k !== 'mul') return { error: 'Aim at a sum, like 6x + 9, to take a factor out of it.' };
+  const h = newHints();
+  const inside = terms.map(t => simplify(frac(cloneFresh(t), cloneFresh(d)), h));
+  return mul([cloneFresh(d), inside.length === 1 ? inside[0] : add(inside)]);
+}
+
+/** a sensible first guess for Tab q: the common factor (3 in 6x + 9, 2x in 2x² + 4x), else x − 1 */
+export function factorGuess(n: Node): string {
+  const h = newHints(), f = factorize(n, h);
+  if (f && f.k === 'mul' && f.factors.length >= 2) {
+    const out = f.factors.filter(x => x.k !== 'add');
+    if (out.length) return toText(out.length === 1 ? out[0] : mul(out.map(x => cloneFresh(x))));
+  }
+  const v = symbolsOf(n)[0];
+  return v ? `${v} - 1` : '2';
 }
 
 /** the polynomial Tab q would take a factor out of: the aimed piece, or a side that is one */
 export function polyTarget(e: Eq, sel: string | null): string | null {
-  const ok = (n: Node | null) => !!n && n.k !== 'frac' && n.k !== 'eq' && symbolsOf(n).length === 1 && !('error' in divideOut(n, parseExpr(`${symbolsOf(n)[0]} - 1`)));
+  const ok = (n: Node | null) => !!n && (n.k === 'add' || n.k === 'mul');
   const aimed = sel && sel !== 'eq' ? find(e, sel) : null;
   if (aimed) return ok(aimed) ? aimed.id : null;
   return ok(e.lhs) ? e.lhs.id : ok(e.rhs) ? e.rhs.id : null;
