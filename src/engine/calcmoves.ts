@@ -7,9 +7,9 @@ import { dependsOn, derivative, limit2, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
-import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries } from './integrate';
+import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries, trigRewrite } from './integrate';
 import { toText } from './print';
-import { distributeNode } from './rewrite';
+import { distributeNode, expandAll } from './rewrite';
 
 const one = () => 1;
 const fresh = cloneFresh;
@@ -382,7 +382,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
   const active = { ...subs };
   let cur = e;
   // by parts on a side that is one integral: if that integral comes back (eˣ sin x), solve for it
-  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string } | null = null, parts = 0;
+  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string } | null = null, parts = 0, trigs = 0;
   for (let i = 0; i < 60; i++) {
     const t = nextCalc(cur);
     let r: MoveResult;
@@ -418,6 +418,9 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       if (isErr(r)) {
         const s = uSub(cur, t.id);
         if (!isErr(s.move) && s.u && s.g) { r = s.move; if (s.side) active[s.u] = s.g; }
+        else if (!isErr(trigRewrite(cur, t.id)) && trigs++ < 4) r = trigRewrite(cur, t.id);
+        // a polynomial inside: multiply it out, never by parts (that only goes round)
+        else if (polyInside(t) && expandInside(cur, t, true)) r = expandInside(cur, t, true)!;
         else {
           const b = byParts(cur, t.id);
           if (!isErr(b)) {
@@ -466,11 +469,22 @@ const inInt = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'int' && !h
 /** a limit whose inside has no derivatives left to take */
 const inLim = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'lim' && !hasCalc(n.arg)) f = true; }); return f; };
 
+/** ∫ (1 − u²)²u² du: only sums, products and whole powers of the letter and numbers */
+function polyInside(t: Node): boolean {
+  if (t.k !== 'int') return false;
+  let ok = true;
+  walk(t.arg, n => {
+    if (n.k === 'pow' && !(n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v >= 0)) ok = false;
+    else if (!['num', 'sym', 'add', 'mul', 'neg', 'pow'].includes(n.k)) ok = false;
+  });
+  return ok;
+}
+
 /** x²(sin x − x cos x): multiply the inside out, so the sum rule can take it term by term */
-function expandInside(e: Eq, t: Node): MoveOk | null {
+function expandInside(e: Eq, t: Node, all = false): MoveOk | null {
   if (t.k !== 'int' || hasCalc(t.arg)) return null;
   const h = newHints();
-  const a = distributeNode(t.arg, h);
+  const a = all ? expandAll(t.arg, h) : distributeNode(t.arg, h);
   if (!a || a.k !== 'add') return null;
   const r = checked(e, { eq: replace(e, t.arg.id, simplify(a, h)) as Eq, label: 'multiply out the inside', hints: h, factor: one, select: null });
   return isErr(r) ? null : r;

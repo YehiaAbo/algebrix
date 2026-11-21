@@ -130,6 +130,7 @@ export function quick(u: Node, v: string): { F: Node; label: string; conditions?
     const d = u.den;
     let q: { F: Node; label: string } | null = null;
     if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'cos' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(fn('tan', fresh(d.base.arg)), a), label: '∫ sec² = tan' }; }
+    else if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'sin' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(times(num(-1), frac(fn('cos', fresh(d.base.arg)), fn('sin', fresh(d.base.arg)))), a), label: '∫ csc² = −cot' }; }
     else if (d.k === 'pow' && !dependsOn(d.exp, v)) { const n = exponent(d.exp); if (n !== null) q = powerOf(d.base, -n); }
     // k − x² under a root, k + x² below, in any order: sin⁻¹ and tan⁻¹ (scaled when k isn't 1)
     else if (d.k === 'sqrt' && quadK(d.arg, v, -1)) { const { k, m } = quadK(d.arg, v, -1)!; q = arcRule('asin', k, m, V, v); }
@@ -296,6 +297,38 @@ export function backSub(e: Eq, u: string, g: Node): MoveResult {
   return checked(e, { eq: next, label: `back to ${symbols(g).join(', ')}: ${u} = ${toText(g)}`, hints: newHints(), factor: one, select: null, rule: 'substitute back', check: env => [[evaluate(next, env), evaluate(e, { ...env, [u]: evaluate(g, env) })]] });
 }
 
+/* ---------- trig rewrites ---------- */
+
+/** the identity a trig integral needs before a rule or u-substitution fits:
+ *  tan = sin/cos (so sec x tan x is sin x/cos² x, a u = cos x), and an odd power keeps one
+ *  factor back: sin³ x = (1 − cos² x) sin x, sin⁵ x cos² x = (1 − cos² x)² cos² x sin x */
+export function trigRewrite(e: Eq, sel: string | null): MoveResult {
+  const T = target(e, sel, 'int');
+  if (!T) return { error: 'No integral here.' };
+  const v = T.v, f = T.arg;
+  let hasTan = false;
+  walk(f, n => { if (n.k === 'fn' && n.name === 'tan' && dependsOn(n, v)) hasTan = true; });
+  const done = (next: Node, label: string, rule: string) => checked(e, { eq: replace(e, T.arg.id, next), label, hints: newHints(), factor: one, select: null, rule });
+  if (hasTan && !(f.k === 'fn' && f.name === 'tan')) {
+    const swap = (n: Node): Node => (n.k === 'fn' && n.name === 'tan' ? frac(fn('sin', swap(fresh(n.arg))), fn('cos', swap(fresh(n.arg)))) : withKids(n, swap));
+    return done(tidy(swap(fresh(f))), 'tan = sin/cos', 'trig identity');
+  }
+  const fs = f.k === 'mul' ? f.factors : [f];
+  const powOfTrig = (n: Node, name: 'sin' | 'cos') => (n.k === 'fn' && n.name === name ? { L: n.arg, n: 1 } : n.k === 'pow' && n.base.k === 'fn' && n.base.name === name && n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v > 0 ? { L: n.base.arg, n: n.exp.v } : null);
+  for (const [name, other] of [['sin', 'cos'], ['cos', 'sin']] as const) {
+    const i = fs.findIndex(x => { const p = powOfTrig(x, name); return !!p && p.n >= 3 && p.n % 2 === 1; });
+    if (i < 0) continue;
+    const p = powOfTrig(fs[i], name)!;
+    // the rest must be powers of the other one (same inside) or constants
+    if (!fs.every((x, j) => j === i || !dependsOn(x, v) || (powOfTrig(x, other) && key(powOfTrig(x, other)!.L) === key(p.L)))) continue;
+    const k = (p.n - 1) / 2;
+    const sq = add([num(1), neg(pow(fn(other, fresh(p.L)), num(2)))]);
+    const kept = [...fs.slice(0, i).map(fresh), k === 1 ? sq : pow(sq, num(k)), ...fs.slice(i + 1).map(fresh), fn(name, fresh(p.L))];
+    return done(mul(kept), `${name}${k === 1 ? '²' : ''}${k > 1 ? `^${2 * k}` : ''} = ${k > 1 ? '(' : ''}1 − ${other}²${k > 1 ? `)^${k}` : ''}, keeping one ${name} back`, 'trig identity');
+  }
+  return { error: 'No trig identity helps here.' };
+}
+
 /* ---------- by parts ---------- */
 
 const LIATE = (n: Node): number => {
@@ -313,7 +346,8 @@ export function byParts(e: Eq, sel: string | null): MoveResult {
   const v = T.v;
   const fs = T.arg.k === 'mul' ? T.arg.factors : [T.arg];
   // a lone factor only when it is a log or inverse trig (∫ ln x dx: u = ln x, dv = dx)
-  if (fs.length === 1 && LIATE(fs[0]) > 1) return { error: 'By parts needs a product (or a lone ln or inverse trig).' };
+  const lone = fs.length === 1 && fs[0].k === 'pow' && !dependsOn(fs[0].exp, v) ? fs[0].base : fs[0];
+  if (fs.length === 1 && LIATE(lone) > 1) return { error: 'By parts needs a product (or a lone ln or inverse trig).' };
   const aimed = sel && sel !== 'eq' ? fs.find(f => f.id === sel) : undefined;
   const order = aimed ? [aimed] : [...fs].filter(f => dependsOn(f, v)).sort((a, b) => LIATE(a) - LIATE(b));
   for (const U of order) {
