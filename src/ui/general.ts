@@ -11,6 +11,7 @@ import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
 import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
+import { compareCoefficients } from '../engine/techniques';
 import { ms } from './prefs';
 import * as sheet from './sheet';
 import { sound } from './sound';
@@ -326,3 +327,19 @@ export function characteristicShortcut(this: App) {
   this.later(ms(420), () => this.play(rest, () => this.say(`Equation ${this.cur + 1}: when e^(rx) solves it. e solves for r; each root gives e^(rx), and C g on equation 1 writes the general solution.`)));
 }
 
+
+/** Tab + e: compare coefficients of v. The first equation is the step here; the others go
+ *  beside it as equations of their own, ready for Tab + k (eliminate) or sub in */
+export function compareKey(this: App, v: string) {
+  const r = compareCoefficients(this.eq, v);
+  if (isErr(r.first)) return this.refuse(r.first.error);
+  if (this.slots.length + r.rest.length > 9) return this.refuse('Nine equations is the limit for now.');
+  const from = here(this.slot!);
+  if (!this.apply(r.first, 1.1)) return;
+  r.rest.forEach(q => this.slots.push({ steps: [{ eq: q, label: `coefficients of ${v}`, conditions: [], rule: 'compare coefficients', dir: '⇒' }], at: 0, sel: null, from }));
+  sound.commit();
+  this.renderAll(null);
+  this.save();
+  const n = r.rest.length + 1;
+  this.say(n === 1 ? `One power of ${v} to match: this equation.` : `${n} equations, one for each power of ${v}: this one and ${r.rest.map((_, i) => this.slots.length - r.rest.length + i + 1).join(', ')}. Tab + k eliminates with another.`);
+}

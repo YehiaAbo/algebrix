@@ -939,3 +939,58 @@ export function everyTrigSolution(peeled: Eq, answer: Eq, v: string): string | n
   if (second && !same(evaluate(second, {}), a)) fams.push(show(second));
   return `every solution: ${fams.map(f => `${v} = ${f}`).join(' or ')}, for any whole number k`;
 }
+
+/** the coefficient of each power of v (lowest first), when n is a polynomial in v whose
+ *  coefficients may hold other letters (A, B in A(x + 2) + B(x + 1)) */
+function polyCoeffs(n: Node, v: string): Node[] | null {
+  const s = simplify(expandAll(n, newHints()), newHints());
+  const by: Node[][] = [];
+  for (const t of s.k === 'add' ? s.terms : [s]) {
+    const i = termInfo(t);
+    let deg = 0;
+    const rest: Node[] = [];
+    for (const m of i.mono) {
+      if (m.k === 'sym' && m.name === v) deg += 1;
+      else if (m.k === 'pow' && m.base.k === 'sym' && m.base.name === v && m.exp.k === 'num' && Number.isInteger(m.exp.v) && m.exp.v > 0) deg += m.exp.v;
+      else if (has(m, v)) return null;
+      else rest.push(m);
+    }
+    if (deg > 12) return null;
+    (by[deg] ??= []).push(buildTerm(i.coef, rest, t));
+  }
+  return Array.from({ length: by.length }, (_, k) => (by[k]?.length ? simplify(by[k].length === 1 ? by[k][0] : add(by[k]), newHints()) : num(0)));
+}
+
+/** Tab e, compare coefficients: an equation that holds for every v (1 = A(x + 2) + B(x + 1)) is
+ *  one equation for each power of v (0 = A + B, 1 = 2A + B). The first replaces this one; the
+ *  rest come back to go beside it. */
+export function compareCoefficients(e: Eq, v: string): { first: MoveResult; rest: Eq[] } {
+  const none = (error: string) => ({ first: { error } as MoveResult, rest: [] as Eq[] });
+  if (relOf(e) !== '=') return none('Comparing coefficients needs an equation (=).');
+  const L = polyCoeffs(e.lhs, v), R = polyCoeffs(e.rhs, v);
+  if (!L || !R) return none(`Both sides need to be polynomials in ${v} to compare coefficients.`);
+  const n = Math.max(L.length, R.length);
+  const eqs: Eq[] = [];
+  for (let k = n - 1; k >= 0; k--) {
+    const l = L[k] ?? num(0), r = R[k] ?? num(0);
+    if (!symbols(l).length && !symbols(r).length) {
+      if (Math.abs(evaluate(l, {}) - evaluate(r, {})) > 1e-9) return none(`The ${k === 0 ? 'numbers' : `${v}${k > 1 ? '^' + k : ''} terms`} don't match (${toText(l)} and ${toText(r)}), so this can't hold for every ${v}.`);
+      continue;
+    }
+    eqs.push(eq(fresh(l), fresh(r)));
+  }
+  if (!eqs.length) return none(`Every power of ${v} already matches: this holds for every ${v}.`);
+  const others = symbols(e).filter(s => s !== v);
+  if (!others.length) return none(`There is nothing but ${v} here, so there are no unknown coefficients to find.`);
+  const first = checked(e, {
+    eq: eqs[0], label: `compare coefficients of ${v}`, hints: newHints(), factor: one, select: null, rule: 'compare coefficients', implies: true,
+    // the coefficients read right: Σ (lₖ − rₖ) vᵏ is the left side minus the right at any v, so
+    // it is 0 for every v exactly when each of these equations holds
+    check: env => [-1.3, 0.4, 2.2].map(x => {
+      const at = { ...env, [v]: x };
+      const poly = Array.from({ length: n }, (_, k) => (evaluate(L[k] ?? num(0), at) - evaluate(R[k] ?? num(0), at)) * x ** k).reduce((a, b) => a + b, 0);
+      return [poly, evaluate(e.lhs, at) - evaluate(e.rhs, at)] as [number, number];
+    }),
+  });
+  return { first, rest: eqs.slice(1) };
+}

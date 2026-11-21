@@ -213,4 +213,13 @@ export const tests = {
     await key('Enter');
     await until(s => s.eq === '2(x^2 + 2x) = 0', 'a 2 out of a polynomial');
   },
+
+  async 'Tab + e compares coefficients: an identity in x becomes one equation per power'(h) {
+    const { load, hold, until, p, assert } = h;
+    await load('1 = A(x + 2) + B(x + 1)');
+    await hold('Tab', 'e');
+    await until(s => s.eq === '0 = A + B' && s.slots === 2, 'x terms: 0 = A + B here');
+    const other = await p.evaluate(() => window.toText(window.algebrix.slots[1].steps[0].eq));
+    assert(other === '1 = 2A + B', `the numbers beside it: ${other}`);
+  },
 };

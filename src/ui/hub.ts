@@ -5,7 +5,7 @@ import { unfold } from '../engine/goals';
 import { applyMove, isErr } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { polyTarget } from '../engine/polytools';
-import { splitCases, eliminate, quadraticFormula } from '../engine/techniques';
+import { splitCases, eliminate, quadraticFormula, compareCoefficients } from '../engine/techniques';
 import { layout } from '../render/layout';
 import { Stage } from '../render/stage';
 import { walk } from '../engine/ast';
@@ -37,6 +37,9 @@ export function techniques(this: App): Tech[] {
   if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
   // q on a fraction is long division (a form); on a polynomial it takes out a factor you type
   if (aimed?.k !== 'frac' && polyTarget(eq, this.sel)) out.push({ key: 'q', label: 'take out a factor…', ok: true, run: () => this.openDivide() });
+  // an identity in x with unknown coefficients (1 = A(x + 2) + B(x + 1)): one equation per power
+  const cv = relOf(eq) === '=' ? (aimVar && !isErr(compareCoefficients(eq, aimVar).first) ? aimVar : ['x', 't', ...vars].find(w => vars.includes(w) && !isErr(compareCoefficients(eq, w).first))) : undefined;
+  if (cv) out.push({ key: 'e', label: `compare coefficients of ${cv}`, ok: true, run: () => this.compareKey(cv) });
   // any piece times A/A: e⁻ˣ on top and below, a conjugate, a missing factor
   if (aimed) out.push({ key: 'm', label: 'multiply by 1…', ok: true, run: () => this.openOne() });
   this.slots.forEach((_, j) => {
