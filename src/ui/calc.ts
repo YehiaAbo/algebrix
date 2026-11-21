@@ -15,6 +15,7 @@ import { derivStep, plugIn, lhopital, finishCalc, hasCalc, calcVar, derivativeOf
 import { intStep, uCandidate, byParts, plugBounds, ratioTest, taylor, writeOut } from '../engine/integrate';
 import { bothVar, differentialsBoth, integrateBoth } from '../engine/general';
 import { knownSum } from '../engine/sums';
+import { ms } from './prefs';
 import { sound } from './sound';
 import * as sheet from './sheet';
 import { here } from './tree';
@@ -215,9 +216,13 @@ export function addWork(this: App, e: Eq | { error: string }, why: string) {
 /** e with calculus in it: every derivative and limit, one step after another, then the usual */
 export function finishCalculus(this: App) {
   const { steps, stuck } = finishCalc(this.eq, this.substitutions());
+  let tidied = false;
   const then = () => {
     if (stuck) return this.say(stuck, true);
     if (hasCalc(this.eq)) return;
+    // 2(sin(x²)/2) left by a substitution reads sin(x²) before anything else
+    const t0 = tidy(this.eq);
+    if (!tidied && t0 && key(t0.eq) !== key(this.eq) && relOf(this.eq) === '=') { tidied = true; this.applyTidy({ ...t0, auto: true, label: 'simplify' }, 1.2); return this.later(ms(420), then); }
     if (!isErr(components(this.eq).first)) return this.splitComponents();
     const rel = relOf(this.eq);
     if (rel === 'expr' || rel === 'def') {
