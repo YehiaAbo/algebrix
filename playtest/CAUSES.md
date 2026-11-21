@@ -9,8 +9,6 @@ first. A fixed cause collapses to one line with its commit.
   are separate equations, and Tab + number subs one case into the other, giving a false
   A = B as a step. Cases are "or", not "and"; sub in between siblings should refuse. Found
   retesting A11.
-- **C2 s misses (−a)² = a².** (move) An even power of a negation stays as it is, so after
-  squaring −√(x + 2) the next step needs `e`. A03.
 - **C3 No hand route for a sign question.** (move) A product or quotient ≤ 0 has no "split
   into cases" or sign chart you drive; only `e` answers it. A06.
 - **C4 Can't test a root or divide by your own factor.** (move) Rational root theorem by
@@ -30,4 +28,5 @@ first. A fixed cause collapses to one line with its commit.
 
 ## Fixed
 
-- C1 Exponent laws only went one way: Tab p splits or combines a power, f i undoes any fractional power, s cancels a root (A01 A02 A08 A11, siblings 2.6 #10 #42 #44, 6.6 #27).
+- C2 (−a)² stayed as it was: s drops the minus under an even power (023fef5).
+- C1 Exponent laws only went one way: Tab p splits or combines a power, f i undoes any fractional power, s cancels a root (A01 A02 A08 A11, siblings 2.6 #10 #42 #44, 6.6 #27) (023fef5).
