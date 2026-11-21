@@ -273,7 +273,7 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
   const used = new Set(symbols(e));
   const u = ['u', 'w', 's'].find(n => !used.has(n) && n !== v) ?? 'u';
   const aimed = sel && sel !== 'eq' ? findPath(e, sel)?.slice(-1)[0] : null;
-  const cands: Node[] = [];
+  const cands: Node[] = [], exps: Node[] = [];
   const consider = (n: Node) => { if (dependsOn(n, v) && !(n.k === 'sym') && !cands.some(c => key(c) === key(n))) cands.push(n); };
   if (aimed && aimed !== T && findPath(T.arg, aimed.id)) consider(aimed);
   else walk(f, n => {
@@ -281,10 +281,11 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     if (n.k === 'pow') { consider(n.base); consider(n.exp); }
     if (n.k === 'frac') consider(n.den);
     if (n.k === 'fn' && (n.name === 'ln' || n.name === 'sin' || n.name === 'cos')) consider(n);
-    // eˣ in ∫ eˣ/(1 + e^(2x)): u = eˣ, and e^(2x) is u²
-    if (n.k === 'pow' && !dependsOn(n.base, v)) consider(n);
+    // eˣ in ∫ eˣ/(1 + e^(2x)): u = eˣ, and e^(2x) is u² (tried after the insides)
+    if (n.k === 'pow' && !dependsOn(n.base, v) && dependsOn(n, v) && !exps.some(c => key(c) === key(n))) exps.push(n);
   });
   cands.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length);
+  cands.push(...exps.filter(x => !cands.some(c => key(c) === key(x))));
   for (const g of cands) {
     const dg = derivative(g, v);
     if (!dg) continue;
