@@ -444,6 +444,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     // and a derivative just taken inside a limit (L'Hôpital): tidy the quotient before plugging in
     if (t?.k === 'at' || t?.k === 'int' || (t?.k === 'deriv' && (inLim(cur) || inInt(cur)))) { const s = tidyIntegrands(cur); if (s) { steps.push(s); cur = s.eq; } }
   }
+  // out of turns with work left: that is going round, not done
+  if (nextCalc(cur)) return { steps, stuck: 'This keeps going round without finishing. Try another route by hand.' };
   return { steps };
 }
 

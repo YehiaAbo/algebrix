@@ -12,4 +12,7 @@ describe('solving what the bank found', () => {
   it('the same log each side', () => expect(sols('log_9(3 - x) = log_9(4x - 8)')).toEqual([2.2]));
   it('a log of a product comes apart after ln both sides', () => expect(sols('2^(-3n) (1/4) = 2^(n + 2)', 'n')).toEqual([-1]));
   it('two roots: one across, square, the last root alone, square again', () => expect(sols('sqrt(3x + 7) + sqrt(x + 2) = 1')).toEqual([-2]));
+  it('a log base 2 on each term: × ln 2, then one log', () => expect(sols('log_2(x) + log_2(x + 2) = 3')).toEqual([2]));
+  it('a quadratic in √x', () => expect(sols('x - 5 sqrt(x) + 6 = 0')).toEqual([4, 9]));
+  it('a difference of roots', () => expect(sols('sqrt(x + 5) - sqrt(x) = 1')).toEqual([4]));
 });

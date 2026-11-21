@@ -1,0 +1,133 @@
+# Standard course exercises by technique (the kinds every calculus and algebra course sets),
+# checked by plain numbers (answer ?): Simpson's rule, finite differences, values near the limit.
+# Solve answers are worked by hand.
+# --- derivatives
+K-D1 | deriv | d/dx(x^3 sin x) | ? | product
+K-D2 | deriv | d/dx(e^(2x) cos(3x)) | ? | product, chain
+K-D3 | deriv | d/dx((x^2 + 1)/(x - 3)) | ? | quotient
+K-D4 | deriv | d/dx(sqrt(1 + x^2)) | ? | chain
+K-D5 | deriv | d/dx(ln(x^2 + 4)) | ? | chain, log
+K-D6 | deriv | d/dx(tan(x^2)) | ? | chain, trig
+K-D7 | deriv | d/dx(arctan(2x)) | ? | inverse trig
+K-D8 | deriv | d/dx(arcsin(x/2)) | ? | inverse trig
+K-D9 | deriv | d/dx(x^x) | ? | log differentiation
+K-D10 | deriv | d/dx(sin(x)^3 cos(x)^2) | ? | product, chain
+K-D11 | deriv | d/dx(e^(sin x)) | ? | chain
+K-D12 | deriv | d/dx(ln(sec x + tan x)) | ? | chain, trig
+K-D13 | deriv | d/dx(x^2 e^(-x) ln x) | ? | product
+K-D14 | deriv | d/dx(1/(1 + e^(-x))) | ? | chain, quotient
+K-D15 | deriv | d/dx((2x + 1)^5 (x - 1)^3) | ? | product, chain
+K-D16 | deriv | d/dx(cbrt(x^2 + 1)) | ? | chain, roots
+K-D17 | deriv | d/dx(sin(cos(x))) | ? | chain
+K-D18 | deriv | d/dx(x/sqrt(x^2 + 1)) | ? | quotient
+K-D19 | deriv | d/dx(2^x x^2) | ? | exponential
+K-D20 | deriv | d/dx(log_3(x^2 + 1)) | ? | log base
+# --- integrals: rules and u-substitution
+K-I1 | antideriv | int x^2 (x^3 + 1)^4 dx | ? | u-sub
+K-I2 | antideriv | int cos(x) e^(sin x) dx | ? | u-sub
+K-I3 | antideriv | int x/(x^2 + 1) dx | ? | u-sub, log
+K-I4 | antideriv | int (ln x)/x dx | ? | u-sub
+K-I5 | antideriv | int sec(x)^2 tan(x) dx | ? | u-sub, trig
+K-I6 | antideriv | int x sqrt(x + 1) dx | ? | u-sub
+K-I7 | antideriv | int e^x/(1 + e^(2x)) dx | ? | u-sub, arctan
+K-I8 | antideriv | int 1/(x ln x) dx | ? | u-sub
+K-I9 | antideriv | int sin(3x + 1) dx | ? | linear inside
+K-I10 | antideriv | int (3x^2 - 2x + 5)/x dx | ? | split
+K-I11 | antideriv | int x^2/(x^3 + 8) dx | ? | u-sub, log
+K-I12 | antideriv | int sin(x) cos(x)^4 dx | ? | u-sub, trig
+K-I13 | antideriv | int 1/(4 + x^2) dx | ? | arctan
+K-I14 | antideriv | int 1/sqrt(16 - x^2) dx | ? | arcsin
+K-I15 | antideriv | int (x + 1)/(x^2 + 2x + 5) dx | ? | u-sub, log
+# --- by parts
+K-P1 | antideriv | int x e^x dx | ? | by parts
+K-P2 | antideriv | int x^2 cos x dx | ? | by parts twice
+K-P3 | antideriv | int x ln x dx | ? | by parts
+K-P4 | antideriv | int arctan x dx | ? | by parts
+K-P5 | antideriv | int e^x cos x dx | ? | by parts, comes back
+K-P6 | antideriv | int x^3 e^(x^2) dx | ? | u-sub, by parts
+K-P7 | antideriv | int x sec(x)^2 dx | ? | by parts
+K-P8 | antideriv | int ln(x^2 + 1) dx | ? | by parts
+K-P9 | antideriv | int x^2 e^(-x) dx | ? | by parts twice
+K-P10 | antideriv | int arcsin x dx | ? | by parts
+K-P11 | antideriv | int x sin(x) cos(x) dx | ? | by parts, identity
+K-P12 | antideriv | int e^(2x) sin(3x) dx | ? | by parts, comes back
+# --- trig integrals
+K-T1 | antideriv | int cos(x)^3 dx | ? | odd power
+K-T2 | antideriv | int sin(x)^2 cos(x)^3 dx | ? | odd power
+K-T3 | antideriv | int sin(x)^4 dx | ? | even power
+K-T4 | antideriv | int tan(x)^3 sec(x)^2 dx | ? | u-sub
+K-T5 | antideriv | int sin(x)^2 cos(x)^2 dx | ? | even powers
+K-T6 | antideriv | int tan(x)^2 dx | ? | identity
+K-T7 | antideriv | int sec x dx | ? | trick
+K-T8 | antideriv | int cos(2x) cos(x) dx | ? | product to sum
+K-T9 | antideriv | int sin(5x) sin(3x) dx | ? | product to sum
+K-T10 | antideriv | int sin(x)^3 cos(x)^3 dx | ? | odd power
+# --- trig substitution
+K-S1 | antideriv | int x^2/sqrt(4 - x^2) dx | ? | trig sub
+K-S2 | antideriv | int 1/(x^2 + 9)^(3/2) dx | ? | trig sub
+K-S3 | antideriv | int sqrt(1 - 4x^2) dx | ? | trig sub
+K-S4 | antideriv | int 1/sqrt(x^2 + 4) dx | ? | trig sub
+K-S5 | antideriv | int sqrt(x^2 - 1)/x dx | ? | trig sub
+K-S6 | antideriv | int x^3 sqrt(1 - x^2) dx | ? | u-sub or trig sub
+# --- partial fractions
+K-F1 | antideriv | int 1/(x^2 - 1) dx | ? | partial fractions
+K-F2 | antideriv | int (3x + 5)/((x + 1)(x + 2)) dx | ? | partial fractions
+K-F3 | antideriv | int 1/(x (x + 1)^2) dx | ? | repeated factor
+K-F4 | antideriv | int (x^2 + 1)/(x^2 - x) dx | ? | long division
+K-F5 | antideriv | int 1/(x^3 + x) dx | ? | quadratic factor
+K-F6 | antideriv | int (2x^2 + 3)/(x (x^2 + 1)) dx | ? | quadratic factor
+K-F7 | antideriv | int x^3/(x^2 + 1) dx | ? | long division
+K-F8 | antideriv | int 1/(x^2 + 4x + 3) dx | ? | partial fractions
+# --- definite integrals
+K-V1 | value | int_(0)^(1) x e^x dx | ? | by parts
+K-V2 | value | int_(0)^(pi) sin(x)^2 dx | ? | half-angle
+K-V3 | value | int_(1)^(e) ln x dx | ? | by parts
+K-V4 | value | int_(0)^(1) x/(1 + x^2) dx | ? | u-sub
+K-V5 | value | int_(0)^(pi/2) sin(x) cos(x)^2 dx | ? | u-sub
+K-V6 | value | int_(0)^(1) sqrt(1 - x^2) dx | ? | trig sub
+K-V7 | value | int_(1)^(2) 1/(x^2 + x) dx | ? | partial fractions
+K-V8 | value | int_(0)^(1) x^2 e^(x^3) dx | ? | u-sub
+K-V9 | value | int_(0)^(pi/4) tan x dx | ? | rule
+K-V10 | value | int_(-1)^(1) (x^3 + x^2) dx | ? | odd part
+K-V11 | value | int_(0)^(2) abs(x - 1) dx | ? | absolute value
+K-V12 | value | int_(1)^(4) (sqrt(x) + 1/sqrt(x)) dx | ? | powers
+K-V13 | value | int_(0)^(1) arctan x dx | ? | by parts
+K-V14 | value | int_(0)^(pi) x sin x dx | ? | by parts
+K-V15 | value | int_(0)^(ln 2) e^x/(1 + e^x) dx | ? | u-sub
+# --- limits
+K-L1 | value | lim x->0 sin(3x)/x | ? | standard
+K-L2 | value | lim x->0 (1 - cos x)/x^2 | ? | lhopital
+K-L3 | value | lim x->inf (3x^2 + 1)/(2x^2 - x) | ? | highest power
+K-L4 | value | lim x->0 (e^x - 1 - x)/x^2 | ? | lhopital twice
+K-L5 | value | lim x->2 (x^2 - 4)/(x - 2) | ? | factor
+K-L6 | value | lim x->0 (sqrt(x + 4) - 2)/x | ? | conjugate
+K-L7 | value | lim x->inf (1 + 1/x)^x | ? | e
+K-L8 | value | lim x->0+ x ln x | ? | 0 times inf
+K-L9 | value | lim x->inf x^(1/x) | ? | exponent
+K-L10 | value | lim x->0 tan(x)/x | ? | standard
+K-L11 | value | lim x->1 ln(x)/(x - 1) | ? | lhopital
+K-L12 | value | lim x->inf (sqrt(x^2 + x) - x) | ? | conjugate
+K-L13 | value | lim x->0 (sin x - x)/x^3 | ? | lhopital thrice
+K-L14 | value | lim x->3 (x^3 - 27)/(x - 3) | ? | factor
+K-L15 | value | lim x->inf ln(x)/x | ? | growth
+# --- solving
+K-E1 | solve | x^4 - 13x^2 + 36 = 0 | -3, -2, 2, 3 | quadratic form
+K-E2 | solve | 9^x - 4·3^x + 3 = 0 | 0, 1 | quadratic in 3^x
+K-E3 | solve | ln(x) + ln(x - 3) = ln(10) | 5 | logs
+K-E4 | solve | sqrt(2x + 3) = x | 3 | radical, extraneous
+K-E5 | solve | abs(2x - 3) = 7 | -2, 5 | absolute value
+K-E6 | solve | 2^(x + 1) = 3^x | ln(2)/(ln(3) - ln(2)) | exponential
+K-E7 | solve | x^3 - 6x^2 + 11x - 6 = 0 | 1, 2, 3 | cubic
+K-E8 | solve | (x + 1)/(x - 2) = 3 | 3.5 | rational
+K-E9 | solve | log_2(x) + log_2(x + 2) = 3 | 2 | logs
+K-E10 | solve | x - 5 sqrt(x) + 6 = 0 | 4, 9 | quadratic in sqrt
+K-E11 | solve | e^(2x) - 5e^x + 6 = 0 | ln(2), ln(3) | quadratic in e^x
+K-E12 | solve | 1/x + 1/(x + 2) = 1 | -sqrt(2), sqrt(2) | rational
+K-E13 | solve | x^(1/2) + x^(1/4) - 6 = 0 | 16 | quadratic form
+K-E14 | solve | 3x^2 = 2x + 8 | -4/3, 2 | quadratic
+K-E15 | solve | (x - 1)(x + 2)(x - 4) = 0 | -2, 1, 4 | factored
+K-E16 | solve | 4^x = 8 | 1.5 | same base
+K-E17 | solve | sqrt(x + 5) - sqrt(x) = 1 | 4 | two roots
+K-E18 | solve | x^2 - 6x + 4 = 0 | 3 - sqrt(5), 3 + sqrt(5) | quadratic
+K-E19 | solve | log(x) = 2 | 100 | log
+K-E20 | solve | abs(x^2 - 4) = 3 | -sqrt(7), -1, 1, sqrt(7) | absolute value

@@ -14,6 +14,9 @@
 //   deriv      d/dx(…): answer the derivative, checked at many points
 //   antideriv  ∫ … dx: answer an antiderivative, checked up to a constant
 //   same       an expression to rewrite (simplify, a trig identity): answer an equal expression
+// An answer of ? checks the engine against plain numbers instead of a key: a definite integral
+// by Simpson's rule, a limit by values closer and closer, an antiderivative by its slope (finite
+// differences), a derivative by finite differences of what was differentiated.
 import { createServer } from 'vite';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
@@ -44,7 +47,8 @@ function tidy(src) {
       if (s[i] !== '(') { out += s[i]; continue; }
       const j = close(s, i);
       if (j < 0) { out += s.slice(i); break; }
-      if (s.slice(j + 1, j + 3) === '/(') {
+      // ln(x)/(x − 1): the bracket is a function's, so the fraction is ln(x) over (x − 1) already
+      if (s.slice(j + 1, j + 3) === '/(' && !/[A-Za-z_^]$/.test(out)) {
         const k = close(s, j + 2);
         let top = s.slice(i + 1, j);
         const m = top.match(/(^|\s)d([a-zθ])\s*$/);
@@ -58,7 +62,7 @@ function tidy(src) {
   const t = go(src);
   return dvar ? `${t} d${dvar}` : t;
 }
-const pts = [0.37, 0.83, 1.29, 1.71, 2.13, 2.9, -0.61, -1.37, 3.3, 4.1, 7.5];
+const pts = [0.37, 0.83, 1.29, 1.71, 2.13, 2.9, -0.61, -1.37, 3.3, 4.1, 7.5, 0.11, 0.23, -0.17, -0.29];
 
 /** what e gives for an expression: the last line of the worked steps */
 function worked(src) {
@@ -79,6 +83,40 @@ function sameAt(f, g, v, upToConst) {
   return n >= 3;
 }
 
+/** Simpson's rule on [a, b], skipping points where f is undefined (an end like 1/√x) */
+function simpson(f, a, b) {
+  const N = 20000, h = (b - a) / N;
+  let s = 0;
+  for (let i = 0; i <= N; i++) {
+    let x = a + i * h;
+    if (i === 0) x += h * 1e-3; else if (i === N) x -= h * 1e-3;
+    const y = f(x);
+    if (!Number.isFinite(y)) return NaN;
+    s += y * (i === 0 || i === N ? 1 : i % 2 ? 4 : 2);
+  }
+  return (s * h) / 3;
+}
+/** the plain-number check for a ? answer */
+function byNumbers(k, problem, got) {
+  const e = parseEquation(tidy(problem), true), P = e.lhs;
+  if (k === 'value' && P.k === 'int') {
+    const a = evaluate(P.lo, {}), b = evaluate(P.hi, {});
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    const want = simpson(x => evaluate(P.arg, { [P.v]: x }), a, b);
+    return Number.isFinite(want) && Math.abs(got.value - want) <= 1e-5 * (1 + Math.abs(want)) ? null : `gave ${got.text} = ${got.value}, Simpson: ${want}`;
+  }
+  if (k === 'value' && P.k === 'lim') {
+    const a = evaluate(P.to, {}), f = x => evaluate(P.arg, { [P.v]: x });
+    const want = Number.isFinite(a) ? (f(a + 1e-6) + f(a - 1e-6)) / 2 : f(a > 0 ? 1e7 : -1e7);
+    return Number.isFinite(want) && Math.abs(got.value - want) <= 1e-3 * (1 + Math.abs(want)) ? null : `gave ${got.text} = ${got.value}, numbers say ${want}`;
+  }
+  const slope = (n, v, x) => { const h = 1e-5 * (1 + Math.abs(x)); return (evaluate(n, { [v]: x + h, C: 0 }) - evaluate(n, { [v]: x - h, C: 0 })) / (2 * h); };
+  const agree = (f, g, v) => { let n = 0; for (const x of pts) { const a = f(x), b = g(x); if (!Number.isFinite(a) || !Number.isFinite(b)) continue; n++; if (Math.abs(a - b) > 1e-4 * (1 + Math.abs(b))) return false; } return n >= 3; };
+  if (k === 'antideriv' && P.k === 'int') return agree(x => slope(got.node, P.v, x), x => evaluate(P.arg, { [P.v]: x }), P.v) ? null : `gave ${got.text}: its slope is not the integrand`;
+  if (k === 'deriv' && P.k === 'deriv') return agree(x => evaluate(got.node, { [P.v]: x }), x => slope(P.arg, P.v, x), P.v) ? null : `gave ${got.text}: not the slope of ${toText(P.arg)}`;
+  return `no plain-number check for ${k} here`;
+}
+
 function run(kind, problem, answer) {
   const [k, v = 'x'] = kind.split(':');
   if (k === 'solve') {
@@ -92,6 +130,10 @@ function run(kind, problem, answer) {
   }
   const w = worked(problem);
   if (w.stuck) return `e stops: ${w.stuck} (at ${w.text})`;
+  if (answer.trim() === '?') {
+    if (k === 'value' && symbols(w.node).length) return `not a number: ${w.text}`;
+    return byNumbers(k, problem, { ...w, value: k === 'value' ? evaluate(w.node, {}) : NaN });
+  }
   if (k === 'value') {
     if (symbols(w.node).length) return `not a number: ${w.text}`;
     const got = evaluate(w.node, {}), want = num(answer);

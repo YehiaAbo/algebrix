@@ -143,7 +143,14 @@ export function quick(u: Node, v: string): { F: Node; label: string; conditions?
     const c = isNum(u.num, 1) ? [] : [fresh(u.num)];
     const d = u.den;
     let q: { F: Node; label: string } | null = null;
-    if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'cos' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(fn('tan', fresh(d.base.arg)), a), label: '∫ sec² = tan' }; }
+    // ∫ sec = ln|sec + tan|, written (1 + sin)/cos; ∫ csc = ln|(1 − cos)/sin|
+    if (d.k === 'fn' && (d.name === 'cos' || d.name === 'sin')) {
+      const a = slope(d.arg, v), L = () => fresh(d.arg);
+      if (a !== null) q = d.name === 'cos'
+        ? { F: over(fn('ln', fn('abs', frac(add([num(1), fn('sin', L())]), fn('cos', L())))), a), label: '∫ sec = ln|sec + tan|' }
+        : { F: over(fn('ln', fn('abs', frac(add([num(1), neg(fn('cos', L()))]), fn('sin', L())))), a), label: '∫ csc = ln|csc − cot|' };
+    }
+    else if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'cos' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(fn('tan', fresh(d.base.arg)), a), label: '∫ sec² = tan' }; }
     else if (d.k === 'pow' && d.base.k === 'fn' && d.base.name === 'sin' && isNum(d.exp, 2)) { const a = slope(d.base.arg, v); if (a !== null) q = { F: over(times(num(-1), frac(fn('cos', fresh(d.base.arg)), fn('sin', fresh(d.base.arg)))), a), label: '∫ csc² = −cot' }; }
     else if (d.k === 'pow' && !dependsOn(d.exp, v)) { const n = exponent(d.exp); if (n !== null) q = powerOf(d.base, -n); }
     // k − x² under a root, k + x² below, in any order: sin⁻¹ and tan⁻¹ (scaled when k isn't 1)
@@ -274,13 +281,17 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     if (n.k === 'pow') { consider(n.base); consider(n.exp); }
     if (n.k === 'frac') consider(n.den);
     if (n.k === 'fn' && (n.name === 'ln' || n.name === 'sin' || n.name === 'cos')) consider(n);
+    // eˣ in ∫ eˣ/(1 + e^(2x)): u = eˣ, and e^(2x) is u²
+    if (n.k === 'pow' && !dependsOn(n.base, v)) consider(n);
   });
   cands.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length);
   for (const g of cands) {
     const dg = derivative(g, v);
     if (!dg) continue;
     const swap = (n: Node): Node => (key(n) === key(g) ? sym(u) : withKids(n, swap));
-    const Q = tidy(frac(swap(fresh(f)), tidy(dg)));
+    let Q = tidy(frac(swap(fresh(f)), tidy(dg)));
+    // what's left may be a power of g: x² with u = x² (∫ x³ e^(x²)), e^(2x) with u = eˣ
+    if (dependsOn(Q, v)) Q = tidy(powersOf(Q, g, v, u));
     if (dependsOn(Q, v)) continue;
     const def = !!(T.lo && T.hi);
     const bound = (b: Node) => tidy(substitute(fresh(g), v, b));
@@ -292,6 +303,30 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     return { move, side: def ? undefined : eq(sym(u), fresh(g)), u, g };
   }
   return { move: { error: aimed ? `Its derivative isn't there, so u = that doesn't work. Aim at another inside piece.` : 'No inside function whose derivative is also there. Try by parts (C + b).' } };
+}
+
+/** every piece of n that is c·gᵏ (checked at a few points) written c·uᵏ */
+function powersOf(n: Node, g: Node, v: string, u: string): Node {
+  const xs = [0.37, 0.71, 1.13];
+  const gv = xs.map(x => evaluate(g, { [v]: x }));
+  if (!gv.every(y => Number.isFinite(y) && Math.abs(Math.abs(y) - 1) > 1e-6)) return n;
+  const go = (m: Node): Node => {
+    if ((m.k === 'pow' || m.k === 'sqrt') && dependsOn(m, v)) {
+      const mv = xs.map(x => evaluate(m, { [v]: x }));
+      for (const k of [1, 2, 3, 4]) {
+        const r = mv.map((y, i) => y / gv[i] ** k);
+        if (r.every(y => Number.isFinite(y) && Math.abs(y - r[0]) < 1e-9 * (1 + Math.abs(r[0])))) {
+          const c = ratNode(r[0]);
+          if (!c) break;
+          const p = k === 1 ? sym(u) : pow(sym(u), ratNode(k)!);
+          return isNum(c, 1) ? p : mul([c, p]);
+        }
+      }
+      return m;
+    }
+    return withKids(m, go);
+  };
+  return go(n);
 }
 
 /** the inside g that u-substitution would name: aimed, else the one whose derivative is there too */
@@ -331,6 +366,16 @@ export function backSub(e: Eq, u: string, g: Node): MoveResult {
 
 /* ---------- trig substitution ---------- */
 
+/** (3 sin θ)³ is 27 sin³ θ and (sin/cos)² is sin²/cos², so the rules can see the powers */
+function spread(x: Node): Node {
+  const y = withKids(x, spread);
+  if (y.k !== 'pow' || y.exp.k !== 'num' || !Number.isInteger(y.exp.v)) return y;
+  const n = (y.exp as Extract<Node, { k: 'num' }>).v;
+  if (y.base.k === 'mul') return mul(y.base.factors.map(b => pow(fresh(b), num(n))));
+  if (y.base.k === 'frac') return frac(pow(fresh(y.base.num), num(n)), pow(fresh(y.base.den), num(n)));
+  return y;
+}
+
 /** √(k − m x²), √(k + m x²) or √(m x² − k) (or that to a half power): x = a sin θ, a tan θ or
  *  a sec θ, so the root is a cos θ, a sec θ or a tan θ, and dx comes along. One step that plays
  *  what b (x = 3 sin θ), C k and sub in do by hand. Returns θ and what it is in x, for going back. */
@@ -361,11 +406,6 @@ export function trigSub(e: Eq, sel: string | null): { move: MoveResult; u?: stri
   const root = kind === 'sin' ? times(rk, cos()) : kind === 'tan' ? frac(fresh(rk), cos()) : times(rk, tan());
   const dX = kind === 'sin' ? times(fresh(a), cos()) : kind === 'tan' ? frac(fresh(a), pow(cos(), num(2))) : frac(times(fresh(a), sin()), pow(cos(), num(2)));
   const swap = (x: Node): Node => (x === r ? (n === 1 ? root : pow(fresh(root), num(n))) : x.k === 'sym' && x.name === v ? fresh(X) : withKids(x, swap));
-  // (3 sin θ)³ is 27 sin³ θ, so the rules can see the power of sin
-  const spread = (x: Node): Node => {
-    const y = withKids(x, spread);
-    return y.k === 'pow' && y.base.k === 'mul' && y.exp.k === 'num' && Number.isInteger(y.exp.v) ? mul(y.base.factors.map(b => pow(fresh(b), num((y.exp as Extract<Node, { k: 'num' }>).v)))) : y;
-  };
   const Q = tidy(spread(tidy(times(swap(f), dX))));
   if (dependsOn(Q, v)) return { move: { error: 'The substitution leaves some x behind.' } };
   // θ in x: sin⁻¹(x/a), tan⁻¹(x/a), and for sec, cos⁻¹(a/x) (x > a)
@@ -376,7 +416,9 @@ export function trigSub(e: Eq, sel: string | null): { move: MoveResult; u?: stri
   const next = def ? int(th, Q, bound(T.lo!), bound(T.hi!)) : int(th, Q);
   const label = `trig substitution: ${v} = ${toText(X)}, so ${toText(r)} = ${toText(n === 1 ? root : pow(fresh(root), num(n)))}`;
   const dg = derivative(g, v);
-  const check = def || !dg ? undefined : (env: Env) => [[evaluate(Q, { ...env, [th]: evaluate(g, env) }) * evaluate(dg, env), evaluate(f, env)]] as [number, number][];
+  // x = a sec θ covers x > a only (θ in [0, π/2)), so that is where it is checked
+  const aV = evaluate(a, {});
+  const check = def || !dg ? undefined : (env: Env) => (kind === 'sec' && !(env[v] > aV) ? [[NaN, NaN]] : [[evaluate(Q, { ...env, [th]: evaluate(g, env) }) * evaluate(dg, env), evaluate(f, env)]]) as [number, number][];
   const move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'trig substitution', check });
   return isErr(move) ? { move } : { move, u: th, g };
 }
@@ -395,7 +437,13 @@ export function trigRewrite(e: Eq, sel: string | null): MoveResult {
   const done = (next: Node, label: string, rule: string) => checked(e, { eq: replace(e, T.arg.id, next), label, hints: newHints(), factor: one, select: null, rule });
   if (hasTan && !(f.k === 'fn' && f.name === 'tan')) {
     const swap = (n: Node): Node => (n.k === 'fn' && n.name === 'tan' ? frac(fn('sin', swap(fresh(n.arg))), fn('cos', swap(fresh(n.arg)))) : withKids(n, swap));
-    return done(tidy(swap(fresh(f))), 'tan = sin/cos', 'trig identity');
+    return done(tidy(spread(tidy(swap(fresh(f))))), 'tan = sin/cos', 'trig identity');
+  }
+  // tan² = sec² − 1 (and cot² = csc² − 1): sin²/cos² is 1/cos² − 1
+  const sq = (n: Node, nm: string) => n.k === 'pow' && isNum(n.exp, 2) && n.base.k === 'fn' && n.base.name === nm ? n.base.arg : null;
+  if (f.k === 'frac' && ((sq(f.num, 'sin') && sq(f.den, 'cos')) || (sq(f.num, 'cos') && sq(f.den, 'sin')))) {
+    const top = (f.num as Extract<Node, { k: 'pow' }>).base as Extract<Node, { k: 'fn' }>, bot = (f.den as Extract<Node, { k: 'pow' }>).base as Extract<Node, { k: 'fn' }>;
+    if (key(top.arg) === key(bot.arg)) return done(add([frac(num(1), pow(fn(bot.name, fresh(bot.arg)), num(2))), num(-1)]), top.name === 'sin' ? 'tan² = sec² − 1' : 'cot² = csc² − 1', 'trig identity');
   }
   const fs = f.k === 'mul' ? f.factors : [f];
   const powOfTrig = (n: Node, name: 'sin' | 'cos') => (n.k === 'fn' && n.name === name ? { L: n.arg, n: 1 } : n.k === 'pow' && n.base.k === 'fn' && n.base.name === name && n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v > 0 ? { L: n.base.arg, n: n.exp.v } : null);
@@ -409,6 +457,28 @@ export function trigRewrite(e: Eq, sel: string | null): MoveResult {
     const sq = add([num(1), neg(pow(fn(other, fresh(p.L)), num(2)))]);
     const kept = [...fs.slice(0, i).map(fresh), k === 1 ? sq : pow(sq, num(k)), ...fs.slice(i + 1).map(fresh), fn(name, fresh(p.L))];
     return done(mul(kept), `${name}${k === 1 ? '²' : ''}${k > 1 ? `^${2 * k}` : ''} = ${k > 1 ? '(' : ''}1 − ${other}²${k > 1 ? `)^${k}` : ''}, keeping one ${name} back`, 'trig identity');
+  }
+  // two waves multiplied: sin A cos B = (sin(A + B) + sin(A − B))/2, and the like; sin x cos x is sin 2x/2
+  const waves = fs.filter(x => x.k === 'fn' && (x.name === 'sin' || x.name === 'cos') && slope(x.arg, v) !== null);
+  if (waves.length >= 2) {
+    const [p, q] = waves as Extract<Node, { k: 'fn' }>[];
+    const [s1, c1] = p.name === 'sin' || q.name !== 'sin' ? [p, q] : [q, p];
+    const A = () => fresh(s1.arg), B = () => fresh(c1.arg);
+    const sum = () => tidy(add([A(), B()])), diff = () => tidy(add([A(), neg(B())]));
+    const pair = s1.name === 'sin' && c1.name === 'cos' ? add([fn('sin', sum()), fn('sin', diff())])
+      : s1.name === 'cos' ? add([fn('cos', diff()), fn('cos', sum())])
+      : add([fn('cos', diff()), neg(fn('cos', sum()))]);
+    const rest = fs.filter(x => x !== p && x !== q).map(fresh);
+    const h = newHints();
+    return done(simplify(mul([...rest, frac(pair, num(2))]), h), s1.name === 'sin' && c1.name === 'cos' ? 'sin A cos B = (sin(A + B) + sin(A − B))/2' : s1.name === 'cos' ? 'cos A cos B = (cos(A − B) + cos(A + B))/2' : 'sin A sin B = (cos(A − B) − cos(A + B))/2', 'trig identity');
+  }
+  // even powers of both (sin² x cos² x): each by its half-angle identity, then multiply out
+  const evens = fs.filter(x => (['sin', 'cos'] as const).some(nm => { const p = powOfTrig(x, nm); return !!p && p.n >= 2 && p.n % 2 === 0; }));
+  if (evens.length >= 2 && fs.every(x => evens.includes(x) || !dependsOn(x, v))) {
+    const half = (x: Node) => { const pw = x as Extract<Node, { k: 'pow' }>, b = pw.base as Extract<Node, { k: 'fn' }>, k = (pw.exp as Extract<Node, { k: 'num' }>).v / 2; const w = add([num(1), b.name === 'sin' ? neg(fn('cos', times(num(2), fresh(b.arg)))) : fn('cos', times(num(2), fresh(b.arg)))]); return [frac(num(1), num(2 ** k)), k === 1 ? w : pow(w, num(k))]; };
+    const h = newHints();
+    const next = simplify(expandAll(mul(fs.flatMap(x => (evens.includes(x) ? half(x) : [fresh(x)]))), h), h);
+    return done(next, 'sin² = (1 − cos 2x)/2 and cos² = (1 + cos 2x)/2, then multiply out', 'trig identity');
   }
   // an even power alone (cos⁴ θ): the half-angle identity, then multiply out
   const ev = fs.findIndex(x => (['sin', 'cos'] as const).some(nm => { const p = powOfTrig(x, nm); return !!p && p.n >= 4 && p.n % 2 === 0; }));
@@ -446,7 +516,7 @@ export function byParts(e: Eq, sel: string | null): MoveResult {
   for (const U of order) {
     const rest = fs.filter(f => f !== U);
     const dv = rest.length === 0 ? num(1) : rest.length === 1 ? rest[0] : mul(rest);
-    const V = quick(dv, v);
+    const V = quick(dv, v) ?? quick(tidy(dv), v);
     if (!V) continue;
     const du = fresh(prettyDerivative(U, v));
     const def = !!(T.lo && T.hi);

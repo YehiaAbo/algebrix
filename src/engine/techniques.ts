@@ -460,6 +460,9 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
   const cl = clearLetterFractions(cur, v);
   if (cl) take(cl);
   else { const cf = clearFractions(cur, v); if (cf) take(cf); }
+  // x − 5√x + 6 = 0, e²ˣ − 5eˣ + 6 = 0: a quadratic in √x or eˣ, seen before any squaring
+  const pq = powerQuadratic(cur, v);
+  if (pq) take(pq);
   const seen = new Set<string>();
   for (let i = 0; i < 24; i++) {
     if (splitCases(cur, v)) return steps; // the caller splits into cases
@@ -500,6 +503,17 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
       if (f) { f.forEach(take); continue; }
       // x³ = x + 1: a root of each side would only go round in circles, so say where it crosses
       if (hl && hr) return stuck(noNiceFactors(cur, v, poly.c));
+    }
+    // log₂ x + log₂(x + 2) = 3 is (ln x + ln(x + 2))/ln 2 term by term: × ln 2 first
+    const sameDen = (n: Node) => n.k === 'add' && n.terms.every(t => t.k === 'frac' && !has(t.den, v) && key(t.den) === key((n.terms[0] as Extract<Node, { k: 'frac' }>).den));
+    const sd = (['lhs', 'rhs'] as const).find(k => has(cur[k], v) && sameDen(cur[k]));
+    const den = sd ? ((cur[sd] as Extract<Node, { k: 'add' }>).terms[0] as Extract<Node, { k: 'frac' }>).den : null;
+    if (den && den.k !== 'num' && sd) {
+      const tops = (cur[sd] as Extract<Node, { k: 'add' }>).terms.map(t => fresh((t as Extract<Node, { k: 'frac' }>).num));
+      const other = sd === 'lhs' ? 'rhs' : 'lhs', times = simplify(mul([fresh(den), fresh(cur[other])]), newHints());
+      const next = sd === 'lhs' ? eq(add(tops), times) : eq(times, add(tops));
+      const d = den;
+      if (push({ eq: next, label: `× ${toText(den)}`, hints: newHints(), factor: env => evaluate(d, env), select: null })) continue;
     }
     // log₉(3 − x) = log₉(4x − 8) is ln(3 − x)/ln 9 = ln(4x − 8)/ln 9: × ln 9 first, then e undoes ln
     if (hl && hr && cur.lhs.k === 'frac' && cur.rhs.k === 'frac' && key(cur.lhs.den) === key(cur.rhs.den) && !has(cur.lhs.den, v) && push(multiplyBoth(cur, cur.lhs.den.id))) continue;
@@ -555,11 +569,12 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
       return steps.length ? steps : { error: `Already solved for ${v}.` };
     }
     let ok = false;
+    const rooted = (t: Node) => { let r = false; walk(t, m => { if (m.k === 'sqrt' && has(m, v)) r = true; }); return r; };
     if (side.k === 'add') {
       const rest = side.terms.filter(x => !has(x, v));
       if (rest.length) ok = push(moveAcross(cur, rest[0].id));
       // √(3x + 7) + √(x + 2) = 1: one root across, so each side can be squared in turn
-      else if (side.terms.filter(t => t.k === 'sqrt').length >= 2) ok = push(moveAcross(cur, side.terms.filter(t => t.k === 'sqrt')[1].id));
+      else if (side.terms.filter(rooted).length >= 2) ok = push(moveAcross(cur, side.terms.filter(rooted)[1].id));
       else if (hasExpandable(side)) { const h = newHints(); ok = push({ eq: replace(cur, side.id, expandAll(side, h)), label: 'expand', hints: h, factor: one, select: null }); }
       else {
         const h = newHints();
@@ -600,10 +615,12 @@ export function powerQuadratic(e: Eq, v: string): MoveOk | null {
   const zero = simplify(expandAll(add([fresh(e.lhs), negate(fresh(e.rhs))]), h), h);
   const terms = zero.k === 'add' ? zero.terms : [zero];
   const cands: Node[] = [];
-  walk(zero, n => { if (n.k === 'pow' && has(n, v) && !cands.some(c => key(c) === key(n))) cands.push(n); });
+  walk(zero, n => { if ((n.k === 'pow' || n.k === 'sqrt') && has(n, v) && !cands.some(c => key(c) === key(n))) cands.push(n); });
   const xs = [0.37, 0.71, 1.13];
   const ratOf = (x: number) => { for (const d of [1, 2, 3, 4, 6, 8, 12]) if (Math.abs(x * d - Math.round(x * d)) < 1e-9) return { p: Math.round(x * d), q: d }; return null; };
   for (const g of cands) {
+    // x² is a plain polynomial's business (factoring does it), not a substitution
+    if (g.k === 'pow' && g.base.k === 'sym' && g.exp.k === 'num' && Number.isInteger(g.exp.v)) continue;
     const gv = xs.map(x => evaluate(g, { [v]: x }));
     if (!gv.every(y => Number.isFinite(y) && Math.abs(y - 1) > 1e-6)) continue;
     const c: number[] = [];
