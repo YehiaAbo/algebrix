@@ -2,7 +2,7 @@
 // ← → walk to neighbours. A fraction is vertical: ↓ from its top goes to its bottom and
 // ↑ from its bottom goes to its top. Each returns the id to aim at, or null at an edge
 // (where nothing happens: the edge isn't a mistake, so nothing shakes).
-import { Node, Eq, findPath } from '../engine/ast';
+import { Node, Eq, findPath, children as kidsOf } from '../engine/ast';
 
 export interface NavView {
   root: Eq;
@@ -104,4 +104,27 @@ export function flip(v: NavView, sel: string | null, dive: (n: Node) => Node): s
     }
   }
   return path?.[1] === v.root.lhs ? v.root.rhs.id : v.root.lhs.id;
+}
+
+/** Where the aim goes after a move, so the arrows keep working without a fresh Space: what the
+ *  move names; else the piece you had; else what the move made where it was (the new pieces'
+ *  smallest common parent); else its nearest part that survived; else the whole equation. */
+export function aimAfter(before: Eq, after: Eq, sel: string | null, select?: string | null): string | null {
+  const ids = (n: Node, out = new Set<string>()) => { out.add(n.id); for (const c of kidsOf(n)) ids(c, out); return out; };
+  const now = ids(after);
+  if (select && (select === 'eq' || now.has(select))) return select;
+  if (!sel) return null;
+  if (sel === 'eq' || now.has(sel)) return sel;
+  const old = ids(before);
+  const path = findPath(before, sel) ?? [];
+  const anc = [...path].reverse().find(n => n.k !== 'eq' && now.has(n.id)) ?? null;
+  const fresh = [...now].filter(id => !old.has(id)).map(id => findPath(after, id)!).filter(Boolean);
+  if (fresh.length) {
+    let common = fresh[0];
+    for (const p of fresh.slice(1)) { let i = 0; while (i < common.length && i < p.length && common[i].id === p[i].id) i++; common = common.slice(0, i); }
+    const lca = common[common.length - 1];
+    const inside = !anc || common.some(n => n.id === anc.id);
+    if (lca && lca.k !== 'eq' && inside) return lca.id;
+  }
+  return anc?.id ?? 'eq';
 }

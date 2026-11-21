@@ -518,7 +518,8 @@ export class App {
     const link = this.linkNext, out = { again: false };
     this.linkNext = null;
     const { answer } = sheet.addStep(this, r, { link, out });
-    this.sel = r.select !== undefined ? (r.select && find(r.eq, r.select) ? r.select : null) : this.sel && find(r.eq, this.sel) ? this.sel : null;
+    // the aim follows the work, so the arrows keep going without a fresh Space
+    this.sel = nav.aimAfter(before, r.eq, this.sel, r.select);
     sound.move(pitch);
     // judged first, so a wrong answer is drawn as one
     const now = solvedFor(r.eq);
