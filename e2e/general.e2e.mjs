@@ -86,6 +86,35 @@ export const tests = {
     await until(s => s.eq === 'C = 0', 'C = 0', 12000);
   },
 
+  async 'Feynman from the definition: type I(t) = ∫ …, or b on I = ∫ …, then d/dt, ∫ back, I(0) finds C'(h) {
+    const { load, key, type, hold, until, p } = h;
+    await load('I = int_0^1 (x^t - 1)/ln x dx');
+    await dig(h, '∫_{0}^{1} (x^t − 1)/ln(x) dx');
+    await key('b');
+    await p.keyboard.press('Control+a');
+    await type('I(t)');
+    await key('Enter');
+    await until(s => s.eq === 'I(t) = ∫_{0}^{1} (x^t − 1)/ln(x) dx' && s.slots === 1, 'I = … became the definition of I(t), in place');
+    await load('y = 1');
+    await key('i'); await p.keyboard.press('Control+a'); await key('Backspace');
+    await type('I(t) = int_0^1 (x^t - 1)/ln x dx'); await key('Enter');
+    await until(s => s.eq === 'I(t) = ∫_{0}^{1} (x^t − 1)/ln(x) dx', 'typed as a definition, not I·t');
+    await hold('c', 'd');
+    await until(s => s.eq.startsWith('d/dt'), 'd/dt both sides');
+    await key('e');
+    await until(s => s.eq === 'I′(t) = 1/(t + 1)', 'Leibniz, then the easy integral', 12000);
+    await hold('c', 'i');
+    await key('e');
+    await until(s => s.eq.includes('ln|t + 1| + C'), 'I(t) = ln|t + 1| + C', 12000);
+    await dig(h, 't');
+    await key('p', 'Enter');
+    await until(s => s.eq.startsWith('I(0)'), 'at t = 0');
+    await dig(h, 'I(0)');
+    await hold('Tab', 'u');
+    await key('e');
+    await until(s => s.eq === 'C = 0', 'C = 0', 12000);
+  },
+
   async 'p is refused on an equation to solve'(h) {
     const { load, key, countRefusals, refusals, assert } = h;
     await load('x^2 = 4');

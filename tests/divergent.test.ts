@@ -54,3 +54,23 @@ describe('a typed name for an integral\'s letter', () => {
     expect(T(ok(subIn(e, parseEquation('u = x^2'), null, 'Equation 2')))).toBe('I = ∫_{0}^{1} e^u/2 du');
   });
 });
+
+describe('defining a function, any letter', () => {
+  it('I(t) = … typed is a definition of I, not I times t', () => {
+    const e = parseEquation('I(t) = int_0^1 (x^t - 1)/ln x dx');
+    expect(e.rel).toBe('def');
+    expect(T(e)).toBe('I(t) = ∫_{0}^{1} (x^t − 1)/ln(x) dx');
+  });
+  it('a letter times a bracket stays a product when the letter in it is not on the right', () => {
+    expect(parseEquation('a(x) = 3').rel).not.toBe('def');
+    expect(T(parseEquation('x(x+1) = 6'))).toBe('x(x + 1) = 6');
+  });
+  it('b with I(t) on the integral of I = ∫ …: the equation becomes the definition', () => {
+    const e = parseEquation('I = int_0^1 (x^t - 1)/ln x dx');
+    const n = nameIt(e, e.rhs.id, 'I(t)');
+    if ('error' in n) throw new Error(n.error);
+    expect(n.inPlace).toBe(true);
+    expect(T(n.step.eq)).toBe('I(t) = ∫_{0}^{1} (x^t − 1)/ln(x) dx');
+    expect(n.step.eq.rel).toBe('def');
+  });
+});

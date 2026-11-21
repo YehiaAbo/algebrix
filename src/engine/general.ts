@@ -48,7 +48,7 @@ export function brief(n: Node): string {
   return n.k === 'int' ? 'the integral' : n.k === 'sum' ? (n.prod ? 'the product' : 'the sum') : n.k === 'lim' ? 'the limit' : n.k === 'frac' ? 'the fraction' : 'the piece';
 }
 
-export interface Named { step: MoveOk; def: Eq; letter: string | null }
+export interface Named { step: MoveOk; def: Eq; letter: string | null; inPlace?: boolean }
 
 /** b: let a new letter, a function of a letter, or an expression stand for the aimed piece.
  *  - `u`: u = x² becomes an equation of its own, and x² is u here (every copy of it). Aimed at a
@@ -69,6 +69,13 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
   const fm = /^([A-Za-zα-ω])\s*\(\s*([a-zA-Zα-ω])\s*\)$/.exec(src);
   if (fm) {
     const [, F, p] = fm;
+    // I = ∫ … with I(t) typed for the ∫: I was a name for it all along, and now it is a function of t
+    const side = e.lhs.k === 'sym' && e.lhs.name === F && e.rhs.id === P.id ? 'rhs' : e.rhs.k === 'sym' && e.rhs.name === F && e.lhs.id === P.id ? 'lhs' : null;
+    if (side && relOf(e) === '=' && !taken.includes(F) && !DEFS.has(F) && !symbols(P).includes(F)) {
+      if (!pieceLetters.includes(p)) return { error: `${t(P)} doesn't change with ${p}, so it isn't a function of ${p}.` };
+      const def = eq(call(F, sym(p)), fresh(P), 'def');
+      return { step: { eq: def, label: `${F} is a function of ${p}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null, inPlace: true };
+    }
     if (used.has(F) || DEFS.has(F)) return { error: `${F} is already in use. Pick another name.` };
     if (!pieceLetters.includes(p)) return { error: `${t(P)} doesn't change with ${p}, so it isn't a function of ${p}.` };
     const I = () => call(F, sym(p));

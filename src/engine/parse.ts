@@ -4,7 +4,9 @@
 import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
 
 /** f, g, h, and any function you named (b, then I(t)) read as calls when a bracket follows */
-const isFnName = (name: string) => FUNC_NAMES.includes(name) || DEFS.has(name);
+/** a letter this equation defines as a function (I in I(t) = …), while it is being read */
+let DEFINING: string | null = null;
+const isFnName = (name: string) => FUNC_NAMES.includes(name) || DEFS.has(name) || name === DEFINING;
 import { negate, gcd, isNeg } from './terms';
 
 type Tok = ({ t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string }) & { space?: boolean };
@@ -518,6 +520,12 @@ const RELS = ['=', '<', '>', '≤', '≥'];
 
 /** An equation, an inequality, or (with `allowExpr`) a lone expression. */
 export function parseEquation(src: string, allowExpr = false): Eq {
+  // F(t) = … with t on the right defines F, whatever letter F is (I(t) = ∫₀¹ … dx), not F·t
+  const dm = /^\s*([A-Za-zα-ωΑ-Ω])\s*\(\s*([A-Za-zα-ω])\s*\)\s*:?=([^=<>≤≥]*)$/.exec(src);
+  if (dm && !DEFINING && dm[1] !== dm[2] && dm[1] !== 'e' && new RegExp(`(^|[^A-Za-z])${dm[2]}([^A-Za-z]|$)`).test(dm[3])) {
+    DEFINING = dm[1];
+    try { return parseEquation(src.replace(/:=/, '='), allowExpr); } finally { DEFINING = null; }
+  }
   const toks = tokenize(src);
   let depth = 0;
   const rels = toks.filter(t => {

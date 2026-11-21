@@ -66,6 +66,13 @@ export function commitName(this: App) {
 
 /** a name taken: the step in this equation, then the name as an equation of its own beside it */
 export function addName(this: App, r: Named) {
+  // the equation itself becomes the definition (I = ∫ … turned into I(t) = ∫ …)
+  if (r.inPlace) {
+    if (!this.apply(r.step, 1.05)) return;
+    this.syncDefs();
+    this.say(`${r.step.label}: ${brief(r.def.lhs)} = ${brief(r.def.rhs)}. C d differentiates both sides; p puts in a value; ${toText(r.def.lhs).replace(/\(.*/, '')}(…) works in any equation.`);
+    return;
+  }
   // a bound letter (x in ∫₀¹ … dx) stays as it is here: only the name is new
   if (key(r.step.eq) !== key(this.eq) && !this.apply(r.step, 1.05)) return;
   const kind = r.def.rel === 'def' ? 'fn' : r.letter ? 'letter' : r.def.lhs.k === 'sym' && symbols(r.def.rhs).length === 0 ? 'param' : 'expr';
