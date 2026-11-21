@@ -117,3 +117,8 @@ export function supHtml(t: string): string {
 export function escapeHtml(s: string) {
   return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 }
+
+/** step names and bar messages read as math, not as typed code: sqrt(x + 2) is √(x + 2), y^2 is y² */
+export const pretty = (s: string) => s
+  .replace(/\bsqrt\(/g, '√(').replace(/\bcbrt\(/g, '∛(')
+  .replace(/\^2(?![\d.])/g, '²').replace(/\^3(?![\d.])/g, '³');

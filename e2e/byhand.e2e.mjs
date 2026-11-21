@@ -87,4 +87,17 @@ export const tests = {
     const note = await p.evaluate(() => document.querySelector('#op-note').textContent);
     assert(note.includes('makes x 0'), `the box says x = 0 zeroes a bottom: ${note}`);
   },
+
+  async 'move names read as math (√, ²) and a quick run of moves shows one name, not a pile'(h) {
+    const { load, key, until, p, assert } = h;
+    await load('sqrt(x + 2) + 3 = x^2');
+    await dig(h, 'sqrt(x + 2)');
+    await key('m');
+    await until(() => true, '');
+    const one = await p.evaluate(() => [...document.querySelectorAll('.bubble')].map(b => b.textContent));
+    assert(one.length === 1 && one[0].includes('√(x + 2)'), `the name shows √: ${one}`);
+    await key('m', 'm', 'm');
+    const n = await p.evaluate(() => document.querySelectorAll('.bubble').length);
+    assert(n <= 1, `one name at a time, not ${n}`);
+  },
 };

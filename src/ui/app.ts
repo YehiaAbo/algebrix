@@ -21,7 +21,7 @@ import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
-import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml } from './shared';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty } from './shared';
 import * as nav from './nav';
 import { notationFor } from './notation';
 import * as sheet from './sheet';
@@ -440,12 +440,12 @@ export class App {
     if (this.mode === 'op') { host.innerHTML = `<span class="aside">Type what to apply to both sides. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
-    parts.push(`<span class="what">${node ? escapeHtml(toText(node)) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
+    parts.push(`<span class="what">${node ? escapeHtml(pretty(toText(node))) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
     if (!this.sel) {
       parts.push(`<span class="hint"><kbd class="wide">Space</kbd> aim</span><span class="hint"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> walk</span>`);
     } else {
       const m = moveAny(this.eq, this.sel);
-      if (!isErr(m)) parts.push(`<span class="hint"><kbd>m</kbd> ${escapeHtml(m.label)}</span>`);
+      if (!isErr(m)) parts.push(`<span class="hint"><kbd>m</kbd> ${escapeHtml(pretty(m.label))}</span>`);
       for (const k of MOVE_KEYS.slice(1)) {
         if (k.name !== 'any' && !isErr(applyMove(k.name, this.eq, this.sel))) parts.push(`<span class="hint"><kbd>${k.key}</kbd> ${k.verb}</span>`);
       }
@@ -456,7 +456,7 @@ export class App {
   }
 
   say(text: string, bad = false) {
-    this.message = { text, bad };
+    this.message = { text: pretty(text), bad };
     clearTimeout(this.messageTimer);
     this.renderHints();
     this.messageTimer = window.setTimeout(() => { this.message = null; this.renderHints(); }, bad ? 3200 : 2200);
@@ -1001,9 +1001,11 @@ export class App {
   bubble(text: string, bad: boolean, id: string | null = this.sel) {
     const r = (id ? this.stage.box(id) : null) ?? this.stage.box('eq');
     if (!r) return;
+    // one move name at a time: a quick run of moves replaces the last name instead of piling up
+    $('stage').querySelectorAll('.bubble').forEach(x => x.remove());
     const b = document.createElement('div');
     b.className = 'bubble' + (bad ? ' bad' : '');
-    b.textContent = text;
+    b.textContent = pretty(text);
     $('stage').append(b);
     const W = $('stage').clientWidth;
     const x = Math.max(12 + b.offsetWidth / 2, Math.min(W - 12 - b.offsetWidth / 2, r.x + r.w / 2));

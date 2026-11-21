@@ -5,6 +5,7 @@ import { layout as mathLayout } from '../render/layout';
 import { Stage } from '../render/stage';
 import { Arrow, Edge, Item, Layout, LayoutOpts, layoutTree, TNode, Tree } from './tree';
 import { ms } from './prefs';
+import { pretty } from './shared';
 
 export interface HeadInfo { tag: { text: string; cls: string } | null; offer: string; linked: boolean; focus: boolean }
 export interface TreeViewOpts {
@@ -256,7 +257,7 @@ export class TreeView {
     for (const E of edges) {
       const a = pos.get(E.from), b = pos.get(E.to);
       if (!a || !b) continue;
-      const text = (E.dir === '⇒' ? '⇒ ' : '') + E.label;
+      const text = (E.dir === '⇒' ? '⇒ ' : '') + pretty(E.label);
       const lab = text && (showLabels || E.live) ? text : '';
       const y1 = a.y + a.h / 2 + 4, x2 = b.x, y2 = b.y - b.h / 2 - 4;
       let d: string, lx: number, ly: number, anchor: 'start' | 'end';
