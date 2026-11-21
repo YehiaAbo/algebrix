@@ -126,6 +126,8 @@ export function inverseOf(side: Node): { f: Wrap; arg?: Node } | null {
     if (base.k === 'num' && base.v === 10) return { f: 'log' };
     if (base.k === 'num' && base.v > 0 && base.v !== 1 && hasSymbols(exp)) return { f: 'logb', arg: num(base.v) };
     if (exp.k === 'frac' && exp.num.k === 'num' && exp.num.v === 1 && !hasSymbols(exp.den)) return key(exp.den) === '3' ? { f: 'cube' } : { f: 'power', arg: exp.den };
+    // any other fraction: raise to its reciprocal, (x − 1)^(3/4) to the 4/3
+    if (exp.k === 'frac' && exp.num.k === 'num' && exp.den.k === 'num' && Number.isInteger(exp.num.v) && Number.isInteger(exp.den.v) && exp.num.v !== 0) return { f: 'power', arg: frac(num(exp.den.v), num(exp.num.v)) };
   }
   if (side.k === 'sqrt') return { f: 'square' };
   if (side.k === 'fn') {

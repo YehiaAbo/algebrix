@@ -110,12 +110,21 @@ function rule(n: Node, h: Hints): Node | null {
         h.absorbs.set(exp.id, base.base.id);
         return base.base;
       }
-      if (base.k === 'pow' && base.exp.k === 'num' && exp.k === 'num') {
+      // (b^r)^s = b^(rs) when a root cancels: ((x − 1)^(3/4))^(4/3) = x − 1, (x²)^(3/2) = |x|³.
+      // b^(even/odd) forgets b's sign, so unless the result is an even power again, |b| comes back.
+      // (An even root, like the 4 in 3/4, already needs b ≥ 0, so nothing is lost there.)
+      // A power of a power with nothing cancelling, (x^(1/3))² or (x²)², is a form you chose
+      // (to name x^(1/3) or x²), so s leaves it; Tab p combines it.
+      if (base.k === 'pow' && r0 && r1 && (r0.q > 1 || r1.q > 1) && rat(r0.p * r1.p, r0.q * r1.q).q === 1) {
         h.absorbs.set(exp.id, base.exp.id);
-        // (y⁻²)^(1/2) is 1/|y|: an even power forgets the sign, and a root can't bring it back
-        const even = !Number.isInteger(exp.v) && Number.isInteger(base.exp.v) && base.exp.v % 2 === 0;
-        return pow(even ? fn('abs', base.base) : base.base, num(base.exp.v * exp.v, base.exp.id), n.id);
+        const r = rat(r0.p * r1.p, r0.q * r1.q);
+        const lost = r0.p % 2 === 0 && r0.q % 2 === 1 && !(r.q % 2 === 1 && r.p % 2 === 0);
+        const b = lost ? fn('abs', base.base) : base.base;
+        if (r.p === 1 && r.q === 1) return b;
+        return pow(b, r.q === 1 ? num(r.p, base.exp.id) : frac(num(r.p), num(r.q), base.exp.id), n.id);
       }
+      // (−a)ⁿ = aⁿ for an even n
+      if (base.k === 'neg' && exp.k === 'num' && Number.isInteger(exp.v) && exp.v % 2 === 0) return pow(base.arg, exp, n.id);
       return null;
     }
     case 'sqrt': {

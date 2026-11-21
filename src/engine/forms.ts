@@ -19,6 +19,7 @@ export interface Form extends MoveOk { name: string; chord: string }
 const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
   'factored': 'f', 'split into terms': 't', 'highest power first': 'o', 'log rules': 'l', 'as powers': 'p', 'as roots': 'r',
+  'as a power of a power': 'p', 'powers combined': 'p',
   'one log': 'l', 'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
   'as dy/dx': 'y', 'as y′': 'y', 'as d²y/dx²': 'y', 'as y″': 'y', 'as differentials': 'k', 'product rule backwards': 'b',
   'split the sum': 't', 'split the product': 't', 'as a limit of partial sums': 'm',
@@ -136,6 +137,8 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   const logs = combineLogs(target);
   if (logs) { at('one log', h => simplify(logs.n, h)); const f = out.find(x => x.name === 'one log'); if (f) f.conditions = logs.conditions; }
   at('as powers', () => asPowers(target));
+  at('as a power of a power', () => splitPower(target));
+  at('powers combined', h => (target.k === 'pow' && target.base.k === 'pow' ? pow(target.base.base, simplify(mul([target.exp, target.base.exp]), h), target.id) : null));
   at('as roots', () => asRoots(target));
   at('long division', () => longDivide(target));
   at('partial fractions', () => partialFractions(target));
@@ -234,6 +237,26 @@ function asPowers(n: Node): Node | null {
     const d = n.den;
     if (d.k === 'pow' && d.exp.k === 'num') return pow(d.base, num(-d.exp.v, d.exp.id), n.id);
     if (d.k === 'sym') return pow(d, num(-1), n.id);
+  }
+  return null;
+}
+
+/** a power as a power of a power, so a quadratic form shows: x^(2/3) → (x^(1/3))², e^(2x) → (e^x)²,
+ *  x⁴ → (x²)² (an even power splits as a square, any other as its smallest prime) */
+function splitPower(n: Node): Node | null {
+  if (n.k !== 'pow' || n.base.k === 'pow') return null;
+  const e = n.exp, inner = (x: Node) => pow(n.base, x);
+  if (e.k === 'frac' && e.num.k === 'num' && e.den.k === 'num' && Number.isInteger(e.num.v) && Number.isInteger(e.den.v) && e.num.v > 1 && e.den.v > 1) return pow(inner(frac(num(1), e.den)), e.num, n.id);
+  // whole powers: x⁴ → (x²)², and negative ones x⁻² → (x⁻¹)², so 1/x can be named
+  if (e.k === 'num' && Number.isInteger(e.v) && (e.v >= 4 || e.v <= -2)) {
+    const a = Math.abs(e.v);
+    let k = 2;
+    while (a % k) k++;
+    return k === e.v ? null : pow(inner(num(e.v / k)), num(k, e.id), n.id);
+  }
+  if (e.k === 'mul' && e.factors[0].k === 'num' && Number.isInteger(e.factors[0].v) && e.factors[0].v >= 2) {
+    const rest = e.factors.slice(1);
+    return pow(inner(rest.length === 1 ? rest[0] : mul(rest)), e.factors[0], n.id);
   }
   return null;
 }

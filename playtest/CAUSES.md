@@ -5,12 +5,10 @@ first. A fixed cause collapses to one line with its commit.
 
 ## Open
 
-- **C1 Exponent laws only go one way.** (move) A power can't be rewritten as a power of a
-  power or back: x^(2/3) ↔ (x^(1/3))², e^(2x) ↔ (e^x)², x⁴ ↔ (x²)², ((x − 1)^(3/4))^(4/3) ↔ x − 1;
-  and f i can't undo a fractional power. Blocks every substitution on a quadratic form
-  and every rational-exponent equation. A01 A02 A08 A11.
-  Idea: one Tab form pair "as a power of a power" / "combine powers" on any aimed power
-  (with the even-root condition recorded), and f i on a^(p/q).
+- **C10 Cases are treated as a system.** (check, ⚠) The two cases of a split (u = A, u = B)
+  are separate equations, and Tab + number subs one case into the other, giving a false
+  A = B as a step. Cases are "or", not "and"; sub in between siblings should refuse. Found
+  retesting A11.
 - **C2 s misses (−a)² = a².** (move) An even power of a negation stays as it is, so after
   squaring −√(x + 2) the next step needs `e`. A03.
 - **C3 No hand route for a sign question.** (move) A product or quotient ≤ 0 has no "split
@@ -32,4 +30,4 @@ first. A fixed cause collapses to one line with its commit.
 
 ## Fixed
 
-(none yet)
+- C1 Exponent laws only went one way: Tab p splits or combines a power, f i undoes any fractional power, s cancels a root (A01 A02 A08 A11, siblings 2.6 #10 #42 #44, 6.6 #27).
