@@ -139,4 +139,21 @@ export const tests = {
     await key('ArrowRight', 'Tab');
     await until(s => s.eq === 'xe^x − ∫ e^x dx', 'by parts with u = x');
   },
+
+  async 'Shift+P replays the steps from the start, ← → change the speed, and it ends where you were'(h) {
+    const { load, key, until, p, assert } = h;
+    await load('2x + 3 = 7');
+    await dig(h, '3');
+    await key('m', 's');
+    await until(s => s.eq === '2x = 4', 'two steps in');
+    await key('P');
+    await until(s => s.eq === '2x + 3 = 7', 'back at the start');
+    const bar = await p.evaluate(() => !document.getElementById('replay').hidden);
+    assert(bar, 'the replay strip shows');
+    await key('ArrowRight');
+    const t = await p.evaluate(() => JSON.parse(localStorage.getItem('algebrix.prefs')).tempo);
+    assert(t > 1, `faster: ${t}`);
+    await until(s => s.eq === '2x = 4', 'played to the end');
+    await until(() => p.evaluate(() => document.getElementById('replay').hidden), 'the strip goes away');
+  },
 };

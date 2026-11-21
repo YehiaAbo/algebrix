@@ -4,7 +4,7 @@ import { SOUND_PACKS, LOOKS } from '../packs';
 import { sound } from './sound';
 
 interface Option { v: unknown; name: string; blurb?: string }
-interface Row { key?: keyof Prefs; label: string; options?: Option[]; action?: { name: string; run: () => void } }
+interface Row { key?: keyof Prefs; label: string; options?: Option[]; range?: { min: number; max: number; step: number; show: (v: number) => string; blurb: string }; action?: { name: string; run: () => void } }
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -18,7 +18,7 @@ export class Settings {
       { key: 'look', label: 'Look', options: LOOKS.map(l => ({ v: l.id, name: l.name, blurb: l.blurb })) },
       { key: 'graphAt', label: 'Graph', options: [{ v: 'right', name: 'Right' }, { v: 'below', name: 'Below', blurb: 'Under the work, with a wide sheet. Shift+G cycles. Drag the gaps between panels to resize.' }, { v: 'hidden', name: 'Hidden' }] },
       { key: 'size', label: 'Math size', options: [{ v: 0.85, name: 'Small' }, { v: 1, name: 'Normal' }, { v: 1.15, name: 'Large' }, { v: 1.3, name: 'Huge' }] },
-      { key: 'speed', label: 'Speed', options: [{ v: 'calm', name: 'Calm', blurb: 'Slower, easy to follow.' }, { v: 'standard', name: 'Standard' }, { v: 'flash', name: '⚡ Flash', blurb: 'About three times faster. Also z.' }] },
+      { key: 'tempo', label: 'Speed', range: { min: 0.5, max: 3, step: 0.25, show: v => `${v}×`, blurb: 'How fast every move animates. z jumps to ⚡ flash and back.' } },
       { key: 'sounds', label: 'Sounds', options: SOUND_PACKS.map(p => ({ v: p.id, name: p.name, blurb: p.blurb })) },
       { key: 'volume', label: 'Volume', options: [{ v: 0.3, name: 'Low' }, { v: 0.55, name: 'Medium' }, { v: 0.8, name: 'Normal' }, { v: 1, name: 'Loud' }] },
       { key: 'muted', label: 'Sound', options: [{ v: false, name: 'On' }, { v: true, name: 'Off' }] },
@@ -57,6 +57,16 @@ export class Settings {
         }
         const now = r.options.find(o => o.v === cur);
         if (now?.blurb) { const p = document.createElement('div'); p.className = 'set-blurb'; p.textContent = now.blurb; opts.append(p); }
+      } else if (r.range) {
+        const R = r.range, cur = Number(prefs[r.key!]);
+        const input = document.createElement('input');
+        input.type = 'range'; input.min = String(R.min); input.max = String(R.max); input.step = String(R.step); input.value = String(cur);
+        input.className = 'set-range'; input.tabIndex = -1;
+        const val = document.createElement('span');
+        val.className = 'set-val'; val.textContent = R.show(cur);
+        input.addEventListener('input', () => { this.row = i; setPref(r.key!, Number(input.value) as never); val.textContent = R.show(Number(input.value)); sound.tick(1); });
+        const p = document.createElement('div'); p.className = 'set-blurb'; p.textContent = R.blurb;
+        opts.append(input, val, p);
       } else if (r.action) {
         const b = document.createElement('button');
         b.className = 'set-opt';
@@ -86,8 +96,13 @@ export class Settings {
       case 'ArrowDown': case 'j': this.row = (this.row + 1) % this.rows.length; sound.tick(0); return this.mark();
       case 'ArrowUp': case 'k': this.row = (this.row + this.rows.length - 1) % this.rows.length; sound.tick(0); return this.mark();
       case 'ArrowLeft': case 'ArrowRight': case 'h': case 'l': {
-        if (!r.options) return;
         const d = e.key === 'ArrowLeft' || e.key === 'h' ? -1 : 1;
+        if (r.range) {
+          const v = Math.max(r.range.min, Math.min(r.range.max, Number(prefs[r.key!]) + d * r.range.step));
+          if (v !== prefs[r.key!]) { setPref(r.key!, v as never); sound.tick(1); this.render(); }
+          return;
+        }
+        if (!r.options) return;
         const at = r.options.findIndex(o => o.v === prefs[r.key!]);
         const next = r.options[Math.max(0, Math.min(r.options.length - 1, at + d))];
         if (next.v !== prefs[r.key!]) this.set(r, next);

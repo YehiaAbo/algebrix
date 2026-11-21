@@ -92,6 +92,6 @@ export function resetWork(this: App) {
   this.slots.forEach(sl => { sl.at = 0; sl.sel = null; });
   sound.undo();
   this.renderAll({ quick: true }, true);
-  this.say('Back to the start. Press r to replay your steps.');
+  this.say('Back to the start. r redoes a step, Shift+P plays them all back.');
   this.save();
 }

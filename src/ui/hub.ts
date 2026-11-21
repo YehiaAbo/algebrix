@@ -12,7 +12,8 @@ import { walk } from '../engine/ast';
 import { sound } from './sound';
 import { $, Tech, Hub, escapeHtml } from './shared';
 import { areCases } from './sheet';
-import { CALC_GROUPS, calcForms } from './calc';
+import { CALC_GROUPS } from './calc';
+import { calcForms } from './calcforms';
 import type { App } from './app';
 
 export function techniques(this: App): Tech[] {

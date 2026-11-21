@@ -40,6 +40,7 @@ import * as keysPart from './keys';
 import * as persistPart from './persist';
 import * as calcPart from './calc';
 import * as generalPart from './general';
+import * as replayPart from './replay';
 
 export type { Slot };
 
@@ -90,6 +91,8 @@ export class App {
   valueOf: string | null = null;
   /** the polynomial Tab q takes a factor out of */
   divideAt: string | null = null;
+  /** Shift+P playing the steps back: where it stops, and the next beat */
+  replaying: { to: number; timer: number } | null = null;
 
   pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
   constructor() {
@@ -1051,7 +1054,7 @@ export class App {
   prefsChanged(k: string) {
     if (k === 'theme') { applyTheme(); this.themeLabel(); }
     if (k === 'look') applyLook();
-    if (k === 'speed') { applySpeed(); this.flashLabel(); }
+    if (k === 'speed' || k === 'tempo') { applySpeed(); this.flashLabel(); }
     if (k === 'graphAt') applyPanels();
     if (k === 'muted') { $('sound').classList.toggle('off', prefs.muted); $('sound').setAttribute('aria-pressed', String(!prefs.muted)); }
     if (['theme', 'look', 'size', 'hints'].includes(k) && this.shown) { this.stage.clear(); this.renderAll(null); }
@@ -1061,5 +1064,5 @@ export class App {
 
 /** the methods that live in their own files */
 type Part<M> = { [K in keyof M]: M[K] };
-export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart>, Part<typeof calcPart>, Part<typeof generalPart> {}
-for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart, calcPart, generalPart]) Object.assign(App.prototype, part);
+export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart>, Part<typeof calcPart>, Part<typeof generalPart>, Part<typeof replayPart> {}
+for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart, calcPart, generalPart, replayPart]) Object.assign(App.prototype, part);

@@ -170,6 +170,7 @@ export function key(this: App, e: KeyboardEvent) {
     if (e.key === 'g') { e.preventDefault(); this.toggleHelp(false); this.tour.menu(); }
     return;
   }
+  if (this.replaying && this.replayKey(e)) return;
   if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
   const k = e.key;
   const ctrl = e.ctrlKey || e.metaKey;
@@ -235,6 +236,7 @@ export function key(this: App, e: KeyboardEvent) {
     case 'z': handled(); return this.toggleFlash();
     case 'G': handled(); { const at = cycleGraph(); sound.tick(2); return this.say(at === 'right' ? 'Graph on the right.' : at === 'below' ? 'Graph under the work.' : 'Graph hidden. Shift+G brings it back.'); }
     case 'R': handled(); return this.resetWork();
+    case 'P': handled(); return this.startReplay();
     case '[': handled(); return this.graph.zoom(1.25);
     case ']': handled(); return this.graph.zoom(0.8);
   }

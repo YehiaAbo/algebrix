@@ -1,5 +1,5 @@
 // Turns preferences into what you see: theme, look pack, animation speed.
-import { prefs, SPEED_FACTOR } from './prefs';
+import { prefs, paceFactor } from './prefs';
 import { LOOKS, look } from '../packs';
 import { setEase, setPace, SMOOTH } from '../render/stage';
 import { clearMeasureCache } from '../render/layout';
@@ -48,7 +48,7 @@ export function applyLook() {
 }
 
 export function applySpeed() {
-  const f = SPEED_FACTOR[prefs.speed];
+  const f = paceFactor();
   setPace(f);
   document.documentElement.style.setProperty('--pace', String(f));
   document.documentElement.dataset.speed = prefs.speed;

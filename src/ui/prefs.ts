@@ -8,6 +8,8 @@ export interface Prefs {
   volume: number;
   muted: boolean;
   speed: Speed;
+  /** how fast animations run when not in flash mode: 1 is standard, 2 twice as fast (the slider) */
+  tempo: number;
   /** math size multiplier */
   size: number;
   /** the key hints in the bottom bar */
@@ -22,7 +24,7 @@ export interface Prefs {
 }
 
 const KEY = 'algebrix.prefs';
-const DEFAULTS: Prefs = { theme: 'system', look: 'studio', sounds: 'classic', volume: 0.8, muted: false, speed: 'standard', size: 1, hints: true, railW: 216, sideW: 400, sideH: 300, graphAt: 'right', treeH: 176 };
+const DEFAULTS: Prefs = { theme: 'system', look: 'studio', sounds: 'classic', volume: 0.8, muted: false, speed: 'standard', tempo: 1, size: 1, hints: true, railW: 216, sideW: 400, sideH: 300, graphAt: 'right', treeH: 176 };
 /** how long animations take relative to standard; flash is fast but still visible */
 export const SPEED_FACTOR: Record<Speed, number> = { calm: 1.45, standard: 1, flash: 0.38 };
 
@@ -55,4 +57,5 @@ export function setPref<K extends keyof Prefs>(k: K, v: Prefs[K]) {
 export const onPrefs = (f: (p: Prefs, changed: keyof Prefs) => void) => { listeners.push(f); };
 
 /** scale an animation length by the chosen speed */
-export const ms = (x: number) => Math.round(x * SPEED_FACTOR[prefs.speed]);
+export const paceFactor = () => (prefs.speed === 'flash' ? SPEED_FACTOR.flash : prefs.speed === 'calm' ? SPEED_FACTOR.calm : 1 / (prefs.tempo || 1));
+export const ms = (x: number) => Math.round(x * paceFactor());
