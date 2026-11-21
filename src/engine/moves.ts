@@ -3,7 +3,7 @@
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
-  isDiff, linkedTo, deriv, partial,
+  isDiff, linkedTo, deriv, partial, pow, sqrt, fn,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -201,6 +201,65 @@ const opName = (o: Op) => (o.k === 'int' ? `∫ … d${o.v}` : o.k === 'deriv' ?
 const factorsOf = (n: Node) => (n.k === 'mul' ? n.factors : [n]);
 const product = (fs: Node[], id?: string) => (fs.length === 1 ? fs[0] : mul(fs, id));
 
+type Slid = { node: Node; label: string; select?: string } | { error: string };
+const isConstNum = (n: Node) => !hasSymbols(n) && Number.isFinite(evaluate(n, {}));
+
+/** c (the first factor of holder, which sits in W) out of W: the rest stays inside */
+function slideOut(W: Node, holder: Node, c: Node, rest: Node | null): Slid | null {
+  const keep = rest ?? num(1);
+  if (isOp(W) && W.arg === holder) {
+    if (!rest) return null;
+    if (symbols(c).includes(W.v)) return { error: `${toText(c)} depends on ${W.v}, so it can't come out of ${opName(W)}.` };
+    return { node: mul([c, { ...W, arg: rest } as Node]), label: `${toText(c)} out of ${SIGN[W.k]}` };
+  }
+  if (W.k === 'frac' && W.num === holder) {
+    if (!rest) return null;
+    return { node: mul([c, { ...W, num: rest }]), label: `${toText(c)} out of the fraction` };
+  }
+  if (W.k === 'frac' && W.den === holder) {
+    const one_ = frac(num(1), c);
+    return { node: mul([one_, rest ? { ...W, den: rest } : W.num]), label: `${toText(c)} out of the bottom`, select: one_.id };
+  }
+  if (!rest) return null;
+  if (W.k === 'sqrt' && W.arg === holder) {
+    if (!isConstNum(c) || evaluate(c, {}) < 0) return { error: `√(ab) = √a √b needs a ≥ 0; ${toText(c)} isn't a number at least 0.` };
+    const r = sqrt(c);
+    return { node: mul([r, { ...W, arg: keep }]), label: '√(ab) = √a √b', select: r.id };
+  }
+  if (W.k === 'fn' && W.name === 'abs' && W.arg === holder) {
+    if (!isConstNum(c)) return { error: `|ab| = |a| |b|: only a number comes out bare.` };
+    const v = evaluate(c, {});
+    const out = v >= 0 ? c : fn('abs', c);
+    return { node: mul([out, { ...W, arg: keep }]), label: '|ab| = |a| |b|', select: out.id };
+  }
+  if ((W.k === 'fn' && (W.name === 'ln' || W.name === 'log')) && W.arg === holder) {
+    const l = fn(W.name, c);
+    return { node: add([l, { ...W, arg: keep }]), label: `${W.name}(ab) = ${W.name} a + ${W.name} b`, select: l.id };
+  }
+  if (W.k === 'pow' && W.base === holder) {
+    const p = pow(c, cloneFresh(W.exp));
+    return { node: mul([p, { ...W, base: keep }]), label: '(ab)ⁿ = aⁿ bⁿ', select: p.id };
+  }
+  return null;
+}
+
+/** c (just left of W in a product) into W */
+function slideIn(W: Node, c: Node): Slid | null {
+  const join = (inside: Node) => product([c, ...factorsOf(inside)], inside.k === 'mul' ? inside.id : undefined);
+  if (isOp(W)) {
+    if (symbols(c).includes(W.v)) return { error: `${toText(c)} depends on ${W.v}, so it can't go into ${opName(W)}.` };
+    return { node: { ...W, arg: join(W.arg) } as Node, label: `${toText(c)} into ${SIGN[W.k]}` };
+  }
+  if (W.k === 'frac') return { node: { ...W, num: join(W.num) }, label: `${toText(c)} into the fraction` };
+  if (W.k === 'sqrt' || (W.k === 'fn' && W.name === 'abs')) {
+    if (!isConstNum(c) || evaluate(c, {}) < 0) return { error: `Only a number at least 0 goes in: a√b = √(a²b), a|b| = |ab|.` };
+    const inside = W.k === 'sqrt' ? pow(c, num(2)) : c;
+    const node = { ...W, arg: product([inside, ...factorsOf(W.arg)], W.arg.k === 'mul' ? W.arg.id : undefined) } as Node;
+    return { node, label: W.k === 'sqrt' ? `${toText(c)} into the root, as ${toText(c)}²` : `${toText(c)} into |…|` };
+  }
+  return null;
+}
+
 /** Shift + ← →  through ∫, Σ, d/dx and lim: a constant factor slides out of one or into one,
  *  and d/dt slides into an integral over another letter (Leibniz) or back out. */
 function slideCalc(e: Eq, sel: string | null, dir: -1 | 1): MoveResult | null {
@@ -220,28 +279,40 @@ function slideCalc(e: Eq, sel: string | null, dir: -1 | 1): MoveResult | null {
     if ((node.lo && symbols(node.lo).includes(t)) || (node.hi && symbols(node.hi).includes(t))) return { error: `A bound moves with ${t}, so d/d${t} can't just slide out.` };
     return { eq: replace(e, node.id, deriv(t, { ...node, id: node.arg.id, arg: node.arg.arg }, undefined, node.id)), ...label(`d/d${t} out of the integral (Leibniz)`) };
   }
-  // out: the first (or last) factor inside an operator slides out past its sign
+  // out: the first factor inside a wrapper (∫ Σ d/dx lim, a fraction, √, a power, |…|, ln) slides
+  // out past it, one level per press; a first term of an exponent comes out as its own power
   const inner = parent.k === 'mul' ? parent : null;
-  const op = inner ? path[path.length - 3] : parent;
-  if (isOp(op) && (inner ? op.arg === inner : op.arg === node) && dir === -1) {
-    const fs = factorsOf(op.arg);
-    if (fs.length < 2 || fs[0] !== node) return null;
-    const bad = symbols(node).includes(op.v);
-    if (bad) return { error: `${toText(node)} depends on ${op.v}, so it can't come out of ${opName(op)}.` };
-    const out = { ...op, arg: product(fs.slice(1), inner!.id) } as Node;
-    const host = path[path.length - 4];
-    // already in a product: the factor takes its place beside the operator
-    if (host?.k === 'mul') return { eq: replace(e, host.id, { ...host, factors: host.factors.flatMap(f => (f === op ? [node, out] : [f])) }), ...label(`${toText(node)} out of ${SIGN[op.k]}`) };
-    return { eq: replace(e, op.id, mul([node, out])), ...label(`${toText(node)} out of ${SIGN[op.k]}`) };
+  const W = inner ? path[path.length - 3] : parent;
+  if (dir === -1 && W && (!inner || inner.factors[0] === node)) {
+    const holder = inner ?? node;
+    const rest = inner ? product(inner.factors.slice(1), inner.id) : null;
+    const out = slideOut(W, holder, node, rest);
+    if (out) {
+      if ('error' in out) return out;
+      const host = path[path.length - (inner ? 4 : 3)];
+      const R = out.node;
+      const eq2 = host?.k === 'mul' && R.k === 'mul'
+        ? replace(e, host.id, { ...host, factors: host.factors.flatMap(f => (f === W ? R.factors : [f])) })
+        : replace(e, W.id, R);
+      return { eq: eq2, ...label(out.label), select: out.select ?? node.id };
+    }
   }
-  // in: a factor next to an operator in a product slides into it
+  if (dir === -1 && parent.k === 'add' && parent.terms[0] === node) {
+    const P = path[path.length - 3];
+    if (P?.k === 'pow' && P.exp === parent && parent.terms.length > 1) {
+      const rest = parent.terms.length === 2 ? parent.terms[1] : add(parent.terms.slice(1), parent.id);
+      const a = pow(cloneFresh(P.base), node);
+      return { eq: replace(e, P.id, mul([a, { ...P, exp: rest }])), ...label(`${toText(node)} out of the power: a^(m + n) = a^m a^n`), select: a.id };
+    }
+  }
+  // in: a factor next to a wrapper in a product slides into it
   if (parent.k === 'mul' && dir === 1) {
     const i = parent.factors.indexOf(node), nb = parent.factors[i + 1];
-    if (!isOp(nb)) return null;
-    if (symbols(node).includes(nb.v)) return { error: `${toText(node)} depends on ${nb.v}, so it can't go into ${opName(nb)}.` };
-    const into = { ...nb, arg: product([node, ...factorsOf(nb.arg)], nb.arg.k === 'mul' ? nb.arg.id : undefined) } as Node;
-    const rest = parent.factors.flatMap((f, j) => (j === i ? [] : j === i + 1 ? [into] : [f]));
-    return { eq: replace(e, parent.id, product(rest, parent.id)), ...label(`${toText(node)} into ${SIGN[nb.k]}`) };
+    const into = nb ? slideIn(nb, node) : null;
+    if (!into) return null;
+    if ('error' in into) return into;
+    const rest = parent.factors.flatMap((f, j) => (j === i ? [] : j === i + 1 ? [into.node] : [f]));
+    return { eq: replace(e, parent.id, product(rest, parent.id)), ...label(into.label) };
   }
   return null;
 }

@@ -43,3 +43,32 @@ describe('Leibniz: d/dt slides into an integral and back out', () => {
     expect(slideOf('d/dt int_0^t x^2 dx = y', 'd/dt(∫_{0}^{t} x^2 dx)', 'slideR')).toMatch(/^error/);
   });
 });
+
+describe('Shift through everything (user: fractions, roots, powers, anything)', () => {
+  it('out of a fraction, from the top or the bottom', () => {
+    expect(slideOf('(3x)/5 = y', '3', 'slideL')).toBe('3(x/5) = y');
+    expect(slideOf('x/(2y) = 1', '2', 'slideL')).toBe('(1/2)(x/y) = 1');
+  });
+  it('one level per press: out of the fraction, then out of the integral', () => {
+    const e1 = slideOf('int (3x)/2 dx = y', '3', 'slideL');
+    expect(e1).toBe('∫ 3(x/2) dx = y');
+    expect(slideOf(e1, '3', 'slideL')).toBe('3 ∫ x/2 dx = y');
+  });
+  it('into a fraction', () => {
+    expect(slideOf('3(x/5) = y', '3', 'slideR')).toBe('3x/5 = y');
+  });
+  it('out of a root, a power, an absolute value, a log, an exponent', () => {
+    expect(slideOf('sqrt(4x) = 6', '4', 'slideL')).toBe('sqrt(4) sqrt(x) = 6');
+    expect(slideOf('(3x)^2 = 36', '3', 'slideL')).toBe('3^2x^2 = 36');
+    expect(slideOf('|3x| = 6', '3', 'slideL')).toBe('3·|x| = 6');
+    expect(slideOf('ln(3x) = 2', '3', 'slideL')).toBe('ln(3) + ln(x) = 2');
+    expect(slideOf('e^(2 + x) = y', '2', 'slideL')).toBe('e^2e^x = y');
+  });
+  it('into a root and an absolute value', () => {
+    expect(slideOf('3 sqrt(x) = 6', '3', 'slideR')).toBe('sqrt(3^2x) = 6');
+    expect(slideOf('3|x| = 6', '3', 'slideR')).toBe('|3x| = 6');
+  });
+  it('refuses a negative out of a root', () => {
+    expect(slideOf('sqrt(-4x) = 6', '−4', 'slideL')).toMatch(/^error/);
+  });
+});

@@ -154,6 +154,25 @@ export const tests = {
     const t = await p.evaluate(() => JSON.parse(localStorage.getItem('algebrix.prefs')).tempo);
     assert(t > 1, `faster: ${t}`);
     await until(s => s.eq === '2x = 4', 'played to the end');
-    await until(() => p.evaluate(() => document.getElementById('replay').hidden), 'the strip goes away');
+    let gone = false;
+    for (let i = 0; i < 40 && !gone; i++) { gone = await p.evaluate(() => document.getElementById('replay').hidden); if (!gone) await h.wait(100); }
+    assert(gone, 'the strip goes away');
+  },
+
+  async 'Shift takes a factor out one level per press: out of the fraction, then out of ∫, and out of √ and |…|'(h) {
+    const { load, key, until } = h;
+    await load('int (3x)/2 dx = y');
+    await dig(h, '3');
+    await key('Shift+ArrowLeft');
+    await until(s => s.eq === '∫ 3(x/2) dx = y', 'out of the fraction');
+    await key('Shift+ArrowLeft');
+    await until(s => s.eq === '3 ∫ x/2 dx = y', 'then out of the integral');
+    await load('sqrt(4x) = |3x|');
+    await dig(h, '4');
+    await key('Shift+ArrowLeft');
+    await until(s => s.eq === 'sqrt(4) sqrt(x) = |3x|', 'out of the root');
+    await dig(h, '3');
+    await key('Shift+ArrowLeft');
+    await until(s => s.eq === 'sqrt(4) sqrt(x) = 3·|x|', 'out of |…|');
   },
 };
