@@ -21,7 +21,7 @@ import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
-import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty } from './shared';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty, setHtml } from './shared';
 import * as nav from './nav';
 import { notationFor } from './notation';
 import * as sheet from './sheet';
@@ -348,8 +348,13 @@ export class App {
   }
 
   /** the start of this equation, in the typing box (i types over it) */
+  /** the original equation, drawn again only when it is a different one (not on every key) */
+  private origKey = '';
   renderOriginal() {
     const orig = $('original');
+    const k = this.steps[0] ? key(this.steps[0].eq) + '|' + document.documentElement.dataset.look : '';
+    if (k === this.origKey && orig.childElementCount) return;
+    this.origKey = k;
     orig.replaceChildren();
     if (this.steps[0]) {
       const lay = layout(this.steps[0].eq, 20);
@@ -363,45 +368,20 @@ export class App {
   }
 
   renderRail() {
-    // the system: every equation, numbered like weapon slots
     $('work-name').textContent = works.get(this.workId)?.name ?? 'Untitled';
-    const list = $('eqs');
-    list.replaceChildren();
-    this.slots.forEach((_, i) => {
-      const li = document.createElement('li');
-      const btn = document.createElement('button');
-      btn.className = 'eq-slot' + (i === this.cur ? ' on' : '');
-      btn.title = `Switch to equation ${i + 1} (${i + 1})`;
-      const e = i === this.cur && this.mode === 'write' && this.preview ? this.preview : this.eqOf(i);
-      const badge = document.createElement('kbd');
-      badge.textContent = String(i + 1);
-      const mini = document.createElement('div');
-      mini.className = 'mini';
-      let lay = layout(e, 15);
-      if (lay.w > 140) lay = layout(e, Math.max(9, 15 * 140 / lay.w));
-      mini.style.width = lay.w + 'px';
-      mini.style.height = lay.asc + lay.desc + 'px';
-      btn.append(badge, mini);
-      const solved = solvedFor(e);
-      const bad = this.slots[i].bad;
-      if (bad) { btn.classList.add('bad'); btn.title = bad; }
-      const st = this.slots[i].steps[this.slots[i].at];
-      const done = (relOf(e) === '≟' && isProved(e)) ? '∎' : st.answer ? st.answer : solved ? (bad ? 'not a solution' : '✓') : '';
-      if (done) { const tag = document.createElement('span'); tag.className = bad ? 'solved no' : st.answer ? 'solved ans' : 'solved'; tag.textContent = done; btn.append(tag); }
-      if (relOf(e) === '≟' && !isProved(e)) { const tag = document.createElement('span'); tag.className = 'goal'; tag.textContent = 'prove'; btn.append(tag); }
-      if (relOf(e) === 'def') btn.classList.add('def');
-      li.append(btn);
-      list.append(li);
-      new Stage(mini).show(lay, 0, 0, null);
-      btn.addEventListener('click', () => this.switchTo(i));
-    });
-    $('eqs-tip').innerHTML = this.slots.length > 1 ? `<kbd>1</kbd>–<kbd>${Math.min(9, this.slots.length)}</kbd> or <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> switch, hold <kbd>Tab</kbd> + number to substitute` : `<kbd>n</kbd> adds another equation`;
+    setHtml($('eqs-tip'), this.slots.length > 1 ? `<kbd>1</kbd>–<kbd>${Math.min(9, this.slots.length)}</kbd> or <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> switch, hold <kbd>Tab</kbd> + number to substitute` : `<kbd>n</kbd> adds another equation`);
 
     const eq = this.eq;
     const vars = $('vars');
+    const solved = eq && this.mode === 'write' ? null : eq && solvedFor(eq);
+    // the rail only changes when what it shows changes: skip the rebuild otherwise
+    const sig = eq ? `${key(eq)}|${solved}|${this.slot?.bad}|${JSON.stringify(this.domains)}|${(this.step?.conditions ?? []).join(';')}` : '';
+    const same = sig === this.railSig;
+    this.railSig = sig;
+    this.renderRailCounts();
+    if (same) return;
     vars.replaceChildren();
-    if (!eq) return;
-    const solved = this.mode === 'write' ? null : solvedFor(eq);
+    if (!eq) { $('conds').replaceChildren(); return; }
     // a hole, a constant of integration and y′ are not variables you choose
     for (const v of symbols(eq).filter(v => v !== '□' && !/^C(_\d+)?$/.test(v) && !/[′″]$/.test(v) && !isDiff(v) && !v.startsWith('d²'))) {
       const li = document.createElement('li');
@@ -421,6 +401,10 @@ export class App {
       conds.append(li);
     }
     $('conds-empty').hidden = (this.step?.conditions.length ?? 0) > 0;
+  }
+
+  private railSig = '';
+  private renderRailCounts() {
     $('step-count').textContent = this.mode === 'write' ? 'Writing…' : this.at === 0 ? 'At the start' : `${this.at} step${this.at > 1 ? 's' : ''} in`;
     $('redo-count').textContent = this.at < this.steps.length - 1 ? `${this.steps.length - 1 - this.at} ahead, r to redo` : '';
   }
@@ -429,24 +413,26 @@ export class App {
     const host = $('hints');
     host.classList.toggle('msg', !!this.message);
     host.classList.toggle('bad', !!this.message?.bad);
-    if (this.message) { host.textContent = this.message.text; return; }
-    if (!prefs.hints && this.mode === 'solve') { host.innerHTML = '<span class="spacer"></span><span class="hint dim"><kbd>?</kbd> manual</span>'; return; }
+    setHtml(host, this.message ? escapeHtml(this.message.text) : this.hintsHtml());
+  }
+
+  /** the hint bar for the mode we are in */
+  private hintsHtml(): string {
+    if (!prefs.hints && this.mode === 'solve') return '<span class="spacer"></span><span class="hint dim"><kbd>?</kbd> manual</span>';
     if (this.mode === 'write') {
-      host.innerHTML = `<span class="hint"><kbd>Enter</kbd> ${this.writing === 'new' && this.slots.length ? 'add to the system' : 'start solving'}</span><span class="hint"><kbd>Esc</kbd> cancel</span><span class="aside">Type like <i>3x/7 + 2 = y</i>, <i>x^2</i>, <i>sqrt(x)</i>, <i>ln(x)</i>, <i>|x − 1|</i>, <i>e^x</i>, or paste LaTeX.</span>`;
-      return;
+      return `<span class="hint"><kbd>Enter</kbd> ${this.writing === 'new' && this.slots.length ? 'add to the system' : 'start solving'}</span><span class="hint"><kbd>Esc</kbd> cancel</span><span class="aside">Type like <i>3x/7 + 2 = y</i>, <i>x^2</i>, <i>sqrt(x)</i>, <i>ln(x)</i>, <i>|x − 1|</i>, <i>e^x</i>, or paste LaTeX.</span>`;
     }
-    if (this.mode === 'labels') { host.innerHTML = `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`; return; }
+    if (this.mode === 'labels') return `<span class="aside">Press a letter to aim. <kbd>Esc</kbd> to cancel.</span>`;
     if (this.mode === 'hub') {
       const h = this.hub;
-      host.innerHTML = h?.awaitVar ? '<span class="aside">Solve for which letter? Press it, or <kbd>Esc</kbd>.</span>'
+      return h?.awaitVar ? '<span class="aside">Solve for which letter? Press it, or <kbd>Esc</kbd>.</span>'
         : h?.calc ? '<span class="aside">Calculus: <kbd>←</kbd><kbd>→</kbd> sections, <kbd>↓</kbd> into one, or press a key to use it now.</span>'
         : h?.sticky ? '<span class="aside">Algebra: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and <kbd>Tab</kbd> to apply. <kbd>Esc</kbd> closes.</span>'
         : '<span class="aside">Holding <kbd>Tab</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>';
-      return;
     }
-    if (this.mode === 'fnpal') { host.innerHTML = `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`; return; }
-    if (this.mode === 'fnask') { host.innerHTML = `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`; return; }
-    if (this.mode === 'op') { host.innerHTML = `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter, a function like I(t), or what it equals.', value: 'Type the value to put in.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`; return; }
+    if (this.mode === 'fnpal') return `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`;
+    if (this.mode === 'fnask') return `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`;
+    if (this.mode === 'op') return `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter, a function like I(t), or what it equals.', value: 'Type the value to put in.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`;
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     parts.push(`<span class="what" data-text="${node ? escapeHtml(toText(node)) : ''}">${node ? escapeHtml(pretty(toText(node))) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
@@ -466,7 +452,7 @@ export class App {
     }
     parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>Tab</kbd> algebra</span><span class="hint"><kbd>C</kbd> calculus</span><span class="hint"><kbd>e</kbd> solve</span><span class="hint"><kbd>f</kbd> functions</span>`);
     parts.push(`<span class="spacer"></span><span class="hint dim"><kbd>u</kbd> undo</span><span class="hint dim"><kbd>?</kbd> manual</span>`);
-    host.innerHTML = parts.join('');
+    return parts.join('');
   }
 
   say(text: string, bad = false) {

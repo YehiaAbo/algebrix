@@ -230,7 +230,8 @@ export function layoutTree(trees: Tree[], measure: (col: number, n: TNode) => Bo
       it.y = nowY !== undefined ? nowY + (it.row - nowRow) * pitch : pitch / 2 + it.row * pitch;
       if (!it.w) { it.w = 56; it.h = 18; }
     }
-    const lead = mine.find(i => i.now) ?? mine[0];
+    // the number sits over where you are in the strip, and over the equation's start in the big view
+    const lead = (o.strip ? mine.find(i => i.now) : null) ?? mine[0];
     heads.push({ col: c, x: lead ? lead.x : cx, y: Math.min(...mine.map(i => i.y - i.h / 2)) });
     items.push(...mine);
   });

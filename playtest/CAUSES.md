@@ -22,3 +22,29 @@ first. A fixed cause collapses to one line with its commit.
 - C10 Cases were treated as a system: subbing or adding one case into another now resists, and Tab shows "(n) is another case".
 - C2 (−a)² stayed as it was: s drops the minus under an even power (023fef5).
 - C1 Exponent laws only went one way: Tab p splits or combines a power, f i undoes any fractional power, s cancels a root (A01 A02 A08 A11, siblings 2.6 #10 #42 #44, 6.6 #27) (023fef5).
+
+## Bug classes
+
+A bug found anywhere (playtest, stress, the user) is logged here by its class, fixed for the
+whole class, and guarded by a test that would catch any member of it. `npm run stress` plays
+every core key on stress/corpus.txt; add an equation there for each new class.
+
+- **K1 Pieces with no value break the safety net.** A divergent integral (or any piece that is
+  NaN everywhere) made the numeric check refuse every move. Fixed in checked(): ties put back,
+  valueless pieces compared as atoms, then a local check of the one changed piece.
+  Guard: tests/divergent.test.ts, corpus lines with ∫ (x²+1)/ln x.
+- **K2 A question holds the keys hostage.** After e on a two-letter equation the "solve for
+  which letter?" prompt refused every key, so u could not undo. A prompt now takes only its
+  answer; any other key closes it and does its usual job. Guard: stress (u returns to the start
+  after every key, on every corpus line).
+- **K3 Per-frame work grows with the screen.** The graph redrew its grid and re-read the theme
+  and its size every frame; the tree, the hint bar and the rail rewrote unchanged DOM every
+  key. Now: static layers cached, sizes from ResizeObserver, every write diffed.
+  Guard: stress flags any key that blocks over 50 ms; perf probe budgets.
+- **K4 A sign change taken for a zero.** The graph called the pole of (2x + 3)/(x − 1) = 5 a
+  crossing (x ≈ 1, 2.667) and framed the view around it, 100 units off. Every root finder in
+  the graph now goes through one bisectRoot that rejects a bracket where f blows up instead of
+  closing in on 0. Guard: e2e polish "a pole is not a crossing".
+- **K5 A class's display beat the hidden attribute.** The replay bar (display: flex) showed as an
+  empty dark pill under every equation. One global `[hidden] { display: none !important }`
+  replaces eleven per-class rules, so no element can show while hidden.

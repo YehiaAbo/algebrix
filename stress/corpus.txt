@@ -1,0 +1,33 @@
+# Equations the stress suite plays every core key on. Tidy ones and messy ones: whatever a
+# person might type. Add a line for every bug class found, so it never comes back.
+3x + 7 = 22 - x
+2(x + 3) = x/4 + 5
+(2x + 4)/3 = x - 1
+x^2 - 5x + 6 = 0
+(x - 5)/(x + 7) = 2
+sqrt(x + 4) = x - 2
+|2x - 1| = 7
+e^(2x) = 5
+ln(x - 1) = 2
+2^x = 3^(x - 1)
+sin(x) = 1/2
+x^2 + y^2 = 25
+3x + 2y = 7
+(2x^2 + 3x - 5)/(x - 1) = sqrt(x + 4) + 3x
+1/(x + 1) + 1/(x - 1) = 2/(x^2 - 1)
+x^(2/3) = 4
+(x^2 - 4)/(x - 2) = 3
+x < 3
+x^2 - 4 < 0
+y = 3x^2 - 2x + 1
+I = int_1^0 (x^2 + 1)/ln x dx
+I(t) = int_0^1 (x^t - 1)/ln x dx
+y = int_0^1 x e^(x^2) dx
+int x^2 e^x dx
+d/dx (x^2 sin x) = y
+lim x->0 sin(x)/x = L
+f(x) = x^2 + 1
+sum_{k=1}^{n} k = S
+y' = 2x y
+a x^2 + b x + c = 0
+(2x + 3)/(x - 1) = 5

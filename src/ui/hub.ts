@@ -94,7 +94,7 @@ export function askVar(this: App) {
   this.renderHints();
 }
 
-export function hubKey(this: App, e: KeyboardEvent) {
+export function hubKey(this: App, e: KeyboardEvent): unknown {
   const h = this.hub!;
   const k = e.key;
   if (h.calc) return this.calcKey(e);
@@ -104,7 +104,10 @@ export function hubKey(this: App, e: KeyboardEvent) {
     const v = symbols(this.eq).find(s => s === k);
     if (v) { this.closeHub(false); return this.solveFor(v); }
     if (k === 'Tab') return this.closeHub(true);
-    return this.refuse(`Press one of ${symbols(this.eq).join(', ')}.`);
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(k)) return;
+    // a question never holds the keys hostage: any other key closes it and does its usual job
+    this.closeHub(true);
+    return this.key(e);
   }
   const step = ['ArrowRight', 'ArrowDown'].includes(k) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(k) ? -1 : 0;
   if (step) {

@@ -10,7 +10,20 @@ import { asPrime } from '../engine/leibniz';
 import { supHtml, escapeHtml } from './shared';
 import { substitute } from '../engine/calculus';
 
-const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+/** what decides the colours: theme, look, and the system's dark mode */
+const darkMq = matchMedia('(prefers-color-scheme: dark)');
+const themeKey = () => { const d = document.documentElement; return `${d.className}|${document.body.className}|${d.dataset.theme ?? ''}|${d.dataset.look ?? ''}|${darkMq.matches}`; };
+/** a CSS colour, remembered until the theme changes: getComputedStyle in a frame forces the
+ *  page's styles to be worked out right there, and the graph asks for colours every frame */
+const cssMemo = new Map<string, string>();
+let cssTheme = '';
+const css = (name: string) => {
+  const t = themeKey();
+  if (t !== cssTheme) { cssMemo.clear(); cssTheme = t; }
+  let v = cssMemo.get(name);
+  if (v === undefined) { v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); cssMemo.set(name, v); }
+  return v;
+};
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
 type View = { cx: number; cy: number; span: number };
@@ -118,7 +131,9 @@ export class Graph {
 
   constructor(private canvas: HTMLCanvasElement, private note: HTMLElement) {
     this.ctx = canvas.getContext('2d')!;
-    new ResizeObserver(() => this.render()).observe(canvas);
+    // the canvas size, kept from the observer: reading clientWidth in a frame after the stage has
+    // changed forces the whole page's layout right there, every frame of a curve morph
+    new ResizeObserver(es => { const r = es[es.length - 1].contentRect; this.box = { w: r.width, h: r.height }; this.render(); }).observe(canvas);
     canvas.addEventListener('pointerdown', e => {
       this.drag = { x: e.clientX, y: e.clientY, moved: false };
       canvas.setPointerCapture(e.pointerId);
@@ -199,7 +214,9 @@ export class Graph {
           let best: number | null = null;
           for (let a = -reach; a < reach; a += step) {
             const fa = f(a), fb = f(a + step);
-            if (fa * fb <= 0 && Number.isFinite(fa + fb) && (best === null || Math.abs(a) < Math.abs(best))) best = a + step / 2;
+            if (!(fa * fb <= 0 && Number.isFinite(fa + fb)) || (best !== null && Math.abs(a) >= Math.abs(best))) continue;
+            const m = bisectRoot(f, a, a + step);
+            if (m !== null) best = m;
           }
           if (best === null) continue;
           const y = evaluate(eq.lhs, { [v]: best });
@@ -278,7 +295,7 @@ export class Graph {
     let eq = this.eq;
     if (!eq) return;
     const dpr = window.devicePixelRatio || 1;
-    const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
+    const { w: W, h: H } = this.box ?? (this.box = { w: this.canvas.clientWidth, h: this.canvas.clientHeight });
     if (!W || !H) return;
     if (this.canvas.width !== Math.round(W * dpr) || this.canvas.height !== Math.round(H * dpr)) {
       this.canvas.width = Math.round(W * dpr); this.canvas.height = Math.round(H * dpr);
@@ -313,7 +330,7 @@ export class Graph {
       this.grid(X, Y, ux, uy, 'x', 'y');
       let lim2 = false;
       walk(eq, n => { if (n.k === 'lim' && n.v.includes(',')) lim2 = true; });
-      this.note.textContent = lim2 ? 'A limit in two letters: e tries lines and curves through the point, and small circles round it. Different values along two paths mean there is no limit.' : vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? (relOf(eq) !== 'expr' && holds(eq, {}) !== null ? `No letters left: ${toText(eq)} is ${holds(eq, {}) ? 'always' : 'never'} true.` : 'No letters, so nothing to graph.') : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
+      this.captionText = lim2 ? 'A limit in two letters: e tries lines and curves through the point, and small circles round it. Different values along two paths mean there is no limit.' : vector ? 'Vectors are not graphed. Split into components (e) to see each one.' : vars.length === 0 ? (relOf(eq) !== 'expr' && holds(eq, {}) !== null ? `No letters left: ${toText(eq)} is ${holds(eq, {}) ? 'always' : 'never'} true.` : 'No letters, so nothing to graph.') : vars.some(v => v.endsWith('″')) ? 'A second-order equation: solve it (e) to see its family of solutions.' : `${vars.length} variables. The graph shows up to three.`;
       return;
     }
     c.globalAlpha = this.fade;
@@ -339,10 +356,9 @@ export class Graph {
       const same = relOf(eq) === '=' && both.length > 20 && both.filter(([a, b]) => Math.abs(a - b) <= 1e-6 * (1 + Math.abs(a))).length >= 0.9 * both.length;
       const steps = per > 0.2 ? 30 : 60;
       if (!same) for (const i of findRoots(i => l[i] - r[i], N)) {
-        let a = xs[Math.floor(i)], b = xs[Math.min(N, Math.ceil(i + 1e-9))];
-        if (f(a) === 0) b = a;
-        for (let k = 0; k < steps && b - a > 1e-13; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
-        const x0 = Math.round(((a + b) / 2) * 1e9) / 1e9;
+        const m = bisectRoot(f, xs[Math.floor(i)], xs[Math.min(N, Math.ceil(i + 1e-9))], steps);
+        if (m === null) continue;
+        const x0 = Math.round(m * 1e9) / 1e9;
         if (!roots.some(x => Math.abs(x - x0) < 1e-6)) roots.push(x0);
       }
       return { xs, l, r, roots, same };
@@ -352,7 +368,7 @@ export class Graph {
     // a lone expression or a definition is one curve: y = it
     const single = rel === 'expr' ? 'l' : rel === 'def' ? 'r' : null;
     const blank = single && (single === 'l' ? l : r).every(y => !Number.isFinite(y));
-    this.note.innerHTML = blank ? 'Nothing to draw yet: an indefinite integral is only known up to + C. Work it out (e) and its curve appears.'
+    let note = blank ? 'Nothing to draw yet: an indefinite integral is only known up to + C. Work it out (e) and its curve appears.'
       : single ? `The graph of <b>y = ${rel === 'def' ? (eq.lhs.k === 'call' ? eq.lhs.name + '(' + v + ')' : 'it') : toText(eq.lhs).length <= 28 ? escapeText(eq.lhs) : 'it'}</b>. Rewriting never changes it. Grey dots: zeros, peaks and dips (hover one).`
       : isIneq(eq) ? `Shaded where it holds. The boundary is where the sides meet${roots.length ? `, <b>${v} ${roots.every(exact) ? '=' : '≈'} ${roots.slice(0, 3).map(fmt).join(', ')}</b>` : ''}.`
       : rel === '≟' ? 'The two sides are the same curve everywhere. That is what you are proving.'
@@ -362,7 +378,8 @@ export class Graph {
       // one side has no value anywhere (a divergent ∫, a limit that doesn't exist): say that, not "never cross"
       : [l, r].some(ys => ys.every(y => !Number.isFinite(y))) ? `The ${l.every(y => !Number.isFinite(y)) ? 'left' : 'right'} side has no finite value for any ${v}: an integral that diverges, or a limit that doesn't exist.`
       : 'The two sides never cross in view. Drag or scroll to look around.';
-    if (this.extra) this.note.innerHTML += ` <span class="graph-warn">${this.extra}</span>`;
+    if (this.extra) note += ` <span class="graph-warn">${this.extra}</span>`;
+    this.caption = note;
     this.grid(X, Y, ux, (py: number) => this.toUnits(0, py)[1], v, '');
     if (isIneq(eq)) {
       c.fillStyle = css('--graph-a'); c.globalAlpha = 0.14 * this.fade;
@@ -419,7 +436,7 @@ export class Graph {
         c.globalAlpha = this.fade;
       }
       this.curve(ys, N, Y, A);
-      this.note.innerHTML = `The shaded area under <b>y = ${escapeText(p.arg)}</b> from ${fmt(a)} to ${fmt(b)}${Number.isFinite(value) ? `: <b>${exact(value) ? '=' : '≈'} ${fmt(value)}</b>` : ''}. Area below the axis counts as negative.`;
+      this.caption = `The shaded area under <b>y = ${escapeText(p.arg)}</b> from ${fmt(a)} to ${fmt(b)}${Number.isFinite(value) ? `: <b>${exact(value) ? '=' : '≈'} ${fmt(value)}</b>` : ''}. Area below the axis counts as negative.`;
     } else {
       this.curve(ys, N, Y, A);
       const to = evaluate(p.to, {});
@@ -428,7 +445,7 @@ export class Graph {
         c.strokeStyle = A; c.setLineDash([6, 5]); c.lineWidth = 1.5;
         c.beginPath(); c.moveTo(0, Y(value)); c.lineTo(W, Y(value)); c.stroke(); c.setLineDash([]);
       }
-      this.note.innerHTML = Number.isFinite(value)
+      this.caption = Number.isFinite(value)
         ? `As ${p.v} → ${Number.isFinite(to) ? fmt(to) : to > 0 ? '∞' : '−∞'}, <b>y = ${escapeText(p.arg)}</b> heads for <b>${fmt(value)}</b>${Number.isFinite(to) ? ' (the ring), whether or not it gets there' : ' (the dashed line)'}.`
         : `As ${p.v} → ${Number.isFinite(to) ? fmt(to) : '∞'}, the curve doesn't settle on one value.`;
     }
@@ -464,7 +481,7 @@ export class Graph {
       c.moveTo(px - dx, py - dy); c.lineTo(px + dx, py + dy);
     }
     c.globalAlpha = 0.55 * this.fade; c.stroke(); c.globalAlpha = this.fade;
-    this.note.innerHTML = `The slope field of the equation: each dash has the slope ${o.p} has there. Hover to draw the solution through a point; solving (e) gives all of them.`;
+    this.caption = `The slope field of the equation: each dash has the slope ${o.p} has there. Hover to draw the solution through a point; solving (e) gives all of them.`;
     const ms = this.mouse;
     if (!ms || this.drag?.moved) return;
     // the solution through the cursor, both ways, by Runge-Kutta
@@ -495,7 +512,7 @@ export class Graph {
     if (family) {
       for (const k of [-2, -1, 0, 2, 3]) this.implicit(withConst(family, k), hx, vy, ux, uy, css('--graph-a'), 0.3);
       this.implicit(eq, hx, vy, ux, uy, css('--graph-a'), 1);
-      this.note.innerHTML = 'A whole family: one curve for each value of the constant. The bold one is C = 1; the faint ones C = −2, −1, 0, 2, 3.';
+      this.caption = 'A whole family: one curve for each value of the constant. The bold one is C = 1; the faint ones C = −2, −1, 0, 2, 3.';
       return;
     }
     const extra = this.others.filter(o => symbols(o).every(v => v === hx || v === vy) && symbols(o).length > 0);
@@ -516,7 +533,7 @@ export class Graph {
     const meet = !isIneq(eq) && extra.length ? crossings(eq, extra.filter(o => !isIneq(o)), hx, vy, [ux(0), ux(this.W)], [uy(this.H), uy(0)]) : [];
     for (const q of meet) this.dot(X(q[0]), Y(q[1]), css('--ink'));
     const pt = (q: number[]) => `(${fmt(q[0])}, ${fmt(q[1])})`;
-    this.note.innerHTML = isIneq(eq) ? 'Shaded: every point where it holds. A dashed edge is not included.' : extra.length
+    this.caption = isIneq(eq) ? 'Shaded: every point where it holds. A dashed edge is not included.' : extra.length
       ? meet.length
         ? `They cross at <b>${meet.slice(0, 3).map(pt).join(', ')}</b>${meet.length > 3 ? '…' : ''}${meet.every(q => exact(q[0]) && exact(q[1])) ? '' : ' (about)'}: there every equation holds at once.`
         : `Your equation is the bold curve. Where it crosses the others, all of them hold at once.`
@@ -622,15 +639,42 @@ export class Graph {
     c.font = `11px ${css('--ui-font')}`; c.fillStyle = css('--muted');
     c.fillText(`${fmt(-R)} to ${fmt(R)}`, W - 52, H - 14);
     c.globalAlpha = 1;
-    this.note.innerHTML = quads.length
+    this.caption = quads.length
       ? `Every point on the surface solves the equation. Drag to turn it, scroll to zoom.`
       : `No part of the surface is in view. Scroll out to look further.`;
   }
 
   // ---------- 2D pieces ----------
 
+  /** the grid, axes and labels: the same from frame to frame while the view stands still, so they
+   *  are drawn once into their own canvas and copied in (a step's curve morph redraws only curves) */
+  private gridCache: { key: string; img: HTMLCanvasElement } | null = null;
+  private box: { w: number; h: number } | null = null;
+  /** the caption under the graph, written only when it changes (render runs every frame of a morph) */
+  private html = '';
+  private set caption(v: string) { if (v !== this.html) { this.html = v; this.note.innerHTML = v; } }
+  private set captionText(v: string) { this.caption = v.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
   private grid(X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number, xl: string, yl: string) {
-    const { W, H } = this, c = this.ctx;
+    const { W, H } = this, dpr = window.devicePixelRatio || 1;
+    const theme = themeKey();
+    const key = [W, H, dpr, this.view.cx, this.view.cy, this.view.span, xl, yl, theme].join('|');
+    if (this.gridCache?.key !== key) {
+      const img = this.gridCache?.img ?? document.createElement('canvas');
+      img.width = Math.round(W * dpr); img.height = Math.round(H * dpr);
+      const g = img.getContext('2d')!;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.drawGrid(g, X, Y, ux, uy, xl, yl);
+      this.gridCache = { key, img };
+    }
+    const c = this.ctx;
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
+    c.drawImage(this.gridCache.img, 0, 0);
+    c.restore();
+    c.globalAlpha = 1;
+  }
+
+  private drawGrid(c: CanvasRenderingContext2D, X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number, xl: string, yl: string) {
+    const { W, H } = this;
     const step = niceStep(this.view.span / 5);
     const minor = step / (String(step / Math.pow(10, Math.floor(Math.log10(step)))).startsWith('2') ? 4 : 5);
     const lines = (st: number) => {
@@ -809,6 +853,16 @@ function findRoots(f: (i: number) => number, N: number): number[] {
   return out;
 }
 
+/** the zero of f in [a, b] where f changes sign, or null when the change is a pole (1/(x − 1) at 1)
+ *  and not a crossing: there f blows up instead of closing in on 0 */
+function bisectRoot(f: (x: number) => number, a: number, b: number, steps = 60): number | null {
+  const fa = f(a), fb = f(b);
+  if (fa === 0) return a;
+  for (let k = 0; k < steps && b - a > 1e-13; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
+  const m = (a + b) / 2, fm = f(m);
+  return Number.isFinite(fm) && Math.abs(fm) <= 1e-3 * Math.min(Math.abs(fa), Math.abs(fb)) + 1e-9 ? m : null;
+}
+
 function niceStep(raw: number) {
   const p = Math.pow(10, Math.floor(Math.log10(raw)));
   const r = raw / p;
@@ -879,10 +933,8 @@ function interesting(f: (x: number) => number, xs: number[], ys: number[]): { x:
   const N = xs.length - 1;
   const push = (x: number) => { const y = f(x); if (Number.isFinite(y) && !out.some(p => Math.abs(p.x - x) < (xs[1] - xs[0]) * 3)) out.push({ x: Math.round(x * 1e9) / 1e9, y }); };
   for (const i of findRoots(i => ys[i], N)) {
-    let a = xs[Math.floor(i)], b = xs[Math.min(N, Math.ceil(i + 1e-9))];
-    if (f(a) === 0) b = a;
-    for (let k = 0; k < 60 && b - a > 1e-13; k++) { const m = (a + b) / 2; (f(a) < 0) === (f(m) < 0) ? (a = m) : (b = m); }
-    push((a + b) / 2);
+    const m = bisectRoot(f, xs[Math.floor(i)], xs[Math.min(N, Math.ceil(i + 1e-9))]);
+    if (m !== null) push(m);
   }
   if (xs[0] < 0 && xs[N] > 0) push(0);
   for (let i = 1; i < N; i++) {

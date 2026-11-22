@@ -20,6 +20,9 @@ export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: 
 export type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
 
 export const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+/** write markup only when it changed: rebuilding the same bar every key costs style and layout for nothing */
+const written = new WeakMap<Element, string>();
+export const setHtml = (el: Element, html: string) => { if (written.get(el) !== html || el.innerHTML === '') { written.set(el, html); el.innerHTML = html; } };
 
 /** single keys that act straight away (aim + key = move) */
 export const MOVE_KEYS: { key: string; name: MoveName | 'any'; verb: string; pitch: number }[] = [

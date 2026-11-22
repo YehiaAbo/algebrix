@@ -73,6 +73,11 @@ export const tests = {
     note = await p.evaluate(() => document.getElementById('graph-note').textContent);
     assert(note.includes('slope field'), `a slope field: ${note}`);
   },
+  async 'a pole is not a crossing: the graph frames where the sides really meet'({ load, p, assert, wait }) {
+    await load('(2x + 3)/(x - 1) = 5'); await wait(900);
+    const note = await p.evaluate(() => document.getElementById('graph-note').textContent);
+    assert(/x ≈ 2\.667\./.test(note), `only x ≈ 2.667, not the pole at 1: ${note}`);
+  },
   async "a function's power sits on its name, and brackets stay when more follows"({ load, p, assert, wait }) {
     await load('y = sin(x)^2 + sin(x) x^2'); await wait(400);
     const read = await p.evaluate(() => [...document.querySelectorAll('#stage .g.text')]

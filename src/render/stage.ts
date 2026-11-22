@@ -24,6 +24,15 @@ export const setEase = (e: string) => { EASE = e; };
 let pace = 1;
 export const setPace = (p: number) => { pace = p; };
 const SVGNS = 'http://www.w3.org/2000/svg';
+/** animations this stage started on each glyph, so a new layout can stop them without asking the browser (getAnimations is slow) */
+const running = new WeakMap<Element, Animation[]>();
+const play = (el: Element, frames: Keyframe[], opts: KeyframeAnimationOptions) => {
+  const a = el.animate(frames, opts);
+  const list = running.get(el);
+  if (list) list.push(a); else running.set(el, [a]);
+  return a;
+};
+const cancelAnims = (el: Element) => { const list = running.get(el); if (list) { list.forEach(a => a.cancel()); running.delete(el); } };
 
 let metrics: { A: number; D: number } | null = null;
 export const resetMetrics = () => { metrics = null; };
@@ -93,7 +102,7 @@ export class Stage {
       const oldText = old?.g.text;
       const el = old && old.el.tagName === elTag(g) ? old.el : create(g);
       if (old && old.el !== el) old.el.remove();
-      el.getAnimations().forEach(a => a.cancel());
+      cancelAnims(el);
       place(el, g);
       if (!el.isConnected) this.root.appendChild(el);
       this.entries.set(g.key, { el, g });
@@ -115,11 +124,11 @@ export class Stage {
           this.flip(el, r, target, dur + 40, false, true);
         } else if (src) {
           this.flip(el, src, target, dur + 60, !tr.quick, false);
-          el.animate([{ color: 'var(--copy)' }, { color: 'var(--copy)', offset: 0.55 }, { color: 'currentColor' }], { duration: dur + 300, easing: 'ease-out' });
+          play(el, [{ color: 'var(--copy)' }, { color: 'var(--copy)', offset: 0.55 }, { color: 'currentColor' }], { duration: dur + 300, easing: 'ease-out' });
         } else if (same) {
           this.flip(el, same, target, dur + 40, false, false);
         } else {
-          el.animate([{ opacity: 0, transform: 'scale(.55)' }, { opacity: 1, transform: 'none' }],
+          play(el, [{ opacity: 0, transform: 'scale(.55)' }, { opacity: 1, transform: 'none' }],
             { duration: dur * 0.8, delay: dur * 0.3, easing: EASE, fill: 'backwards' });
         }
       }
@@ -182,7 +191,7 @@ export class Stage {
       frames.push({ transform: `translate(${dx / 2}px,${dy / 2 - lift}px) scale(${(sx + 1) / 2},${(sy + 1) / 2})`, offset: 0.5 });
     }
     frames.push({ transform: 'none', opacity: 1 });
-    el.animate(frames, { duration: arc ? dur + 60 : dur, easing: arc && EASE === SMOOTH ? 'cubic-bezier(.3,.6,.2,1)' : EASE });
+    play(el, frames, { duration: arc ? dur + 60 : dur, easing: arc && EASE === SMOOTH ? 'cubic-bezier(.3,.6,.2,1)' : EASE });
   }
 
   private crossfade(oldEl: HTMLElement, from: Rect, to: Rect, dur: number) {

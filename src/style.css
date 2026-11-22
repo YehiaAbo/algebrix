@@ -1,3 +1,6 @@
+/* hidden means hidden, whatever display a class gives it (the replay bar showed as an empty pill) */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #e9edf1;
   --desk: #f6f7f9;
@@ -131,7 +134,7 @@ body[data-mode="write"] .original { display: none; }
 
 .stage { position: relative; min-height: 0; overflow: hidden; cursor: default; }
 .stage.preview .g { transition: opacity .15s; opacity: .72; }
-.g { position: absolute; color: var(--ink); will-change: transform; transform-origin: 0 0; pointer-events: none; }
+.g { position: absolute; color: var(--ink); transform-origin: 0 0; pointer-events: none; }
 .g.text { font-family: var(--math-font); white-space: pre; text-align: left; }
 .g.text.it { font-style: italic; }
 .g.text.hole { color: var(--muted, #8a8f98); opacity: .55; }
@@ -196,7 +199,6 @@ kbd {
   background: var(--desk); border-radius: 12px; box-shadow: 0 0 0 1px var(--line), 0 12px 32px var(--shadow);
   animation: pop .16s var(--ease);
 }
-.op[hidden] { display: none; }
 .op-sym { color: var(--ink); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .op-note { color: var(--faint); font-size: 12px; white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 .op.bad .op-note { color: var(--bad); }
@@ -230,7 +232,6 @@ kbd {
 
 /* ---------- help ---------- */
 .help { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(15, 20, 28, .32); animation: fade .15s; z-index: 10; }
-.help[hidden] { display: none; }
 @keyframes fade { from { opacity: 0; } }
 .help-card { width: min(860px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; background: var(--desk); border-radius: 16px; padding: 22px 26px 24px; box-shadow: 0 20px 60px rgba(10, 20, 40, .3); animation: rise .2s var(--ease); }
 .help-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
@@ -262,7 +263,6 @@ kbd.wide { padding: 0 7px; }
 .sound .half { fill: currentColor; stroke: none; }
 
 /* forms strip: equivalent versions of the aimed piece, floating above it */
-.forms[hidden] { display: none; }
 .forms {
   position: absolute; z-index: 3; display: flex; align-items: stretch; gap: 6px;
   max-width: calc(100% - 24px); overflow-x: auto; padding: 6px;
@@ -314,15 +314,6 @@ kbd.wide { padding: 0 7px; }
 .h-row { display: flex; align-items: center; justify-content: space-between; }
 .add-eq { border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
 .add-eq:hover { background: var(--desk); color: var(--ink); }
-.rail ol.eqs { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.eqs li { display: block; }
-.eq-slot { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 5px 8px 5px 6px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; text-align: left; color: var(--ink); overflow: hidden; transition: background .12s; }
-.eq-slot:hover { background: var(--desk); }
-.eq-slot.on { background: var(--desk); box-shadow: inset 0 0 0 1.5px var(--sel); }
-.eq-slot kbd { flex: none; min-width: 18px; height: 18px; font-size: 10.5px; }
-.eq-slot.on kbd { background: var(--sel); color: var(--on-sel); border-color: color-mix(in srgb, var(--sel) 70%, #000); }
-.eq-slot .mini { flex: none; position: relative; }
-.eq-slot .solved { margin-left: auto; font: italic 12px var(--math-font); color: var(--good); }
 
 /* f menu: tabs of functions */
 .forms.pal { min-width: 420px; }
@@ -344,8 +335,6 @@ kbd.wide { padding: 0 7px; }
 .pal-ask { display: flex; align-items: center; gap: 10px; padding: 6px 4px 2px; font-size: 12.5px; color: var(--ink); }
 .pal-ask input { width: 90px; height: 32px; border: 1px solid var(--sel); border-radius: 8px; padding: 0 10px; font: 18px var(--math-font); background: var(--bg); color: var(--ink); outline: none; }
 .op-note.bad { color: var(--bad); }
-.eq-slot.bad .mini { opacity: .5; text-decoration: line-through; }
-.eq-slot .solved.no { font: 600 11px var(--ui-font); color: var(--bad); }
 
 /* a simplification on offer: dashed marks and a quiet prompt */
 .spots { position: absolute; inset: 0; pointer-events: none; }
@@ -370,7 +359,6 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .help-tabs button.on { background: var(--desk); color: var(--ink); box-shadow: 0 1px 2px rgba(10, 20, 40, .12); }
 .help-spacer { flex: 1; }
 .help-head .help-tour { color: var(--ink); display: inline-flex; gap: 6px; align-items: center; }
-.help-pane[hidden] { display: none; }
 .how { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 28px; }
 .how h3 { color: var(--ink); margin-bottom: 6px; }
 .how p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
@@ -380,7 +368,6 @@ body:not([data-mode="solve"]) .spots { display: none; }
 
 /* tour */
 .tour { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); background: var(--bg); border-radius: 12px; box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgba(10, 20, 40, .12); padding: 12px 16px 0; z-index: 11; overflow: hidden; }
-.tour[hidden] { display: none; }
 .tour-head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
 .tour-tag { font-weight: 600; color: var(--sel); letter-spacing: .02em; text-transform: uppercase; font-size: 10.5px; }
 .tour-count { flex: 1; }
@@ -396,16 +383,12 @@ body:not([data-mode="solve"]) .spots { display: none; }
 
 /* mouse box-select */
 .marquee { position: absolute; border: 1.5px dashed var(--sel); background: var(--sel-fill); border-radius: 6px; pointer-events: none; z-index: 3; }
-.marquee[hidden] { display: none; }
 
 /* answers, goals, domains */
 .answer { position: absolute; left: 0; right: 0; text-align: center; font-family: var(--math-font); font-size: 22px; color: var(--good); pointer-events: none; animation: rise .3s var(--ease); }
-.answer[hidden] { display: none; }
 .answer.bad { color: var(--bad); font: 600 14px var(--ui-font); }
 .stage.extraneous .g { color: var(--bad); opacity: .8; }
 .vars .solved.no { color: var(--bad); white-space: nowrap; }
-.eq-slot .solved.ans { font-family: var(--math-font); font-size: 11px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.eq-slot .goal { margin-left: auto; font-size: 10.5px; color: var(--sel); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
 .vars .dom { border: 0; background: none; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; padding: 2px 6px; margin: -2px -6px; border-radius: 5px; transition: background .15s, color .15s; }
 .vars .dom:hover { background: var(--bg); color: var(--ink); }
 
@@ -437,7 +420,6 @@ body:not([data-mode="solve"]) .spots { display: none; }
 
 /* ---------- overlays: library + settings ---------- */
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(15, 20, 28, .32); animation: fade .15s; z-index: 10; }
-.overlay[hidden] { display: none; }
 .lib, .panel-card {
   width: min(980px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto;
   background: var(--desk); border-radius: 16px; padding: 22px 26px 20px; box-shadow: 0 20px 60px rgba(10, 20, 40, .3);
@@ -546,7 +528,6 @@ body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
   content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
   background: linear-gradient(to bottom, var(--desk) 0, var(--desk) 22px, color-mix(in srgb, var(--desk) 0%, transparent) 50px, color-mix(in srgb, var(--desk) 0%, transparent) calc(100% - 16px), var(--desk));
 }
-.tree[hidden], .tree-split[hidden] { display: none; }
 .tree-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .tree-svg { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 .tree-layer { position: absolute; left: 0; top: 0; }
@@ -599,7 +580,6 @@ body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
 .tree-split:hover::after, .tree-split.drag::after { background: var(--sel); width: 54px; margin-left: -27px; }
 /* the big view: the whole tree on a canvas */
 .tree-big { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(3px); }
-.tree-big[hidden] { display: none; }
 .tree-big-card {
   display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(1280px, calc(100vw - 48px)); height: calc(100vh - 48px);
   background: var(--desk); border-radius: 14px; box-shadow: 0 0 0 1px var(--line), 0 24px 60px var(--shadow); overflow: hidden;
@@ -621,7 +601,6 @@ body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
 .fly { pointer-events: none; }
 .fly .g { color: var(--copy); }
 /* the rail no longer lists equations: the sheet does */
-#eqs { display: none; }
 
 /* ---------- panels: drag the gaps to resize, graph on the right, below, or hidden ---------- */
 .app[data-graph="below"] { grid-template-columns: var(--rail-w, 216px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--side-h, 300px); }
@@ -672,7 +651,6 @@ body[data-mode="write"] .input-keys { display: flex; }
 
 /* the notation cards under the typing box */
 .notation { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 30; display: flex; gap: 6px; align-items: stretch; padding: 6px; border-radius: 12px; background: var(--desk, var(--bg)); box-shadow: 0 0 0 1px var(--line), 0 10px 28px rgba(0, 0, 0, .14); animation: nota-in .12s var(--ease, ease-out); }
-.notation[hidden] { display: none; }
 .nota { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 74px; padding: 8px 10px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; box-shadow: 0 0 0 1px var(--line) inset; transition: box-shadow .1s, background .1s, transform .1s; }
 .nota b { font: 22px/1.1 var(--math-font); font-weight: 400; white-space: nowrap; }
 .nota span { font: 11px var(--ui-font); color: var(--muted); white-space: nowrap; }

@@ -92,7 +92,7 @@ export class TreeView {
     const W = this.host.clientWidth, H = this.host.clientHeight;
     const strip = this.o.strip;
     const opts: LayoutOpts = strip
-      ? { fold: true, rowGap: 22, colGap: 64, laneGap: 30, strip: { height: H, top: 34, bottom: 10, focus } }
+      ? { fold: true, rowGap: 22, colGap: 64, laneGap: 30, strip: { height: H, top: STRIP_TOP, bottom: 10, focus } }
       : { fold: false, rowGap: 30, colGap: 90, laneGap: 40 };
     const L = layoutTree(trees, (c, n) => this.mini(trees[c].uid, n), opts);
     this.lay = L;
@@ -202,7 +202,7 @@ export class TreeView {
       if (!it) {
         // gone: fade where it stands
         const g = Math.min(1, (now - (s.gone ?? now)) / ms(220));
-        s.el.style.opacity = String(1 - g);
+        setStyle(s.el, 'opacity', String(1 - g));
         if (g >= 1) { s.el.remove(); this.shown.delete(k); }
         continue;
       }
@@ -214,9 +214,10 @@ export class TreeView {
       const b = s.born === null ? 1 : Math.min(1, (now - s.born) / B);
       const draw = Math.min(1, b / 0.45), open = Math.max(0, Math.min(1, (b - 0.35) / 0.65));
       if (s.born !== null && b >= 1) s.born = null;
-      s.el.style.transform = `translate(${s.x - it.w / 2}px, ${s.y - it.h / 2}px)`;
-      s.el.style.opacity = open >= 1 ? '' : String(ease(open));
-      s.el.style.clipPath = open >= 1 ? '' : `inset(0 0 ${(1 - ease(open)) * 100}% 0 round 6px)`;
+      // write only what changed: a still step costs nothing per frame
+      setStyle(s.el, 'transform', `translate(${s.x - it.w / 2}px, ${s.y - it.h / 2}px)`);
+      setStyle(s.el, 'opacity', open >= 1 ? '' : String(ease(open)));
+      setStyle(s.el, 'clipPath', open >= 1 ? '' : `inset(0 0 ${(1 - ease(open)) * 100}% 0 round 6px)`);
       pos.set(k, { x: s.x, y: s.y, w: it.w, h: it.h, draw });
     }
     this.drawLines(L.edges, L.arrows, pos);
@@ -234,21 +235,21 @@ export class TreeView {
         e = { p, t: null };
         this.paths.set(k, e);
       }
-      e.p.setAttribute('class', cls);
-      e.p.setAttribute('d', d);
-      e.p.style.strokeDasharray = draw < 1 ? '1 1' : '';
-      e.p.style.strokeDashoffset = draw < 1 ? String(1 - draw) : '';
-      e.p.style.opacity = draw <= 0 ? '0' : '';
+      setAttr(e.p, 'class', cls);
+      setAttr(e.p, 'd', d);
+      setStyle(e.p, 'strokeDasharray', draw < 1 ? '1 1' : '');
+      setStyle(e.p, 'strokeDashoffset', draw < 1 ? String(1 - draw) : '');
+      setStyle(e.p, 'opacity', draw <= 0 ? '0' : '');
       // the arrowhead arrives with the tip of the line
-      if (draw >= 0.92) e.p.setAttribute('marker-end', `url(#${this.marker})`); else e.p.removeAttribute('marker-end');
+      setAttr(e.p, 'marker-end', draw >= 0.92 ? `url(#${this.marker})` : null);
       if (label) {
         if (!e.t) { e.t = document.createElementNS(SVGNS, 'text'); this.svg.append(e.t); }
-        e.t.textContent = label;
-        e.t.setAttribute('x', String(lx));
-        e.t.setAttribute('y', String(ly));
-        e.t.setAttribute('text-anchor', anchor);
-        e.t.setAttribute('class', `tlabel ${cls}`);
-        e.t.style.opacity = draw < 1 ? String(Math.max(0, draw * 2 - 1)) : '';
+        if (e.t.textContent !== label) e.t.textContent = label;
+        setAttr(e.t, 'x', String(lx));
+        setAttr(e.t, 'y', String(ly));
+        setAttr(e.t, 'text-anchor', anchor);
+        setAttr(e.t, 'class', `tlabel ${cls}`);
+        setStyle(e.t, 'opacity', draw < 1 ? String(Math.max(0, draw * 2 - 1)) : '');
       } else if (e.t) { e.t.remove(); e.t = null; }
     };
     const showLabels = !this.o.strip;
@@ -258,17 +259,27 @@ export class TreeView {
       const a = pos.get(E.from), b = pos.get(E.to);
       if (a && b && Math.abs(a.x - b.x) > 0.5) branchSide.set(E.from, Math.sign(b.x - a.x));
     }
+    // and which sides the arrows between equations take, at both ends
+    const arrowSide = new Map<string, Set<number>>();
+    const mark = (k: string, d: number) => { const m = arrowSide.get(k) ?? new Set<number>(); m.add(d); arrowSide.set(k, m); };
+    for (const A of arrows) {
+      const a = pos.get(A.from), b = pos.get(A.to);
+      if (a && b) { const d = b.x >= a.x ? 1 : -1; mark(A.from, d); mark(A.to, -d); }
+    }
     for (const E of edges) {
       const a = pos.get(E.from), b = pos.get(E.to);
       if (!a || !b) continue;
       const text = (E.dir === '⇒' ? '⇒ ' : '') + pretty(E.label);
-      const lab = text && (showLabels || E.live) ? text : '';
+      // in the strip, a step that has scrolled up under the numbers takes its label with it
+      const lab = text && (showLabels || (E.live && a.y + a.h / 2 > STRIP_TOP)) ? text : '';
       const y1 = a.y + a.h / 2 + 4, x2 = b.x, y2 = b.y - b.h / 2 - 4;
       let d: string, lx: number, ly: number, anchor: 'start' | 'end';
       if (Math.abs(a.x - x2) < 0.5) {
         // straight down; the label beside it, away from any branch
         d = `M${a.x} ${y1}V${y2}`;
-        const side = branchSide.get(E.from) === 1 ? -1 : 1;
+        const right = branchSide.get(E.from) === 1 || arrowSide.get(E.from)?.has(1) || arrowSide.get(E.to)?.has(1);
+        const left = branchSide.get(E.from) === -1 || arrowSide.get(E.from)?.has(-1) || arrowSide.get(E.to)?.has(-1);
+        const side = right && !left ? -1 : 1;
         lx = a.x + side * 8; ly = (y1 + y2) / 2 + 4; anchor = side > 0 ? 'start' : 'end';
       } else {
         // a branch leaves from the side of the step it starts at and bends down into its lane
@@ -413,4 +424,23 @@ export class TreeBig {
       case '0': return this.fit();
     }
   }
+}
+
+/* writes that skip themselves when nothing changed: the tree is redrawn every frame of a glide,
+   and most of it stands still */
+const last = new WeakMap<Element, Record<string, string | null>>();
+/** the strip's row of equation numbers takes this much of its top */
+const STRIP_TOP = 34;
+
+function setStyle(el: HTMLElement | SVGElement, prop: 'transform' | 'opacity' | 'clipPath' | 'strokeDasharray' | 'strokeDashoffset', v: string) {
+  const m = last.get(el) ?? {}; last.set(el, m);
+  if (m['s:' + prop] === v) return;
+  m['s:' + prop] = v;
+  el.style[prop] = v;
+}
+function setAttr(el: Element, name: string, v: string | null) {
+  const m = last.get(el) ?? {}; last.set(el, m);
+  if (m['a:' + name] === v) return;
+  m['a:' + name] = v;
+  if (v === null) el.removeAttribute(name); else el.setAttribute(name, v);
 }
