@@ -193,3 +193,7 @@ every core key on stress/corpus.txt; add an equation there for each new class.
 - **K29 Squaring both sides had no key of its own, and the tree heads collided.** ^ now opens the
   both-sides box as a power (2 offered when a side is a root). Heads drop their offers, then tags,
   where two would touch; a sibling case or a failed answer offers nothing to sub in. Guard: e2e byhand.
+- **K30 Adding equations left every term uncollected,** so Tab k "eliminated" z with z still on the
+  page. = #n and Tab k now follow with a "collect like terms" step. Guard: e2e byhand.
+- **K31 The f box doubled what you typed:** V then ( gave V((, and V then '' added primes to the V″ the
+  box offered. Typing the name yourself now goes on from what the box started. Guard: e2e byhand.

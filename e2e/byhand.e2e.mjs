@@ -447,4 +447,28 @@ export const tests = {
     assert(r.bad === 1, `one case is marked not a solution (got ${r.bad})`);
     assert(!r.overlap, 'the heads do not overlap');
   },
+  async 'adding an equation (= #1) or Tab k collects like terms, so what was eliminated is gone'(h) {
+    const { load, key, type, hold, until } = h;
+    await load('x + y + z = 6');
+    await key('n'); await type('x + 2y - z = 2'); await key('Enter');
+    await until(s => s.slots === 2, 'two equations');
+    await key('='); await type('#1'); await key('Enter');
+    await until(s => s.eq === '2x + 3y = 8', 'z gone after + equation 1');
+    await key('n'); await type('2x - y + z = 3'); await key('Enter');
+    await until(s => s.slots === 3, 'three equations');
+    await dig(h, 'z');
+    await hold('Tab', 'k');
+    await until(s => !/z/.test(s.eq) && /x/.test(s.eq), 'Tab k leaves no z');
+  },
+  async 'f menu: typing V(2) or V\'\'(2) yourself after V starts the box neither doubles the bracket nor the primes'(h) {
+    const { load, key, type, until, wait } = h;
+    await load('V(x) = x(12 - 2x)^2');
+    await key('f'); await wait(150);
+    await type('V(2)'); await key('Enter');
+    await until(s => s.slots === 2 && s.eq === 'V(2) = 2(12 − 2·2)^2', 'V(2) put in');
+    await key('1');
+    await key('f'); await wait(150);
+    await type("V''(2)"); await key('Enter');
+    await until(s => s.slots === 3 && s.eq.startsWith('V′′(2) = '), 'V″(2) asked for');
+  },
 };

@@ -99,7 +99,7 @@ export class App {
   /** Shift+P playing the steps back: where it stops, and the next beat */
   replaying: { to: number; timer: number } | null = null;
 
-  pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null };
+  pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null, started: '', primes: 0 };
   constructor() {
     this.stage = new Stage($('stage'));
     this.tree = new TreeView($('tree'), { size: 16, strip: true, pick: (c, id) => this.goStep(c, id), open: (c, id) => this.openTree(c, id) });

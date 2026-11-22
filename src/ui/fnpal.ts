@@ -2,7 +2,8 @@
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { Node, Eq, findPath, find, DEFS, eq, cloneFresh, evaluate, symbols, paramsOf, argsOf, call, vec, sym, children, withChildren, walk, CALC, relOf } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
-import { peel, wrapBoth, inverseOf, yourCall, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn } from '../engine/techniques';
+import { peel, wrapBoth, inverseOf, yourCall, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn, tidy } from '../engine/techniques';
+import { ms } from './prefs';
 import { parseExpr } from '../engine/parse';
 import { simplify, newHints } from '../engine/simplify';
 import { brief, putValue, holdsForEvery } from '../engine/general';
@@ -29,7 +30,7 @@ export function openPal(this: App, sticky: boolean) {
   this.flush();
   const inv = inverseOf(this.peelSide());
   const tab = inv ? this.palTabs().findIndex(t => t.items.some(x => !x.tpl && x.f === inv.f)) : -1;
-  this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null };
+  this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null, started: '', primes: 0 };
   this.chordUsed = false;
   this.setMode('fnpal');
   sound.labels();
@@ -214,6 +215,20 @@ export function askPreview(this: App) {
 
 export function askKey(this: App, e: KeyboardEvent) {
   e.stopPropagation();
+  // the box started as V( for you: typing V( or V′( yourself goes on from there instead of doubling it
+  const inp = e.target as HTMLInputElement;
+  const st = this.pal.started;
+  if (st && inp.value === st && inp.selectionStart === st.length) {
+    if (e.key === '(') { e.preventDefault(); return; }
+    if (e.key === "'" || e.key === '′') {
+      // you are spelling the name: V then '' is V″, whichever V-form the box offered first
+      e.preventDefault();
+      this.pal.primes++;
+      inp.value = this.pal.started = `${st.replace(/[′″‴]*\($/, '')}${'′'.repeat(this.pal.primes)}(`;
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+      return this.askPreview();
+    }
+  }
   if (e.key === 'Escape') { e.preventDefault(); this.pal.ask = null; this.setMode('fnpal'); this.peek = null; this.renderMain({ quick: true }); this.renderPal(); return; }
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -238,6 +253,17 @@ export function closePal(this: App, animateBack = false) {
 
 /** apply a move built outside applyMove (so not yet checked); leftovers are offered as a simplification */
 export function applyTidy(this: App, r: MoveResult, pitch = 1) { this.apply(isErr(r) ? r : checked(this.eq, r), pitch); }
+
+/** after adding or subtracting equations: like terms collected as a step of its own, so what was
+ *  eliminated is gone from the page, as on paper */
+export function thenCollect(this: App) {
+  const at = this.eq;
+  this.later(ms(420), () => {
+    if (this.eq !== at) return;
+    const t = tidy(this.eq);
+    if (t) this.apply({ ...t, label: 'collect like terms' }, 1.2);
+  });
+}
 
 const isYours = (w: WrapItem | null) => !!w && w !== TYPED && !!w.tpl;
 const YOURS_NOTE = (F: string) => `a value puts it in (${F}(3) = …); Enter on nothing: ${F} of both sides`;
@@ -322,7 +348,8 @@ function worth(r: Eq): string {
   const x = evaluate(r.rhs, {});
   if (!Number.isFinite(x) || symbols(r.rhs).length) return '';
   const shown = Math.round(x * 1e6) / 1e6;
-  return toText(r.rhs) === String(shown) ? '' : ` = ${shown}`;
+  const txt = String(shown).replace('-', '−');
+  return toText(r.rhs) === txt ? '' : ` = ${txt}`;
 }
 
 /** the value as an equation of its own, coming off the definition in the tree */
@@ -344,7 +371,8 @@ export function addValueOf(this: App, F: string, r: Eq, text: string, fromHere =
 export function typeInPal(this: App, start: string) {
   this.choose(TYPED);
   const input = $<HTMLInputElement>('pal-input');
-  input.value = start;
+  input.value = this.pal.started = start;
+  this.pal.primes = 0;
   input.setSelectionRange(start.length, start.length);
   this.askPreview();
 }

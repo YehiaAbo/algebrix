@@ -60,7 +60,9 @@ export function techniques(this: App): Tech[] {
     key: 'k', label: partner >= 0 ? `eliminate${aimVar ? ' ' + aimVar : ''} with (${partner + 1})` : 'eliminate with another equation', ok: partner >= 0,
     run: () => {
       this.flyFrom(partner);
-      this.apply(eliminate(this.eq, this.eqOf(partner), partner + 1, aimVar ?? undefined), 1.1);
+      const r = eliminate(this.eq, this.eqOf(partner), partner + 1, aimVar ?? undefined);
+      this.apply(r, 1.1);
+      if (!isErr(r)) this.thenCollect();
     },
   });
   return out;

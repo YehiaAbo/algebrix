@@ -55,6 +55,7 @@ export function bind(this: App) {
       this.closeOp();
       if (ref) this.flyFrom(Number(ref[1]) - 1);
       this.apply(r, 1.05);
+      if (ref) this.thenCollect();
     }
   });
   $('original').addEventListener('click', () => this.edit(false));
