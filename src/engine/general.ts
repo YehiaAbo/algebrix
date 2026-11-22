@@ -3,12 +3,13 @@
 // for every value, and ∫ both sides. With the facts (the derivative and integral rules, the
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
-import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim } from './ast';
+import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim, holds } from './ast';
 import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
 import { solvedForm } from './techniques';
 import { parseExpr } from './parse';
+import { fold } from './goals';
 import { toText } from './print';
 import { letters, toDifferentials, hasDifferentials, integrateDifferentials } from './leibniz';
 import { splitXY } from './ode';
@@ -26,6 +27,21 @@ function copiesOf(n: Node, what: Node): Node[] {
   walk(n, m => { if (key(m) === k) out.push(m); });
   // not the ones inside another copy
   return out.filter(m => !out.some(o => o !== m && findPath(o, m.id)));
+}
+
+/** I(t) typed for a piece with no t in it: say how to make one of its numbers the t */
+function notFnOf(P: Node, F: string, p: string): string {
+  const nums: Node[] = [];
+  walk(P, m => { if (m.k === 'num' && !isBound(P, m) && m.v !== 1 && m.v !== 0) nums.push(m); });
+  return nums.length ? `${brief(P)} has no ${p} in it yet. To make the ${t(nums[0])} into ${p}, type ${F}(${t(nums[0])}), or ${F}(${p} = ${t(nums[0])}).`
+    : `${brief(P)} doesn't change with ${p}, so it isn't a function of ${p}.`;
+}
+
+/** a bound of an integral (or sum) in n: the 1 in ∫₀¹ */
+function isBound(n: Node, m: Node): boolean {
+  let hit = false;
+  walk(n, q => { if ((q.k === 'int' || q.k === 'sum') && (q.lo?.id === m.id || q.hi?.id === m.id)) hit = true; });
+  return hit;
 }
 
 /** n with each node in `at` swapped for a fresh copy of what make() gives */
@@ -48,7 +64,7 @@ export function brief(n: Node): string {
   return n.k === 'int' ? 'the integral' : n.k === 'sum' ? (n.prod ? 'the product' : 'the sum') : n.k === 'lim' ? 'the limit' : n.k === 'frac' ? 'the fraction' : 'the piece';
 }
 
-export interface Named { step: MoveOk; def: Eq; letter: string | null; inPlace?: boolean }
+export interface Named { step: MoveOk; def: Eq; letter: string | null; inPlace?: boolean; folded?: boolean; note?: string }
 
 /** b: let a new letter, a function of a letter, or an expression stand for the aimed piece.
  *  - `u`: u = x² becomes an equation of its own, and x² is u here (every copy of it). Aimed at a
@@ -65,6 +81,38 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
   const used = new Set([...symbols(e), ...taken, ...DEFS.keys()]);
   const pieceLetters = symbols(P);
 
+  // a function at a value: I(5), or I(t = 5) to name its letter. The piece is I at 5: the 5s in it
+  // become t, I(t) = that is the definition, and the piece is I(5) here
+  const vm = /^([A-Za-zα-ω])\s*\(\s*(?:([a-zA-Zα-ω])\s*:?=\s*)?(.+?)\s*\)$/.exec(src);
+  if (vm && !(vm[2] === undefined && /^[a-zA-Zα-ω]$/.test(vm[3]))) {
+    const [, F, named, valText] = vm;
+    let V: Node;
+    try { V = parseExpr(valText); } catch (err) { return { error: (err as Error).message }; }
+    // a function you already have: the piece is that function at whatever it says (fold)
+    if (DEFS.has(F)) {
+      const r = fold(e, sel, new Map([[F, DEFS.get(F)!]]));
+      return isErr(r) ? { error: `${t(P)} isn't ${F} at any value: ${F}(${DEFS.get(F)!.param}) = ${brief(DEFS.get(F)!.body)}.` } : { step: r, def: eq(call(F, sym(DEFS.get(F)!.param)), fresh(DEFS.get(F)!.body), 'def'), letter: null, inPlace: false, folded: true };
+    }
+    // I = ∫ … with I(5) typed for the ∫: I was this at 5 all along, and the equation becomes I(t) = …
+    const side = e.lhs.k === 'sym' && e.lhs.name === F && e.rhs.id === P.id ? 'rhs' : e.rhs.k === 'sym' && e.rhs.name === F && e.lhs.id === P.id ? 'lhs' : null;
+    if (used.has(F) && !(side && relOf(e) === '=' && !taken.includes(F) && !symbols(P).includes(F))) return { error: `${F} is already a letter here. Pick another name for the function.` };
+    const p = named ?? ['t', 's', 'a', 'k', 'λ'].find(c => !used.has(c) && !pieceLetters.includes(c));
+    if (!p) return { error: `Name its letter too, like ${F}(t = ${valText}).` };
+    if (pieceLetters.includes(p)) return { error: `${p} is already in ${brief(P)}. Pick another letter, like ${F}(s = ${valText}).` };
+    let at = copiesOf(P, V);
+    // a bound of the integral is left alone when the value also sits inside it
+    const inside = at.filter(m => !isBound(P, m));
+    if (inside.length) at = inside;
+    if (!at.length) return { error: `There is no ${t(V)} in ${brief(P)} to turn into ${p}.` };
+    const body = swapAll(P, at, () => sym(p));
+    const def = eq(call(F, sym(p)), fresh(body), 'def');
+    const many0 = at.length > 1 ? ` (all ${at.length} of them)` : '';
+    if (side) return { step: { eq: def, label: `${F} is a function of ${p}, at ${p} = ${t(V)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null, inPlace: true, note: `${t(V)}${many0} became ${p}; you want ${F}(${t(V)})` };
+    const next = replace(e, P.id, call(F, fresh(V))) as Eq;
+    const many = at.length > 1 ? ` (all ${at.length} of them)` : '';
+    return { step: { eq: next, label: `let ${F}(${p}) = ${brief(body)}, at ${p} = ${t(V)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null, note: `${t(V)}${many} became ${p}` };
+  }
+
   // a function of a letter: I(t)
   const fm = /^([A-Za-zα-ω])\s*\(\s*([a-zA-Zα-ω])\s*\)$/.exec(src);
   if (fm) {
@@ -72,12 +120,12 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
     // I = ∫ … with I(t) typed for the ∫: I was a name for it all along, and now it is a function of t
     const side = e.lhs.k === 'sym' && e.lhs.name === F && e.rhs.id === P.id ? 'rhs' : e.rhs.k === 'sym' && e.rhs.name === F && e.lhs.id === P.id ? 'lhs' : null;
     if (side && relOf(e) === '=' && !taken.includes(F) && !DEFS.has(F) && !symbols(P).includes(F)) {
-      if (!pieceLetters.includes(p)) return { error: `${t(P)} doesn't change with ${p}, so it isn't a function of ${p}.` };
+      if (!pieceLetters.includes(p)) return { error: notFnOf(P, F, p) };
       const def = eq(call(F, sym(p)), fresh(P), 'def');
       return { step: { eq: def, label: `${F} is a function of ${p}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null, inPlace: true };
     }
     if (used.has(F) || DEFS.has(F)) return { error: `${F} is already in use. Pick another name.` };
-    if (!pieceLetters.includes(p)) return { error: `${t(P)} doesn't change with ${p}, so it isn't a function of ${p}.` };
+    if (!pieceLetters.includes(p)) return { error: notFnOf(P, F, p) };
     const I = () => call(F, sym(p));
     const next = replace(e, P.id, I()) as Eq;
     const def = eq(I(), fresh(P), 'def');
@@ -325,6 +373,15 @@ function invert(h: Node, w: string, value: Node): Node | null {
 /** p: a statement that holds for every value of v (a definition, or one about a function such as
  *  I(t) = ln(t + 1) + C) at v = a, as an equation of its own. */
 export function putValue(e: Eq, v: string, text: string): Eq | { error: string } {
+  // typed however it comes: 0, t = 0, t := 0, or several at once (a = 1, b = 2)
+  const parts = valueParts(text, v);
+  if ('error' in parts) return parts;
+  if (parts.length > 1) {
+    let cur: Eq | { error: string } = e;
+    for (const [w, t] of parts) { cur = putValue(cur as Eq, w, t); if ('error' in cur) return cur; }
+    return cur;
+  }
+  [[v, text]] = parts;
   let a: Node;
   try { a = parseExpr(text); } catch (err) { return { error: (err as Error).message }; }
   if (!symbols(e).includes(v)) return { error: `There is no ${v} here to put a value in for.` };
@@ -335,6 +392,41 @@ export function putValue(e: Eq, v: string, text: string): Eq | { error: string }
   walk(e, n => { if (!zero && n.k === 'frac' && symbols(n.den).includes(v)) { const d = substitute(n.den, v, a); if (!symbols(d).length && evaluate(d, {}) === 0) zero = n.den; } });
   if (zero) return { error: `${v} = ${toText(a)} makes ${toText(zero)} 0, and it is on a bottom here. Multiply it out first, or pick another value.` };
   return eq(next.lhs, next.rhs);
+}
+
+/** p on an equation that says which v works (x² = 4): trying a value checks it, nothing more.
+ *  The verdict, with what each side comes to */
+export function tryValue(e: Eq, v: string, text: string): { text: string; holds: boolean | null } | { error: string } {
+  const parts = valueParts(text, v);
+  if ('error' in parts) return parts;
+  const env: Env = {};
+  let cur: Node = e;
+  for (const [w, t] of parts) {
+    let a: Node;
+    try { a = parseExpr(t); } catch (err) { return { error: (err as Error).message }; }
+    if (!symbols(cur).includes(w)) return { error: `There is no ${w} here to put a value in for.` };
+    cur = substitute(cur, w, a);
+    env[w] = evaluate(a, {});
+  }
+  const left = symbols(cur);
+  const shown = parts.map(([w, t]) => `${w} = ${t.trim()}`).join(', ');
+  if (left.length) return { error: `${shown} still leaves ${left.join(', ')}: put in a value for ${left.length > 1 ? 'each' : 'it'} too (a = 1, b = 2).` };
+  const ok = holds(e, env);
+  const r = cur as Eq;
+  const side = (n: Node) => { const x = evaluate(n, {}); return Number.isFinite(x) ? String(Math.round(x * 1e6) / 1e6) : 'undefined'; };
+  return { text: `${shown}: ${side(r.lhs)} ${relOf(e)} ${side(r.rhs)}, ${ok === null ? 'undefined there' : ok ? 'true, it works' : 'false, it doesn’t'}`, holds: ok };
+}
+
+/** what was typed into p, as letter and value pairs: "0" is a value of v, "t = 0" names its letter */
+export function valueParts(text: string, v: string): [string, string][] | { error: string } {
+  const out: [string, string][] = [];
+  for (const piece of text.split(/[,;]/)) {
+    const m = /^\s*([A-Za-zα-ωΑ-Ω](?:_\w+)?)\s*(?::=|=|→|->)\s*(.*)$/.exec(piece);
+    if (m) out.push([m[1], m[2]]);
+    else if (piece.trim()) out.push([v, piece]);
+  }
+  if (!out.length || out.some(([, t]) => !t.trim())) return { error: 'Type a value, like 0 or t = 0.' };
+  return out;
 }
 
 /** a definition, an equation about a function of v (I(t) = …), or a relation between v and other

@@ -2,13 +2,13 @@
 // holds for every value, hold Tab + n subs a piece in from equation n, and C does calculus to both
 // sides. Each is one step in the tree; the shortcuts in C are chains of these.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, LETS, isDiff, Node, key, replace } from '../engine/ast';
+import { find, symbols, LETS, isDiff, Node, key, replace, walk, DEFS } from '../engine/ast';
 import { parseExpr } from '../engine/parse';
 import { divideOut, polyTarget, factorGuess } from '../engine/polytools';
 import { newHints } from '../engine/simplify';
 import { toText } from '../engine/print';
 import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
-import { nameIt, subIn, putValue, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne } from '../engine/general';
+import { nameIt, subIn, putValue, tryValue, valueParts, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
 import { compareCoefficients } from '../engine/techniques';
@@ -31,8 +31,18 @@ export function lettersInUse(this: App): string[] {
   return [...new Set(this.slots.flatMap((_, j) => symbols(this.eqOf(j))))];
 }
 
-/** b: open the box to name the aimed piece */
-export function openName(this: App) {
+/** what f then b offers: a function named after a free capital, of the piece's first number when
+ *  it has one (I(5): the 5 becomes the letter), else of its first letter (F(x)) */
+function fnSuggestion(P: Node, taken: Set<string>): string {
+  const F = ['I', 'F', 'G', 'J', 'K', 'P', 'Q'].find(c => !taken.has(c) && !DEFS.has(c)) ?? 'H';
+  let n: Node | null = null;
+  walk(P, m => { if (!n && m.k === 'num' && m.v !== 0 && m.v !== 1) n = m; });
+  const v = symbols(P).find(c => c.length === 1 && c !== 'e');
+  return n ? `${F}(${toText(n)})` : `${F}(${v ?? 't'})`;
+}
+
+/** b: open the box to name the aimed piece (f then b: as a function) */
+export function openName(this: App, asFunction = false) {
   const P = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
   if (!P || P.k === 'eq') return this.refuse('Aim at the piece to name first (arrows, or Space), then press b.');
   if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
@@ -40,7 +50,7 @@ export function openName(this: App) {
   this.closeHub(false);
   this.setMode('op');
   const input = $<HTMLInputElement>('op-input');
-  input.value = freshLetter(new Set(this.lettersInUse()), symbols(P).length === 0);
+  input.value = asFunction ? fnSuggestion(P, new Set(this.lettersInUse())) : freshLetter(new Set(this.lettersInUse()), symbols(P).length === 0);
   $('op').hidden = false;
   $('op').classList.add('naming');
   this.place($('op'));
@@ -66,11 +76,13 @@ export function commitName(this: App) {
 
 /** a name taken: the step in this equation, then the name as an equation of its own beside it */
 export function addName(this: App, r: Named) {
+  // the piece is a function you already have, at some value: only this equation changes
+  if (r.folded) { this.apply(r.step, 1.05); return; }
   // the equation itself becomes the definition (I = ∫ … turned into I(t) = ∫ …)
   if (r.inPlace) {
     if (!this.apply(r.step, 1.05)) return;
     this.syncDefs();
-    this.say(`${r.step.label}: ${brief(r.def.lhs)} = ${brief(r.def.rhs)}. C d differentiates both sides; p puts in a value; ${toText(r.def.lhs).replace(/\(.*/, '')}(…) works in any equation.`);
+    this.say(`${r.note ? r.note + '. ' : ''}${brief(r.def.lhs)} = ${brief(r.def.rhs)}. C d differentiates both sides; p puts in a value; ${toText(r.def.lhs).replace(/\(.*/, '')}(…) works in any equation.`);
     return;
   }
   // a bound letter (x in ∫₀¹ … dx) stays as it is here: only the name is new
@@ -84,7 +96,7 @@ export function addName(this: App, r: Named) {
   const what = `${brief(r.def.lhs)} = ${brief(r.def.rhs)}`;
   this.say(kind === 'param'
     ? `Equation ${n}: ${what}, the value you want in the end. This one now holds for every ${toText(r.def.lhs)}.`
-    : kind === 'fn' ? `Equation ${n}: ${what}. C d differentiates both sides; p puts in a value.`
+    : kind === 'fn' ? `${r.note ? r.note + '. ' : ''}Equation ${n}: ${what}. C d differentiates both sides; p puts in a value.`
     : `Equation ${n}: ${what}. In it, C k takes the differentials (for d${kind === 'letter' ? r.letter : toText(r.def.lhs)}); hold Tab + ${n} subs it in here.`);
 }
 
@@ -92,7 +104,8 @@ export function addName(this: App, r: Named) {
 export function openValue(this: App) {
   const v = valueVar(this.eq, this.sel);
   if (!v) return this.refuse('Aim at the letter to put a value in for, then press p.');
-  if (!holdsForEvery(this.eq, v)) return this.refuse(`This says which ${v} works, not something true for every ${v}, so a value can't just be put in. To check a value, press e.`);
+  // on an equation that says which v works, a value is tried (true or false) instead of giving a new equation
+  this.valueCheck = !holdsForEvery(this.eq, v);
   this.opKind = 'value';
   this.valueOf = v;
   this.closeHub(false);
@@ -109,11 +122,20 @@ export function openValue(this: App) {
 
 export function commitValue(this: App) {
   const text = $<HTMLInputElement>('op-input').value;
+  if (this.valueCheck) {
+    const t = tryValue(this.eq, this.valueOf!, text);
+    if ('error' in t) return this.refuse(t.error);
+    this.closeOp();
+    if (t.holds) sound.commit(); else sound.refuse();
+    return this.say(t.text, t.holds === false);
+  }
   const r = putValue(this.eq, this.valueOf!, text);
   if ('error' in r) return this.refuse(r.error);
   this.closeOp();
   if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
-  this.slots.push({ steps: [{ eq: r, label: `at ${this.valueOf} = ${text.trim()}`, conditions: [], rule: 'put in a value', dir: '⇒' }], at: 0, sel: null, from: here(this.slot!) });
+  const parts = valueParts(text, this.valueOf!);
+  const at = 'error' in parts ? text.trim() : parts.map(([w, t]) => `${w} = ${t.trim()}`).join(', ');
+  this.slots.push({ steps: [{ eq: r, label: `at ${at}`, conditions: [], rule: 'put in a value', dir: '⇒' }], at: 0, sel: null, from: here(this.slot!) });
   this.cur = this.slots.length - 1;
   sound.commit();
   this.sel = null;
@@ -121,7 +143,7 @@ export function commitValue(this: App) {
   this.renderAll(null);
   this.entrance();
   this.save();
-  this.say(`Equation ${this.cur + 1}: at ${this.valueOf} = ${text.trim()}. s tidies it; Tab u unfolds a function.`);
+  this.say(`Equation ${this.cur + 1}: at ${at}. s tidies it; Tab u unfolds a function.`);
 }
 
 /** Tab + q on a polynomial: take out a factor you type, P = (x − 2)·Q + R */
@@ -214,10 +236,17 @@ export function onNameType(this: App) {
     this.peek = 'error' in r ? null : r.step.eq;
   } else {
     const text = $<HTMLInputElement>('op-input').value;
-    const r = text.trim() ? putValue(this.eq, this.valueOf!, text) : { error: 'Type a value.' };
-    symEl.textContent = `${this.valueOf} =`;
-    $('op').classList.toggle('bad', 'error' in r);
-    note.textContent = 'error' in r ? r.error : `new equation: ${toText(r)} · Enter`;
+    // "t = 0" names its own letter, so the box only shows "t =" before a bare value
+    symEl.textContent = /[=→>]/.test(text) ? 'put in' : `${this.valueOf} =`;
+    if (this.valueCheck) {
+      const t = text.trim() ? tryValue(this.eq, this.valueOf!, text) : { error: 'Type a value to try.' };
+      $('op').classList.toggle('bad', 'error' in t);
+      note.textContent = 'error' in t ? t.error : `${t.text} · Enter`;
+    } else {
+      const r = text.trim() ? putValue(this.eq, this.valueOf!, text) : { error: 'Type a value.' };
+      $('op').classList.toggle('bad', 'error' in r);
+      note.textContent = 'error' in r ? r.error : `new equation: ${toText(r)} · Enter`;
+    }
     this.peek = null;
   }
   this.renderMain({ quick: true });

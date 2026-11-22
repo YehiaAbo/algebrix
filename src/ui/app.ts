@@ -1,7 +1,7 @@
-import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate, isDiff } from '../engine/ast';
+import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate, isDiff, defsSig } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
-import { parseEquation, ParseError } from '../engine/parse';
+import { parseEquation, ParseError, setRedefining } from '../engine/parse';
 import { toText } from '../engine/print';
 import { applyMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { formsFor } from '../engine/forms';
@@ -21,7 +21,7 @@ import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
-import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty, setHtml } from './shared';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty, setHtml, onResize } from './shared';
 import * as nav from './nav';
 import { notationFor } from './notation';
 import * as sheet from './sheet';
@@ -89,6 +89,8 @@ export class App {
   /** what the small box is for: both sides (o), naming a piece (b), or putting in a value (p) */
   opKind: 'both' | 'name' | 'value' | 'divide' | 'one' = 'both';
   valueOf: string | null = null;
+  /** p on an equation that says which value works: a typed value is tried, not put in */
+  valueCheck = false;
   /** the polynomial Tab q takes a factor out of */
   divideAt: string | null = null;
   oneAt: string | null = null;
@@ -101,14 +103,14 @@ export class App {
     this.stage = new Stage($('stage'));
     this.tree = new TreeView($('tree'), { size: 16, strip: true, pick: (c, id) => this.goStep(c, id), open: (c, id) => this.openTree(c, id) });
     this.treeBig = new TreeBig((c, id) => this.goStep(c, id));
-    new ResizeObserver(() => { if (!$('tree').hidden) this.renderTree(false); }).observe($('tree'));
+    onResize($('tree'), () => { if (!$('tree').hidden) this.renderTree(false); });
     this.graph = new Graph($<HTMLCanvasElement>('graph'), $('graph-note'));
     this.bind();
     let size = '';
-    new ResizeObserver(() => {
+    onResize($('stage'), () => {
       const st = $('stage'), next = `${st.clientWidth}x${st.clientHeight}`;
       if (next !== size) { size = next; this.renderMain(null); }
-    }).observe($('stage'));
+    });
     this.tour = new Tour(this);
     const app = this;
     this.library = new Library({
@@ -375,7 +377,7 @@ export class App {
     const vars = $('vars');
     const solved = eq && this.mode === 'write' ? null : eq && solvedFor(eq);
     // the rail only changes when what it shows changes: skip the rebuild otherwise
-    const sig = eq ? `${key(eq)}|${solved}|${this.slot?.bad}|${JSON.stringify(this.domains)}|${(this.step?.conditions ?? []).join(';')}` : '';
+    const sig = eq ? `${key(eq)}|${defsSig.v}|${solved}|${this.slot?.bad}|${JSON.stringify(this.domains)}|${(this.step?.conditions ?? []).join(';')}` : '';
     const same = sig === this.railSig;
     this.railSig = sig;
     this.renderRailCounts();
@@ -432,7 +434,7 @@ export class App {
     }
     if (this.mode === 'fnpal') return `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`;
     if (this.mode === 'fnask') return `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`;
-    if (this.mode === 'op') return `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter, a function like I(t), or what it equals.', value: 'Type the value to put in.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`;
+    if (this.mode === 'op') return `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter (u), a function (I(t), or I(5) to make the 5 its letter), or what it equals.', value: 'Type a value: 0, t = 0, or a = 1, b = 2.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`;
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     parts.push(`<span class="what" data-text="${node ? escapeHtml(toText(node)) : ''}">${node ? escapeHtml(pretty(toText(node))) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
@@ -600,6 +602,9 @@ export class App {
 
   setMode(m: Mode) {
     this.mode = m;
+    // typing over a definition may change it; anywhere else f(…) = … with f taken is an equation about f
+    const own = m === 'write' && this.writing === 'edit' ? this.slot?.steps.find(st => relOf(st.eq) === 'def')?.eq.lhs : null;
+    setRedefining(own?.k === 'call' ? own.name : null);
     document.body.dataset.mode = m;
     if (m !== 'labels') this.clearLabels();
   }
@@ -1071,7 +1076,7 @@ function noValue(e: Eq): boolean {
   if (!v) return false;
   const r = e.lhs.k === 'sym' && e.lhs.name === v ? e.rhs : e.lhs;
   if (symbols(r).length) return false;
-  const k = key(r);
+  const k = key(r) + '|' + defsSig.v;
   if (!valueless.has(k)) valueless.set(k, !Number.isFinite(evaluate(r, {})));
   return valueless.get(k)!;
 }

@@ -1,7 +1,7 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp } from './ast';
+import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp, key as keyOf } from './ast';
 
 /** f, g, h, and any function you named (b, then I(t)) read as calls when a bracket follows */
 /** a letter this equation defines as a function (I in I(t) = …), while it is being read */
@@ -518,6 +518,16 @@ export function parseExpr(src: string): Node {
 
 const RELS = ['=', '<', '>', '≤', '≥'];
 
+/** the definition being typed over (i on a definition), which a new one may replace */
+let REDEFINING: string | null = null;
+export const setRedefining = (name: string | null) => { REDEFINING = name; };
+function definesAnew(name: string, param: string, body: Node): boolean {
+  const d = DEFS.get(name);
+  if (!d || name === REDEFINING) return true;
+  // the same definition again (read back from a save, say) is still that definition
+  return d.param === param && keyOf(d.body) === keyOf(body);
+}
+
 /** An equation, an inequality, or (with `allowExpr`) a lone expression. */
 export function parseEquation(src: string, allowExpr = false): Eq {
   // F(t) = … with t on the right defines F, whatever letter F is (I(t) = ∫₀¹ … dx), not F·t
@@ -552,7 +562,8 @@ export function parseEquation(src: string, allowExpr = false): Eq {
     if (p.peek()) throw new ParseError(`Unexpected “${(p.peek() as Tok).v}”.`);
     return [l, r];
   });
-  // f(x) = … defines f
-  if (rel === '=' && lhs.k === 'call' && lhs.arg.k === 'sym') return eq(lhs, rhs, 'def');
+  // f(x) = … defines f, when f is new. Once f means something, f(a) = 10 or f(x) = 7 is an
+  // equation about it (to solve), not a second definition
+  if (rel === '=' && lhs.k === 'call' && lhs.arg.k === 'sym' && definesAnew(lhs.name, lhs.arg.name, rhs)) return eq(lhs, rhs, 'def');
   return eq(lhs, rhs, rel);
 }

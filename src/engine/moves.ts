@@ -419,6 +419,8 @@ function stacked(n: Node): boolean {
 }
 
 export function verify(before: Eq, r: MoveOk): string | null {
+  // the same values every time: whether a move passes can't depend on what was checked before it
+  seed = 12345;
   const ids = allIds(r.eq);
   if (new Set(ids).size !== ids.length) return 'duplicate ids';
   // a name or a substitution: both sides read with the letters put back
@@ -452,14 +454,18 @@ export function verify(before: Eq, r: MoveOk): string | null {
     const span = i < 40 ? () => rand() * 9 - 4.5 : i < 80 ? () => rand() * 9 + 0.05 : () => rand() * 120 - 60;
     const env: Env = {};
     for (const v of vars) env[v] = whole.has(v) ? 1 + Math.floor(rand() * 8) : Math.round(span() * 1000) / 1000 + 0.137;
+    // lhs − rhs before and after; how big the sides are sets the tolerance, so a side worked out
+    // numerically (∫₀¹ x^t dx near its edge) isn't held to 10⁻⁶ when the sides are much bigger
+    let size = 0;
     const pairs: [number, number][] = r.check ? r.check(env) : (() => {
-      const d0 = evaluate(before, env), d1 = evaluate(r.eq, env), f = r.factor(env);
-      return Number.isFinite(f) && Number.isFinite(d0) ? [[d1, f * d0]] : [[NaN, NaN]];
+      const [l0, r0, l1, r1] = [before.lhs, before.rhs, r.eq.lhs, r.eq.rhs].map(n => evaluate(n, env)), f = r.factor(env);
+      size = Math.abs(l1) + Math.abs(r1) + Math.abs(f) * (Math.abs(l0) + Math.abs(r0));
+      return Number.isFinite(f) && Number.isFinite(l0 - r0) ? [[l1 - r1, f * (l0 - r0)]] : [[NaN, NaN]];
     })();
     if (!pairs.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))) { if (!vars.length) break; continue; }
     checked++;
     for (const [got, want] of pairs) {
-      if (Math.abs(got - want) > 1e-6 * (1 + Math.abs(want) + Math.abs(got))) return `mismatch at ${JSON.stringify(env)}: ${got} vs ${want}`;
+      if (Math.abs(got - want) > 1e-6 * (1 + Math.abs(want) + Math.abs(got) + size)) return `mismatch at ${JSON.stringify(env)}: ${got} vs ${want}`;
     }
   }
   if (checked < (vars.length ? 2 : 1)) return 'could not check: undefined almost everywhere';
@@ -499,8 +505,10 @@ export function relAfter(before: Eq, r: MoveOk): Rel | { error: string } {
   });
   if (rel === 'expr') return key(r.eq.rhs) === key(before.rhs) ? 'expr' : { error: 'This is an expression, so there is no other side. Rewrite it with e, s, d, or the forms.' };
   if (rel === 'def') {
-    return key(r.eq.lhs) === key(before.lhs) && !r.check && same(r.eq.rhs, before.rhs) ? 'def'
-      : { error: 'This defines a function. You can rewrite its right side, but not move things across.' };
+    // rewriting the right side keeps it the definition (the move's own check vouches for the new
+    // right side, which a numeric compare can't always: ∫₀¹ x^t dx has no value for t < −1); moving
+    // things across makes an ordinary equation of it, and the function stays defined by the step before
+    return key(r.eq.lhs) === key(before.lhs) && !r.check ? 'def' : '=';
   }
   if (rel === '≟') {
     return !r.check && same(r.eq.lhs, before.lhs) && same(r.eq.rhs, before.rhs) ? '≟'

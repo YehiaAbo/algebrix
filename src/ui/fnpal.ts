@@ -4,6 +4,7 @@ import { Node, findPath, DEFS } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
 import { peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
+import { brief } from '../engine/general';
 import { sound } from './sound';
 import { $, escapeHtml } from './shared';
 import type { App } from './app';
@@ -13,10 +14,10 @@ import type { App } from './app';
 /** = in the f menu: type any function of each side (a name, or an expression with _ for each side) */
 const TYPED: WrapItem = { key: '=', f: 'square', label: 'any function', show: 'F(□)', ask: 'F(□)', tpl: '' };
 
-/** the menu's tabs: the usual ones, then the functions you defined (I(t) = …), if any */
+/** the menu's tabs: the functions you defined first (I(t) = …, keys 1–9), then the usual ones */
 export function palTabs(this: App): { name: string; items: WrapItem[] }[] {
-  const yours = [...DEFS.keys()].map(F => ({ key: '', f: 'square' as const, label: `your ${F}`, show: `${F}( )`, tpl: F }));
-  return yours.length ? [...FN_TABS, { name: 'Yours', items: yours }] : FN_TABS;
+  const yours = [...DEFS.entries()].slice(0, 9).map(([F, d], j) => ({ key: String(j + 1), f: 'square' as const, label: `${F}(${d.param}) = ${brief(d.body)}`, show: `${F}( )`, tpl: F }));
+  return yours.length ? [{ name: 'Yours', items: yours }, ...FN_TABS] : FN_TABS;
 }
 
 export function openPal(this: App, sticky: boolean) {
@@ -40,7 +41,10 @@ export function renderPal(this: App) {
   const pe = peel(this.eq, this.sel);
   const lead = document.createElement('div');
   lead.className = 'hub-row';
-  lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ''}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button><button class="chip lead" data-k="="><kbd>=</kbd>type any function</button>`;
+  const aimed = !!this.sel && this.sel !== 'eq';
+  lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ' rec'}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button>`
+    + `<button class="chip lead" data-k="="><kbd>=</kbd>type any function</button>`
+    + `<button class="chip lead${aimed ? '' : ' off'}" data-k="b"><kbd>b</kbd>${aimed ? 'make the aimed piece a function' : 'aim at a piece to make it a function'}</button>`;
   host.append(lead);
   const tabs = document.createElement('div');
   tabs.className = 'pal-tabs';
@@ -117,6 +121,8 @@ export function palKey(this: App, e: KeyboardEvent) {
   if (k === 'Enter') { if (P.moved) return this.choose(items[P.i]); P.moved = true; P.i = 0; this.renderPal(); return this.palPeek(); }
   if (k === 'i') return this.palInverse();
   if (k === '=') return this.choose(TYPED);
+  if (k === 'b') { this.closePal(false); return this.openName(true); }
+  if (/^[1-9]$/.test(k)) { const yours = TABS[0].name === 'Yours' ? TABS[0].items[Number(k) - 1] : undefined; if (yours) return this.choose(yours); return this.refuse(DEFS.size ? `You have ${DEFS.size} function${DEFS.size > 1 ? 's' : ''}: 1–${DEFS.size}.` : 'No functions of yours yet. Type one (F(x) = …), or aim at a piece and press b.'); }
   if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
   const w = WRAPS.find(x => x.key === k);
   if (w) return this.choose(w);

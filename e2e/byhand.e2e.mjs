@@ -259,8 +259,49 @@ export const tests = {
     await load('g(t) = 2t + 1');
     await key('n'); await type('x + 1 = 5'); await key('Enter');
     await until(s => s.slots === 2, 'a second equation');
-    await key('f', 'ArrowLeft', 'ArrowDown', 'Enter');
-    await until(s => s.eq === 'g(x + 1) = g(5)', 'your g, from the Yours tab');
+    await key('f', '1');
+    await until(s => s.eq === 'g(x + 1) = g(5)', 'your g, first in the menu, on key 1');
+  },
+
+  async 'a defined function is used, not redefined: f(a) = 10 solves, s works out f(3), the definition moves freely'(h) {
+    const { load, key, type, until, aim } = h;
+    await load('f(x) = x^2 + 1');
+    await key('n'); await type('f(a) = 10'); await key('Enter');
+    await until(s => s.slots === 2, 'an equation about f');
+    await key('e');
+    await until(s => s.eq === 'a = 3' || s.eq === 'a = −3', 'solved through f', 12000);
+    await key('n'); await type('y = f(3)'); await key('Enter');
+    await until(s => s.eq === 'y = f(3)', 'typed');
+    await key('s');
+    await until(s => s.eq === 'y = 10', 's works out f(3)');
+    await key('1');
+    await aim('x^2 + 1');
+    await key('m');
+    await until(s => s.eq === 'f(x) − (x^2 + 1) = 0' || s.eq === 'f(x) − x^2 − 1 = 0', 'the definition moves like any equation');
+  },
+
+  async 'b with I(5) turns the 5 into t and defines I(t); f then b offers it; p takes t = 0 and tries values'(h) {
+    const { load, key, type, until, aim, p, assert } = h;
+    await load('y = int_0^1 (x^5 - 1)/ln x dx');
+    await aim('∫_{0}^{1} (x^5 − 1)/ln(x) dx');
+    await key('f', 'b');
+    const offered = await p.evaluate(() => document.getElementById('op-input').value);
+    assert(offered === 'I(5)', `f then b offers I(5): ${offered}`);
+    await key('Enter');
+    await until(s => s.eq === 'y = I(5)' && s.slots === 2, 'the piece is I(5), and I(t) = … is equation 2');
+    const rail = await p.evaluate(() => document.getElementById('vars').textContent);
+    assert(!rail.includes('no value'), `I(5) has a value (ln 6) once I is defined: ${rail}`);
+    await key('2');
+    await until(s => s.eq === 'I(t) = ∫_{0}^{1} (x^t − 1)/ln(x) dx', 'the definition, with t where the 5 was');
+    await key('p', 'Control+a'); await type('t = 0'); await key('Enter');
+    await until(s => s.eq === 'I(0) = ∫_{0}^{1} (x^0 − 1)/ln(x) dx', 'put in t = 0');
+    await key('s', 's', 's', 's');
+    await until(s => s.eq === 'I(0) = 0', 'works out to I(0) = 0');
+    await load('x^2 = 4');
+    await key('p', 'Control+a'); await type('3'); await key('Enter');
+    await until(s => s.mode === 'solve', 'the box closed');
+    const said = await p.evaluate(() => document.getElementById('hints').textContent);
+    assert(/x = 3: 9 = 4, false/.test(said), `trying x = 3 says it fails: ${said}`);
   },
 
   async 'Tab u folds a piece written like your function into it, and unfolds it back'(h) {

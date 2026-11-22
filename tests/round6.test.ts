@@ -224,6 +224,7 @@ describe('expressions, proofs and named functions', () => {
     expect(T(ok(unfold(e, null)).eq)).toBe('3^2 + 1 = y');
     const g = parseEquation('f(2t) = 5');
     expect(T(ok(unfold(g, null)).eq)).toBe('(2t)^2 + 1 = 5');
+    DEFS.clear();
   });
   it('finds an inverse function', () => {
     const d = parseEquation('f(x) = 2x + 3');

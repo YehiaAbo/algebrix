@@ -48,3 +48,23 @@ every core key on stress/corpus.txt; add an equation there for each new class.
 - **K5 A class's display beat the hidden attribute.** The replay bar (display: flex) showed as an
   empty dark pill under every equation. One global `[hidden] { display: none !important }`
   replaces eleven per-class rules, so no element can show while hidden.
+- **K6 A cache key that leaves out an input.** The graph's slow-equation grid was cached by
+  equation and view but not by grid size; when the size changed it read past the end and threw
+  (on I(t) definitions). The size is now part of the key. Same class: y = I(5) was cached as
+  "no value" from the moment before I was defined. Every cache that evaluates now adds defsSig
+  (what the defined functions say). Rule: a memo key names every input.
+- **K7 Layout changed inside a ResizeObserver callback.** The graph, the stage and the tree
+  redrew inside the observer, so the browser looped. One onResize helper runs them on the next
+  frame. Guard: e2e output has no "ResizeObserver loop".
+- **K8 What a function is depended on spelling and on a registry.** `F(v) = …` always became
+  a frozen definition (moves refused, e refused), even f(a) = 10 with f already defined, and
+  I(5) typed before I existed read as I·5. Now a definition is an ordinary equation that also
+  defines its name (only when the name is new), s and e see through defined functions, and
+  the b box always reads F(…) as a function. Guard: tests/functions.test.ts, e2e byhand.
+- **K9 The safety net's verdict depended on history and ignored scale.** Its sample values came
+  from one running random stream, so a move could pass or fail depending on what had been
+  checked earlier in the session; and it compared lhs − rhs to 10⁻⁶ absolutely, so a side worked
+  out numerically (∫₀¹ x^t dx near t = −1) failed by 10⁻⁶ while both sides were about 3. The
+  Feynman chain from a typed I(t) stopped at random. Now every check starts the stream afresh,
+  and the tolerance grows with the size of the sides. Guard: tests/functions.test.ts "the safety
+  net gives the same verdict".

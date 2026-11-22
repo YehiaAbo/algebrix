@@ -115,13 +115,17 @@ export const tests = {
     await until(s => s.eq === 'C = 0', 'C = 0', 12000);
   },
 
-  async 'p is refused on an equation to solve'(h) {
-    const { load, key, countRefusals, refusals, assert } = h;
+  async 'p on an equation to solve tries the value and says whether it works'(h) {
+    const { load, key, type, p, assert, wait } = h;
     await load('x^2 = 4');
-    await countRefusals();
     await dig(h, 'x');
     await key('p');
-    assert((await refusals()) === 1, 'x² = 4 does not hold for every x, so p refuses');
+    await type('3');
+    await key('Enter');
+    await wait(200);
+    const said = await p.evaluate(() => document.getElementById('hints').textContent);
+    assert(said.includes('9 = 4, false'), `x = 3 is tried, not put in: ${said}`);
+    assert((await h.text()) === 'x^2 = 4', 'the equation is left as it was');
   },
 
   async 'C hub marks the shortcuts as chains'({ load, p, key, assert, wait }) {

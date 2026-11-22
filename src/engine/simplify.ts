@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff, DEFS, cloneFresh } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -32,6 +32,23 @@ function pass(n: Node, h: Hints): Node {
   });
   const m = changed ? withChildren(n, next) : n;
   return rule(m, h) ?? m;
+}
+
+/** a function you defined, at a number, worked out when it comes out a number: f(3) = 10 with
+ *  f(x) = x² + 1. Anything else (f(a), or I(0) with I(t) = ∫ …) stays for Tab u to unfold */
+function callRule(name: string, arg: Node, id: string, h: Hints): Node | null {
+  const d = DEFS.get(name);
+  if (!d || hasSymbols(arg)) return null;
+  // a definition with calculus in it (I(t) = ∫ …) is worked out by you, not by s
+  let calc = false;
+  const look = (m: Node) => { if (['deriv', 'lim', 'int', 'at', 'sum', 'grad', 'call'].includes(m.k)) calc = true; children(m).forEach(look); };
+  look(d.body);
+  if (calc) return null;
+  const put = (m: Node): Node => (m.k === 'sym' && m.name === d.param ? cloneFresh(arg) : withChildren(m, children(m).map(put)));
+  const r = simplify(put(cloneFresh(d.body)), h);
+  if (hasSymbols(r)) return null;
+  h.absorbs.set(arg.id, id);
+  return { ...r, id };
 }
 
 const mulOf = (fs: Node[], id?: string): Node => (fs.length === 0 ? num(1) : fs.length === 1 ? fs[0] : mul(fs, id));
@@ -162,6 +179,9 @@ function rule(n: Node, h: Hints): Node | null {
       return null;
     }
     case 'fn': return fnRule(n.name, n.arg, n.id, h);
+    case 'call': return callRule(n.name, n.arg, n.id, h);
+    // nothing to add up: a definite integral of 0 is 0
+    case 'int': return n.arg.k === 'num' && n.arg.v === 0 && n.lo && n.hi ? num(0, n.id) : null;
     default: return null;
   }
 }

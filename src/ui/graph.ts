@@ -4,10 +4,10 @@
 // surface stay the same at every step: visual proof that no move broke anything.
 // Desmos-style handling: drag to pan (or turn, in 3D), scroll to zoom at the cursor,
 // double-click to reset, hover a curve or a point to read its coordinates.
-import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num, key } from '../engine/ast';
+import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num, key, defsSig } from '../engine/ast';
 import { toText } from '../engine/print';
 import { asPrime } from '../engine/leibniz';
-import { supHtml, escapeHtml } from './shared';
+import { supHtml, escapeHtml, onResize } from './shared';
 import { substitute } from '../engine/calculus';
 
 /** what decides the colours: theme, look, and the system's dark mode */
@@ -85,7 +85,9 @@ export class Graph {
   }
   /** a grid of samples. Cheap ones are worked out now; slow ones fill in over the next frames,
    *  so the keys never freeze, and the graph redraws when they are done. */
-  private sampleGrid(k: string, n: number, m: number, f: (i: number, j: number) => number): number[][] | null {
+  private sampleGrid(key0: string, n: number, m: number, f: (i: number, j: number) => number): number[][] | null {
+    // the grid size is part of what was sampled: a grid kept from another size would be read past its end
+    const k = `${n}x${m} ${key0}`;
     const hit = this.memo.get(k) as number[][] | undefined;
     if (hit) return hit;
     if (this.jobs.has(k)) return null;
@@ -133,7 +135,7 @@ export class Graph {
     this.ctx = canvas.getContext('2d')!;
     // the canvas size, kept from the observer: reading clientWidth in a frame after the stage has
     // changed forces the whole page's layout right there, every frame of a curve morph
-    new ResizeObserver(es => { const r = es[es.length - 1].contentRect; this.box = { w: r.width, h: r.height }; this.render(); }).observe(canvas);
+    onResize(canvas, r => { this.box = { w: r.width, h: r.height }; this.render(); });
     canvas.addEventListener('pointerdown', e => {
       this.drag = { x: e.clientX, y: e.clientY, moved: false };
       canvas.setPointerCapture(e.pointerId);
@@ -341,7 +343,7 @@ export class Graph {
 
   private render1(eq: Eq, v: string, X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number) {
     const { W } = this, c = this.ctx;
-    const K = `1 ${key(eq)} ${v} ${this.viewKey()}`;
+    const K = `1 ${key(eq)}${defsSig.v} ${v} ${this.viewKey()}`;
     // an integral at every point is slow: fewer points then, so a key press never freezes
     const per = this.cost(K, () => evaluate(eq.lhs, { [v]: ux(W * 0.37) }) + evaluate(eq.rhs, { [v]: ux(W * 0.37) }));
     const N = Math.max(60, Math.min(Math.ceil(W / 1.5), Math.floor(120 / per)));
@@ -519,7 +521,7 @@ export class Graph {
     for (const o of extra) this.implicit(o, hx, vy, ux, uy, css('--graph-b'), 0.75);
     if (isIneq(eq)) {
       // shade the region where it holds; a strict inequality gets a dashed boundary
-      const K = `in ${key(eq)} ${hx} ${vy} ${this.viewKey()}`;
+      const K = `in ${key(eq)}${defsSig.v} ${hx} ${vy} ${this.viewKey()}`;
       const per = this.cost(K, () => holds(eq, { [hx]: ux(this.W * 0.37), [vy]: uy(this.H * 0.61) }));
       const c = this.ctx, cell = Math.max(4, Math.ceil(Math.sqrt(this.W * this.H * per / 1500)));
       const n = Math.ceil(this.W / cell), m = Math.ceil(this.H / cell);
@@ -750,7 +752,7 @@ export class Graph {
 
   private implicit(eq: Eq, hx: string, vy: string, ux: (p: number) => number, uy: (p: number) => number, color: string, alpha: number, dashed = false) {
     const { W, H } = this, c = this.ctx;
-    const K = `2 ${key(eq)} ${hx} ${vy} ${this.viewKey()}`;
+    const K = `2 ${key(eq)}${defsSig.v} ${hx} ${vy} ${this.viewKey()}`;
     const per = this.cost(K, () => evaluate(eq, { [hx]: ux(W * 0.37), [vy]: uy(H * 0.61) }));
     // about 1.5 s of work at most, done in the background when it is that slow
     const n = Math.max(30, Math.min(150, Math.floor(Math.sqrt((1500 / per) * W / H)))), m = Math.round(n * H / W);
@@ -884,7 +886,7 @@ function hexRgb(h: string): number[] {
 /** where eq and one of the others both hold in view, by Newton's method from a grid of starts (cached) */
 const crossCache = new Map<string, number[][]>();
 function crossings(eq: Eq, others: Eq[], hx: string, vy: string, [x0, x1]: number[], [y0, y1]: number[]): number[][] {
-  const k = [toText(eq), ...others.map(o => toText(o)), x0, x1, y0, y1].join('|');
+  const k = [defsSig.v, toText(eq), ...others.map(o => toText(o)), x0, x1, y0, y1].join('|');
   const hit = crossCache.get(k);
   if (hit) return hit;
   const out: number[][] = [];

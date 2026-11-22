@@ -1,8 +1,8 @@
 // Solving: isolate a variable, split into cases, check answers, domains, inverses.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { symbols, relOf, isIneq, DEFS, add, key, holds, Eq } from '../engine/ast';
+import { symbols, relOf, isIneq, DEFS, defsSig, add, key, holds, Eq, Node, walk } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
-import { inverseFunction } from '../engine/goals';
+import { inverseFunction, unfold } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
 import { setDomains, Domain } from '../engine/moves';
 import { toText } from '../engine/print';
@@ -22,7 +22,7 @@ export function solveFor(this: App, v: string) {
   const rel = relOf(this.eq);
   if (rel === 'expr') { this.refuse('An expression has nothing to solve. Add “= …” to make it an equation.'); return; }
   if (rel === '≟') { this.refuse('This holds for every value, so there is nothing to solve: prove it instead, one side at a time.'); return; }
-  if (rel === 'def') { this.refuse('This defines a function. Use it in another equation, or hold Tab + b for its inverse.'); return; }
+  if (rel === 'def' && v === (this.eq.lhs.k === 'call' && this.eq.lhs.arg.k === 'sym' ? this.eq.lhs.arg.name : null)) { this.refuse(`This defines ${this.eq.lhs.k === 'call' ? this.eq.lhs.name : 'a function'}: there is nothing to solve for. p puts in a value; hold Tab + b for its inverse.`); return; }
   if (isIneq(this.eq)) {
     const Q = polyOf(add([this.eq.lhs, negate(this.eq.rhs)]));
     const linear = symbols(this.eq).length === 1 && !!Q && Q.c.length <= 2;
@@ -33,13 +33,24 @@ export function solveFor(this: App, v: string) {
       return;
     }
   }
-  const r = isolate(this.eq, v);
-  if (!Array.isArray(r)) { this.refuse(r.error); return; }
+  // v inside a function you defined (g(x) = 7): its definition goes in first, then solve as usual
+  const pre: MoveOk[] = [];
+  let cur = this.eq;
+  for (let i = 0; i < 6; i++) {
+    let c: Node | null = null;
+    walk(cur, n => { if (!c && n.k === 'call' && DEFS.has(n.name) && symbols(n.arg).includes(v)) c = n; });
+    const u = c ? unfold(cur, (c as Node).id) : null;
+    if (!u || isErr(u)) break;
+    pre.push({ ...u, select: null });
+    cur = u.eq;
+  }
+  const r = isolate(cur, v);
+  if (!Array.isArray(r)) { if (pre.length) this.play(pre, () => this.refuse(r.error)); else this.refuse(r.error); return; }
   // nothing to isolate yet, like |2x − 1| = 5: straight to the cases
-  if (!r.length) { if (solvedFor(this.eq) === v) this.refuse(`Already solved for ${v}.`); else this.afterSolve(v); return; }
+  if (!r.length && !pre.length) { if (solvedFor(this.eq) === v) this.refuse(`Already solved for ${v}.`); else this.afterSolve(v); return; }
   r.forEach(s => { s.select = null; s.focus = undefined; });
   const why = (r as { stuck?: string }).stuck;
-  this.play(r, () => this.afterSolve(v, why));
+  this.play([...pre, ...r], () => this.afterSolve(v, why));
 }
 
 /** a C the person typed is theirs, not a constant of integration to rename */
@@ -189,4 +200,5 @@ export function syncDefs(this: App) {
     const e = [...slot.steps.slice(0, slot.at + 1).map(st => st.eq)].reverse().find(q => q.rel === 'def');
     if (e && e.lhs.k === 'call' && e.lhs.arg.k === 'sym') DEFS.set(e.lhs.name, { param: e.lhs.arg.name, body: e.rhs });
   }
+  defsSig.v = [...DEFS].map(([F, d]) => `${F}(${d.param})=${key(d.body)}`).join(';');
 }

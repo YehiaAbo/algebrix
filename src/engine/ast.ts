@@ -86,6 +86,9 @@ export const isLeibniz2 = (n: Node): boolean =>
 export const FUNC_NAMES = ['f', 'g', 'h'];
 /** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */
 export const DEFS = new Map<string, { param: string; body: Node }>();
+/** what DEFS says, as text: anything cached by an equation's key that evaluates it must add this,
+ *  since y = I(5) is worth something else (or nothing) when I changes. Set wherever DEFS is filled */
+export const defsSig = { v: '' };
 /** the letters you named (b): u → x², x → sin θ. A named letter is tied to the letters it was
  *  made from, so calculus treats it as changing with them (∫ cos u dx is not cos u · x) */
 export const LETS = new Map<string, Node>();
