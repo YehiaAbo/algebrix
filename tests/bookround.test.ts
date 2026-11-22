@@ -135,3 +135,21 @@ describe('substitutions go back last in, first out (K34)', () => {
     }
   });
 });
+
+describe('an odd trig power on the bottom (K36) and the half angle under a root (K35)', () => {
+  const slopeOk = (src: string, f: (x: number) => number) => {
+    const end = last(src);
+    const F = end.k === 'eq' && end.lhs.k === 'int' ? end.rhs : end.rhs;
+    const h = 1e-5;
+    for (const x of [0.3, 0.7, 1.1]) expect(Math.abs((evaluate(F, { x: x + h, C: 0 }) - evaluate(F, { x: x - h, C: 0 })) / (2 * h) - f(x)), src).toBeLessThan(1e-4);
+  };
+  it('∫ tan² sec, ∫ sec³, ∫ cos²/sin come out by × cos/cos (or sin/sin) and u = sin (or cos)', () => {
+    slopeOk('y = int tan(x)^2 sec(x) dx', x => Math.tan(x) ** 2 / Math.cos(x));
+    slopeOk('y = int sec(x)^3 dx', x => 1 / Math.cos(x) ** 3);
+    slopeOk('y = int cos(x)^2/sin(x) dx', x => Math.cos(x) ** 2 / Math.sin(x));
+  });
+  it('√(1 ± cos A) under ∫ from 0 to its end', () => {
+    expect(value('y = int_0^(pi/2) sqrt(1 - cos(2x)) dx')).toBeCloseTo(Math.SQRT2, 9);
+    expect(value('y = int_0^(2 pi) sqrt(2 - 2cos(t)) dt')).toBeCloseTo(8, 9);
+  });
+});

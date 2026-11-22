@@ -1,11 +1,11 @@
 # Bank report
 
-295 of 302 solved by the engine (2026-11-22T11:08 UTC).
+298 of 304 solved by the engine (2026-11-22T11:09 UTC).
 
 | file | solved |
 |---|---|
-| openstax-calc2.txt | 43/47 |
-| classic.txt | 128/130 |
+| openstax-calc2.txt | 44/47 |
+| classic.txt | 130/132 |
 | openstax-calc1.txt | 82/83 |
 | openstax-algebra.txt | 36/36 |
 | sample.txt | 6/6 |
@@ -16,7 +16,6 @@
 | trig sub | 5/6 |
 | partial fractions | 6/7 |
 | improper integrals | 6/7 |
-| trig integrals | 9/10 |
 | substitution | 10/11 |
 | by parts | 33/34 |
 | product | 5/5 |
@@ -75,6 +74,7 @@
 | same base | 1/1 |
 | two roots | 1/1 |
 | half angle | 2/2 |
+| odd power bottom | 2/2 |
 | linear | 4/4 |
 | complete the square | 1/1 |
 | quadratic formula | 2/2 |
@@ -90,6 +90,7 @@
 | antiderivatives | 3/3 |
 | FTC | 10/10 |
 | exp and log integrals | 15/15 |
+| trig integrals | 10/10 |
 | trig substitution | 9/9 |
 | factoring | 1/1 |
 | inequality | 1/1 |
@@ -103,6 +104,5 @@
 - **K-L8** (classic.txt:105, value) `lim x->0+ x ln x`: gave −0 = 0, numbers say NaN
 - **C1-5.5#283** (openstax-calc1.txt:66, antideriv) `int (y^5)/((1 - y^3 )^(3 / 2)) dy`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ y^5/((1 − y^3)^(3/2)) dy)
 - **C2-3.1#23** (openstax-calc2.txt:10, antideriv) `int sin ( ln ( 2 x ) ) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at (∫ sin(ln(u)) du)/2)
-- **C2-3.2#89** (openstax-calc2.txt:27, antideriv) `int tan^2 x sec x dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ sin(x)^2/(cos(x)^3) dx)
 - **C2-3.4#219** (openstax-calc2.txt:40, antideriv) `int (dt)/(( e^t - e^(- t) )^2)`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/((e^t − e^(−t))^2) dt)
 - **C2-3.7#393** (openstax-calc2.txt:49, value) `int_(2)^(inf) (dx)/((x^2 - 1)^(3 / 2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{2}^{∞} 1/((x^2 − 1)^(3/2)) dx)

@@ -554,6 +554,20 @@ export function trigRewrite(e: Eq, sel: string | null): MoveResult {
     const kept = [...fs.slice(0, i).map(fresh), k === 1 ? sq : pow(sq, num(k)), ...fs.slice(i + 1).map(fresh), fn(name, fresh(p.L))];
     return done(mul(kept), `${name}${k === 1 ? '²' : ''}${k > 1 ? `^${2 * k}` : ''} = ${k > 1 ? '(' : ''}1 − ${other}²${k > 1 ? `)^${k}` : ''}, keeping one ${name} back`, 'trig identity');
   }
+  // an odd power on the bottom (sin² x/cos³ x): × cos/cos makes it even, cos⁴ = (1 − sin²)², and u = sin x is ready
+  // sec³ x is (1/cos x)³: read as 1/cos³ x
+  const fq = f.k === 'pow' && f.base.k === 'frac' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? frac(pow(fresh(f.base.num), num(f.exp.v)), pow(fresh(f.base.den), num(f.exp.v))) : f;
+  if (fq.k === 'frac') {
+    const tops = (fq.num.k === 'mul' ? fq.num.factors : [fq.num]).filter(x => !(x.k === 'pow' && x.base.k === 'num' && x.base.v === 1));
+    for (const [name, other] of [['cos', 'sin'], ['sin', 'cos']] as const) {
+      const p = powOfTrig(fq.den, name);
+      if (!p || p.n % 2 === 0) continue;
+      if (!tops.every(x => !dependsOn(x, v) || (powOfTrig(x, other) && key(powOfTrig(x, other)!.L) === key(p.L)))) continue;
+      const k = (p.n + 1) / 2;
+      const sq = add([num(1), neg(pow(fn(other, fresh(p.L)), num(2)))]);
+      return done(frac(mul([...tops.map(fresh), fn(name, fresh(p.L))]), k === 1 ? sq : pow(sq, num(k))), `× ${name}/${name}: ${name}${k === 1 ? '²' : `^${2 * k}`} = ${k === 1 ? '' : '('}1 − ${other}²${k === 1 ? '' : `)^${k}`}`, 'trig identity');
+    }
+  }
   // two waves multiplied: sin A cos B = (sin(A + B) + sin(A − B))/2, and the like; sin x cos x is sin 2x/2
   const waves = fs.filter(x => x.k === 'fn' && (x.name === 'sin' || x.name === 'cos') && slope(x.arg, v) !== null);
   if (waves.length >= 2) {

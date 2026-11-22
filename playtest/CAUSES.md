@@ -206,3 +206,5 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   the check failed (∫ cos⁻¹(2x) dx stopped). Now the last one named goes back first. Guard: bookround.
 - **K35 √(1 − cos A) had no route for e.** The half angle read backwards under a root gives
   √2·|sin(A/2)|, and the |g| split finishes definite ones (C2-3.2#111, K-H7, K-H8).
+- **K36 An odd trig power on the bottom had no route** (∫ tan² sec = sin²/cos³, ∫ sec³). × cos/cos
+  makes it even, cos⁴ = (1 − sin²)², then u = sin x and partial fractions. Guard: bookround.
