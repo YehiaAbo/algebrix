@@ -106,6 +106,15 @@ export function flip(v: NavView, sel: string | null, dive: (n: Node) => Node): s
   return path?.[1] === v.root.lhs ? v.root.rhs.id : v.root.lhs.id;
 }
 
+/** the same piece in another tree of the same shape: a move that lands on a step taken before
+ *  goes back to that step, whose pieces have their own ids (m, m, m … keeps its aim) */
+export function carryAim(from: Node, to: Node, id: string): string | undefined {
+  if (from.id === id) return to.id;
+  const a = kidsOf(from), b = kidsOf(to);
+  for (let i = 0; i < a.length && i < b.length; i++) { const r = carryAim(a[i], b[i], id); if (r) return r; }
+  return undefined;
+}
+
 /** Where the aim goes after a move, so the arrows keep working without a fresh Space: what the
  *  move names; else the piece you had; else what the move made where it was (the new pieces'
  *  smallest common parent); else its nearest part that survived; else the whole equation. */

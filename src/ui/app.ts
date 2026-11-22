@@ -21,6 +21,7 @@ import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
+import { initMeter } from './fps';
 import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty, setHtml, onResize } from './shared';
 import * as nav from './nav';
 import { notationFor } from './notation';
@@ -121,6 +122,7 @@ export class App {
       afterRemove: () => { if (!this.restore()) this.newWork(); },
     });
     this.settings = new Settings({ tour: () => this.tour.menu() });
+    initMeter();
     onPrefs((_, k) => this.prefsChanged(k));
     initPanels();
     if (!this.restore()) {
@@ -335,7 +337,7 @@ export class App {
     src.closest('.titem')?.animate([{ boxShadow: '0 0 0 2px var(--copy)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: ms(700), easing: 'ease-out' });
   }
 
-  renderAll(tr: Transition | null, graphAnim = false) {
+  renderAll(tr: Transition | null, graphAnim = false, sameSet = false) {
     this.syncDefs();
     this.syncLets();
     this.renderTree();
@@ -344,9 +346,18 @@ export class App {
     this.renderRail();
     this.renderHints();
     this.graph.extra = this.slot?.bad && this.shown && solvedFor(this.shown) && !this.preview ? 'But this answer came from a one-way step (like squaring) and fails the original, so it is not a solution.' : '';
-    if (this.shown) this.graph.draw(this.shown, graphAnim, this.slots.filter((_, i) => i !== this.cur).map((_, j) => this.eqOf(j >= this.cur ? j + 1 : j)));
+    if (this.shown) this.drawGraphSoon(this.shown, graphAnim, this.slots.filter((_, i) => i !== this.cur).map((_, j) => this.eqOf(j >= this.cur ? j + 1 : j)), sameSet && this.shown === this.eq);
     document.body.dataset.mode = this.mode;
     this.tour?.check();
+  }
+
+  /** the graph is drawn once the move has played, not in the key press: its sampling would
+   *  take the frames the move animates in (held m redraws it once, when you let go) */
+  private graphSoon = 0;
+  drawGraphSoon(eq: Eq, animate: boolean, others: Eq[], sameSet: boolean) {
+    clearTimeout(this.graphSoon);
+    if (animate || !this.graph.eq) { this.graph.draw(eq, animate, others, sameSet); return; }
+    this.graphSoon = window.setTimeout(() => this.graph.draw(eq, false, others, sameSet), ms(440));
   }
 
   /** the start of this equation, in the typing box (i types over it) */
@@ -521,12 +532,12 @@ export class App {
     this.linkNext = null;
     const { answer } = sheet.addStep(this, r, { link, out });
     // the aim follows the work, so the arrows keep going without a fresh Space
-    this.sel = nav.aimAfter(before, this.eq, this.sel, out.back ? undefined : r.select);
+    this.sel = nav.aimAfter(before, this.eq, this.sel, out.back ? (r.select ? nav.carryAim(r.eq, this.eq, r.select) : undefined) : r.select);
     sound.move(pitch);
     // judged first, so a wrong answer is drawn as one
     const now = solvedFor(r.eq);
     const bad = now ? this.judge(this.cur) : null;
-    this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true);
+    this.renderAll({ focus: r.focus, absorbs: r.hints.absorbs, flights: r.hints.flights }, true, !r.implies);
     if (!opts.quietLabel) this.bubble(r.label, false, r.focus ?? this.sel);
     // a round trip shows as ↺n on the step in the tree; no words needed
     if (!out.back && out.again && !r.auto) this.say('Same as a step you already took, so you are back on it (the tree keeps one of each).');
@@ -1018,13 +1029,17 @@ export class App {
     const b = document.createElement('div');
     b.className = 'bubble' + (bad ? ' bad' : '');
     b.textContent = pretty(text);
-    $('stage').append(b);
-    const W = $('stage').clientWidth;
-    const x = Math.max(12 + b.offsetWidth / 2, Math.min(W - 12 - b.offsetWidth / 2, r.x + r.w / 2));
-    b.style.left = `${x}px`;
+    b.style.left = `${r.x + r.w / 2}px`;
     b.style.top = `${r.y - 14}px`;
+    $('stage').append(b);
     const life = bad ? 2600 : 1100;
     b.animate([{ opacity: 0, transform: 'translate(-50%, -80%) scale(.92)' }, { opacity: 1, transform: 'translate(-50%, -100%)' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
+    // kept inside the stage, measured next frame: reading its width now would lay out the whole
+    // page in the middle of the key press, before the rest of the press has changed it
+    requestAnimationFrame(() => {
+      const W = $('stage').clientWidth, w = b.offsetWidth;
+      b.style.left = `${Math.max(12 + w / 2, Math.min(W - 12 - w / 2, r.x + r.w / 2))}px`;
+    });
     setTimeout(() => {
       const a = b.animate([{ opacity: 1 }, { opacity: 0, transform: 'translate(-50%, -130%)' }], { duration: 260, fill: 'forwards' });
       a.onfinish = () => b.remove();

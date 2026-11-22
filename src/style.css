@@ -670,3 +670,5 @@ body[data-mode="write"] .input-keys { display: flex; }
 .replay .rp-speed b { font-variant-numeric: tabular-nums; }
 .pal-ask.typed input { width: 220px; }
 .pal-ask.typed input::placeholder { color: var(--muted); opacity: .6; font-size: 15px; }
+#fps { position: fixed; top: 8px; right: 8px; z-index: 50; padding: 3px 9px; border-radius: 999px; font: 600 11.5px/1.5 var(--ui-font); font-variant-numeric: tabular-nums; background: var(--panel); color: var(--good); border: 1px solid var(--line); pointer-events: none; }
+#fps.bad { color: var(--bad); }

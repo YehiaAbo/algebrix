@@ -75,3 +75,10 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   checking a move an undefined f is "some function" (one fixed function per name). Guards:
   tests/moves.prop.test.ts (m, m, m ping-pongs over random equations; RUNS=… SEED=… for more),
   and the stress suite now presses m three times on every term it moves.
+- **K11 Work done inside the key press that the frames needed.** Every move re-sampled the
+  graph's implicit curve (15,000 evaluations) and the move bubble read its own width right after
+  the stage changed, laying out the whole page mid-press. A step that keeps the same solutions
+  now keeps the curve it has; the graph redraws after the move plays; the bubble is measured the
+  next frame. And a move that lands on an earlier step went back to it without carrying the aim,
+  so the 4th m in a row moved the whole side. Guard: stress presses m four times; the frame
+  meter (`) measures where the app actually runs.

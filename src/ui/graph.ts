@@ -60,7 +60,7 @@ const hasVector = (eq: Eq) => { let f = false; walk(eq, n => { if (n.k === 'vec'
 
 export class Graph {
   private ctx: CanvasRenderingContext2D;
-  private eq: Eq | null = null;
+  eq: Eq | null = null;
   private others: Eq[] = [];
   private view: View = { cx: 0, cy: 0, span: 10 };
   private raf = 0;
@@ -261,10 +261,14 @@ export class Graph {
     tick();
   }
 
-  draw(eq: Eq, animate: boolean, others: Eq[] = this.others) {
+  /** the equation whose curve is drawn in the plane: a step that keeps the same solutions
+   *  (sameSet) keeps the curve it already has, so it isn't sampled again on every move */
+  private plotEq: Eq | null = null;
+  draw(eq: Eq, animate: boolean, others: Eq[] = this.others, sameSet = false) {
     // dy/dx and dy = … dx draw like y′: the same slope field
     eq = asPrime(eq);
     const fresh = !this.eq || symbols(this.eq).join() !== symbols(eq).join();
+    if (!sameSet || fresh || !this.plotEq) this.plotEq = eq;
     if (!this.eq || key(this.eq) !== key(eq)) this.stopJobs();
     this.eq = eq;
     this.others = others;
@@ -507,6 +511,7 @@ export class Graph {
   }
 
   private render2(eq: Eq, vars: string[], X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number, family: Eq | null = null) {
+    if (!family && this.plotEq) eq = this.plotEq;
     const hx = vars.includes('x') ? 'x' : vars[0];
     const vy = vars.includes('y') && hx !== 'y' ? 'y' : vars.find(n => n !== hx)!;
     this.grid(X, Y, ux, uy, hx, vy);

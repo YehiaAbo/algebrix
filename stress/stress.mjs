@@ -91,10 +91,13 @@ for (const src of CORPUS) {
         const back = await st();
         await press('m'); await settle(80);
         const again = await st();
+        await press('m'); await settle(80);
+        const fourth = await st();
         if (one.eq === before.eq) fail(src, `m after undo did nothing on "${before.sel}" (aimed ${one.sel})`);
         else if (back.eq === one.eq) fail(src, `m again after moving "${before.sel}" did nothing (aimed ${back.sel}): ${back.bar.slice(0, 120)}`);
         else if (again.eq !== one.eq) fail(src, `m, m, m on "${before.sel}" gave "${again.eq}", not "${one.eq}" again`);
-        for (let i = 0; i < 8 && (await st()).eq !== before.eq; i++) { await press('u'); await settle(60); }
+        else if (fourth.eq !== back.eq) fail(src, `a fourth m on "${before.sel}" gave "${fourth.eq}", not "${back.eq}" again (it went back a step, and the aim must come with it)`);
+        for (let i = 0; i < 10 && (await st()).eq !== before.eq; i++) { await press('u'); await settle(60); }
         await p.evaluate(id => { const a = window.algebrix; a.select(id, true); a.renderHints(); }, before.sel); await settle(60);
       }
       // back where we were, aimed again for the next walk step
