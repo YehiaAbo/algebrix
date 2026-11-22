@@ -320,6 +320,31 @@ export const tests = {
     assert(strays === 0, `nothing left on screen that belongs to nothing (${strays})`);
   },
 
+  async 'the f menu box reads the function in front of you: I′(0), f″(3), f(1) on f(x) = 7, √ of −4 refused'(h) {
+    const { load, key, type, until, p, assert } = h;
+    const note = () => p.evaluate(() => document.querySelector('#pal-note').textContent);
+    await load('I(t) = int_0^1 (x^t - 1)/ln x dx');
+    await key('n'); await type("I'(t) = 1/(t + 1)"); await key('Enter');
+    await key('f'); await key('='); await type("I'(0)");
+    await until(() => true, '');
+    assert((await note()).includes('1/(0 + 1)'), `I′(0) comes from the form here, not the integral: ${await note()}`);
+    await key('Enter');
+    await until(s => s.eq === 'I′(0) = 1/(0 + 1)', 'I′(0) from I′(t) = 1/(t + 1)');
+    await load('f(x) = x^2 + 1');
+    await key('f'); await key('='); await type("f''(3)"); await key('Enter');
+    await until(s => s.eq === 'f″(3) = 2', 'f″ is worked out from f');
+    // a fresh workspace forgets the old one's f, so this f(x) = … defines
+    await load('f(x) = 2x + 3');
+    assert(await p.evaluate(() => window.algebrix.eq.rel === 'def'), 'f(x) = 2x + 3 defines f in a fresh workspace');
+    await key('n'); await type('f(x) = 7'); await key('Enter');
+    await key('f'); await key('='); await type('f(1)'); await key('Enter');
+    await until(s => s.eq === 'f(1) = 2·1 + 3', 'f(x) = 7 picks x, so f(1) comes from the definition');
+    await load('f(x) = sqrt(x)');
+    await key('f'); await key('='); await type('f(-4)');
+    await until(() => true, '');
+    assert((await note()).includes('no real value'), `√(−4) is refused: ${await note()}`);
+  },
+
   async 'a defined function is used, not redefined: f(a) = 10 solves, s works out f(3), the definition moves freely'(h) {
     const { load, key, type, until, aim } = h;
     await load('f(x) = x^2 + 1');

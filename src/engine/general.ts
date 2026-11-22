@@ -3,7 +3,7 @@
 // for every value, and ∫ both sides. With the facts (the derivative and integral rules, the
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
-import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim, holds } from './ast';
+import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim, holds, CALC } from './ast';
 import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
@@ -432,13 +432,35 @@ export function valueParts(text: string, v: string): [string, string][] | { erro
 /** a definition, an equation about a function of v (I(t) = …), or a relation between v and other
  *  letters: something to put a value of v into */
 export function holdsForEvery(e: Eq, v: string): boolean {
-  if (relOf(e) === 'def') return true;
+  if (relOf(e) === 'def' || relOf(e) === '≟') return true;
   // a relation with other letters (1 = A(x + 1) + B(x − 1), x² + y² = 25): what follows at a value
   // of v is a consequence (⇒), not a claim that v is that value
   if (relOf(e) === '=' && symbols(e).some(w => w !== v && w !== 'C' && !isDiff(w))) return true;
-  let fnOf = false;
-  walk(e, n => { if (n.k === 'call' && symbols(n.arg).includes(v)) fnOf = true; });
-  return fnOf;
+  // about a function of v: one with no definition (I(t) = … while I is unknown) holds for every t;
+  // one you defined (f(x) = 7 with f(x) = 2x + 3) only when the sides really agree everywhere
+  let unknown = false, known = false;
+  walk(e, n => { if (n.k === 'call' && symbols(n.arg).includes(v)) { if (DEFS.has(n.name) || CALC.primeDef(n.name)) known = true; else unknown = true; } });
+  return unknown || (known && sameEverywhere(e, v));
+}
+
+/** both sides agree at every value of v tried (numerically, with room for integrals worked out by
+ *  number). With a constant C in it (I(t) = ln|t + 1| + C), agreeing up to that constant is enough:
+ *  some C makes it true for every t. */
+export function sameEverywhere(e: Eq, v: string): boolean {
+  if (!symbols(e).includes(v)) return false;
+  const withC = v !== 'C' && symbols(e).includes('C');
+  let hits = 0, gap: number | null = null;
+  for (let i = 0; i < 12; i++) {
+    const env: Env = {};
+    // only v moves; the other letters stay put (y = x + C is not true for every x)
+    symbols(e).forEach((w, j) => (env[w] = w === v ? 0.3 + 0.37 * i : w === 'C' && withC ? 0 : 0.41 + 0.23 * j));
+    const a = evaluate(e.lhs, env), b = evaluate(e.rhs, env);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    const d = withC ? a - b - (gap ??= a - b) : a - b;
+    if (Math.abs(d) > 1e-6 * (1 + Math.abs(a) + Math.abs(b))) return false;
+    hits++;
+  }
+  return hits >= 6;
 }
 
 /** the letter to put a value in for: aimed, else the argument of a function here, else the only one */

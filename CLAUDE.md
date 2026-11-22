@@ -9,7 +9,7 @@ Keyboard-first math workbench. Spec: `docs/specs/2026-11-16-algebrix-prototype-d
 - `src/packs/` sound sets and looks; add one file and list it in `src/packs/index.ts`. Guide: `docs/EXTENDING.md`.
 - Never ship a move that is not covered by the numeric equivalence check.
 - No UI framework; keep animation code direct.
-- Skills in `.claude/skills/`: `playtest` (real problems played by keyboard; bank and causes in `playtest/`), `microdesign` (before building any visible behaviour), `design-review` (polish rounds).
+- Skills in `.claude/skills/`: `playtest` (real problems played by keyboard; bank and causes in `playtest/`), `microdesign` (before building any visible behaviour), `design-review` (polish rounds), `edge-cases` (every feature and every reported fix: list the cases on every axis and run them in the real build before calling it done).
 
 # CLAUDE.md
 

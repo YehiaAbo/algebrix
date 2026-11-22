@@ -13,6 +13,8 @@ import type { App } from './app';
 /** start over with one equation (the tour uses this) */
 export function loadFresh(this: App, src: string) {
   this.slots = []; this.cur = 0; this.writing = 'new';
+  // the old workspace's definitions go with it, or f(x) = … here would read as an equation about them
+  this.syncDefs();
   this.commit(src, true);
   this.message = null; this.renderHints();
 }
@@ -72,6 +74,7 @@ export function newWork(this: App) {
   const w = works.create<Slot>();
   this.workId = w.id;
   this.slots = []; this.cur = 0; this.domains = {}; setDomains(this.domains);
+  this.syncDefs();
   this.grouped = null; this.peek = null;
   this.stage.clear();
   this.edit(true);

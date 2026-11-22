@@ -154,3 +154,12 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   1/(t + 1) for t (multiplying out); an equation true for every value now says so instead.
   Rule: the stage must hold exactly what the layout says, checked after every key in the stress run.
   Guards: stress (strays after every move and undo), e2e byhand.
+- **K21 A value went into the wrong form of a function.** The f menu box read f(…) from the
+  definition, so with I′(t) = 1/(t + 1) on screen, I′(0) went back to the integral. Now the form in
+  front of you comes first, when it holds for every input (an identity, a definition, or a form up to
+  + C like I(t) = ln|t + 1| + C); a claim like f(x) = 7 picks x, so the definition is used. Derived
+  names (f′, f″, f⁻¹) are worked out from f. Underneath: a fresh workspace (and the tour) parsed its
+  first line against the previous workspace's definitions, so f(x) = … there could read as a claim
+  about an old f. Rule: anything read from the screen (what's defined, which form) is synced when the
+  workspace changes, not on the next render.
+  Guards: functions.test.ts K21, e2e byhand (the f menu box reads the function in front of you).

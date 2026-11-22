@@ -1,10 +1,12 @@
 // The function palette (f): apply a function to both sides, with a live preview.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { Node, Eq, findPath, find, DEFS, eq, cloneFresh, evaluate, symbols, defCall, paramsOf, call, vec, sym, children, withChildren } from '../engine/ast';
+import { Node, Eq, findPath, find, DEFS, eq, cloneFresh, evaluate, symbols, paramsOf, argsOf, call, vec, sym, children, withChildren, walk, CALC, relOf } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
 import { peel, wrapBoth, inverseOf, yourCall, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
-import { brief, putValue } from '../engine/general';
+import { simplify, newHints } from '../engine/simplify';
+import { brief, putValue, holdsForEvery } from '../engine/general';
+import { inverseFunction } from '../engine/goals';
 import { toText } from '../engine/print';
 import { here } from './tree';
 import { sound } from './sound';
@@ -43,11 +45,11 @@ export function renderPal(this: App) {
   const inv = inverseOf(this.peelSide());
   const pe = peel(this.eq, this.sel);
   // the input box is always the first thing in the menu: type f(4), f(x² + 1), ln, e^_ …
-  const mine = [...DEFS.keys()].find(n => !n.endsWith('⁻¹'));
+  const mine = formHere(this.eq) ?? [...DEFS.keys()].find(n => !n.endsWith('⁻¹'));
   if (P.ask !== TYPED) {
     const idle = document.createElement('div');
     idle.className = 'pal-ask typed idle';
-    idle.innerHTML = `<input id="pal-idle" spellcheck="false" autocomplete="off" aria-label="type a function or a value" placeholder="${mine ? `${mine}(4)   ${mine}(x² + 1)   ` : ''}ln   e^_   _^2 + 1"><span class="op-note">${mine ? `press <kbd>${mine}</kbd> to type ${mine}(…), or <kbd>=</kbd>` : '<kbd>=</kbd> to type'}</span>`;
+    idle.innerHTML = `<input id="pal-idle" spellcheck="false" autocomplete="off" aria-label="type a function or a value" placeholder="${mine ? `${mine}(4)   ${mine}(x² + 1)   ` : ''}ln   e^_   _^2 + 1"><span class="op-note">${mine ? `press <kbd>${mine[0]}</kbd> to type ${mine}(…), or <kbd>=</kbd>` : '<kbd>=</kbd> to type'}</span>`;
     host.append(idle);
   }
   const lead = document.createElement('div');
@@ -142,7 +144,8 @@ export function palKey(this: App, e: KeyboardEvent) {
   if (k === 'b') { this.closePal(false); return this.openName(true); }
   if (k === '-') { const F = this.invTarget(); if (!F) return this.refuse('No functions of yours yet. Type one (f(x) = …), then - writes out its inverse.'); this.closePal(false); return this.addInverse(F); }
   if (/^[1-9]$/.test(k)) { const yours = TABS[0].name === 'Yours' ? TABS[0].items[Number(k) - 1] : undefined; if (yours) return this.choose(yours); return this.refuse(DEFS.size ? `You have ${DEFS.size} function${DEFS.size > 1 ? 's' : ''}: 1–${DEFS.size}.` : 'No functions of yours yet. Type one (F(x) = …), or aim at a piece and press b.'); }
-  if (k.length === 1 && DEFS.has(k)) return this.typeInPal(`${k}(`);
+  // a letter naming a function here (or one you defined) starts typing it: I in I′(t) = … gives I′(
+  if (k.length === 1 && /[A-Za-zα-ω]/.test(k)) { const here = formHere(this.eq, k); if (here || DEFS.has(k)) return this.typeInPal(`${here ?? k}(`); }
   if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
   const w = WRAPS.find(x => x.key === k);
   if (w) return this.choose(w);
@@ -194,8 +197,8 @@ export function askArg(this: App): Node | { error: string } {
 export function askPreview(this: App) {
   const value = this.valueAsked();
   if (value) {
-    const r = valueInto(value.F, value.text);
-    $('pal-note').textContent = 'error' in r ? r.error : `${toText(r)}${worth(r)}: Enter adds it`;
+    const r = valueInto(value.F, value.text, this.eq);
+    $('pal-note').textContent = 'error' in r ? r.error : `${toText(r.eq)}${worth(r.eq)}: Enter adds it`;
     $('pal-note').classList.toggle('bad', 'error' in r);
     if (this.peek) { this.peek = null; this.renderMain({ quick: true }); }
     return;
@@ -215,7 +218,7 @@ export function askKey(this: App, e: KeyboardEvent) {
   if (e.key === 'Enter') {
     e.preventDefault();
     const value = this.valueAsked();
-    if (value) { const r = valueInto(value.F, value.text); if ('error' in r) return this.refuse(r.error); this.closePal(false); return this.addValueOf(value.F, r, value.text); }
+    if (value) { const r = valueInto(value.F, value.text, this.eq); if ('error' in r) return this.refuse(r.error); this.closePal(false); return this.addValueOf(value.F, r.eq, value.text, r.here); }
     const a = this.askArg();
     const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
     if (isErr(r)) { this.refuse(r.error); return; }
@@ -256,26 +259,62 @@ export function valueAsked(this: App): { F: string; text: string } | null {
   if (isYours(w) && v) return { F: w!.tpl!, text: v };
   if (w !== TYPED) return null;
   // the closing bracket can wait: f(4 is f(4)
-  const m = /^([A-Za-zα-ω](?:⁻¹)?)\s*\((.+?)\)?$/.exec(v);
+  const m = /^([A-Za-zα-ω](?:_\w+)?(?:⁻¹|\^\(?-1\)?|[′″‴']+)?)\s*\((.+?)\)?$/.exec(v);
   return m && !m[2].includes('_') ? { F: m[1], text: m[2] } : null;
 }
 
-/** F(a) = its body at a: the definition with a value put in */
-function valueInto(F: string, text: string): Eq | { error: string } {
-  const d = DEFS.get(F);
-  if (!d) return { error: `${F} isn't defined yet. Type ${F}(x) = … as an equation first (n), then put values in here.` };
-  const ps = paramsOf(d);
-  // f(x, y): values in order (1, 2), or named (y = 2, x = 1)
-  const parts = text.split(',').map(t => t.trim());
-  if (ps.length > 1 && !parts.some(t => /^[A-Za-zα-ω]\s*=/.test(t)) && parts.length !== ps.length) return { error: `${F} takes ${ps.length} inputs: type ${ps.length} values with commas, like ${ps.map((_, i) => i + 1).join(', ')}.` };
-  if (ps.length === 1) return putValue(eq(defCall(F, d), cloneFresh(d.body), 'def'), ps[0], text);
-  // several: all at once (f(y, x) swaps them, rather than putting one into the other)
+/** F(a): the values put into the equation you are on, where it has F of letters (I′(t) = 1/(t + 1)
+ *  takes I′(0)), else into F's definition (f(x) = x² + 1 takes f(4)). `here` says which */
+function valueInto(F: string, text: string, cur: Eq): { eq: Eq; here: boolean } | { error: string } {
+  const name = F.replace(/''/g, '″').replace(/'/g, '′').replace(/\^\(?-1\)?$/, '⁻¹');
+  // the form in front of you first: a call of F whose inputs are letters, a whole side if there is
+  // one, and only where it holds for every value of them (f(x) = 7 picks x: then f's definition)
+  let form: Extract<Node, { k: 'call' }> | null = null;
+  walk(cur, n => { if (n.k === 'call' && n.name === name && argsOf(n).every(a => a.k === 'sym') && (!form || n === cur.lhs || n === cur.rhs)) form = n; });
+  const at = form as Extract<Node, { k: 'call' }> | null;
+  const found = at && ['=', 'def', '≟'].includes(relOf(cur)) && argsOf(at).every(a => holdsForEvery(cur, (a as { name: string }).name)) ? at : null;
+  // f′ and f″ worked out from f, tidied so f′(3) reads 2·3, not 2·3^(2 − 1)·1 + 0
+  const pd = DEFS.has(name) ? undefined : CALC.primeDef(name);
+  let d = DEFS.get(name) ?? (pd && { ...pd, body: simplify(cloneFresh(pd.body), newHints()) });
+  // f⁻¹ before its formula is written: worked out from f
+  if (!d && name.endsWith('⁻¹') && DEFS.has(name.slice(0, -2))) {
+    const base = DEFS.get(name.slice(0, -2))!;
+    const inv = inverseFunction(eq(call(name.slice(0, -2), sym(base.param)), cloneFresh(base.body), 'def'));
+    if ('error' in inv) return inv;
+    d = { param: base.param, body: inv.rhs };
+  }
+  if (!found && !d) {
+    const letter = symbols(cur).includes(name);
+    return { error: letter ? `${name} is a letter here, not a function of something, so nothing goes into it. ${name === 'y' || name === 'y′' ? 'A starting value is an equation of its own: n, then y(0) = 1.' : `Write it as ${name}(x) = … to make it a function.`}` : `There is no ${name}(…) here, and ${name} isn't defined. Type ${name}(x) = … first (n), or work on an equation with ${name}(t) in it.` };
+  }
+  const ps = found ? argsOf(found).map(a => (a as { name: string }).name) : paramsOf(d!);
+  const start: Eq = found ? cur : eq(d!.param.includes(',') ? call(name, vec(ps.map(p => sym(p)))) : call(name, sym(ps[0])), cloneFresh(d!.body), 'def');
+  // values in order (1, 2), or named (y = 2, x = 1)
+  const parts = text.split(',').map(t => t.trim()).filter(Boolean);
+  const named = parts.some(t => /^[A-Za-zα-ω]\s*=/.test(t));
+  if (!named && parts.length !== ps.length) return { error: `${name} takes ${ps.length} input${ps.length > 1 ? 's' : ''}: type ${ps.length > 1 ? `${ps.length} values with commas, like ${ps.map((_, i) => i + 1).join(', ')}` : 'one value'}.` };
+  if (ps.length === 1 && !named && text.trim() === ps[0]) return { error: `${name}(${ps[0]}) is what is already here: put in a number or an expression, like ${name}(2) or ${name}(${ps[0]} + 1).` };
+  if (ps.length === 1 && !named) { const r = putValue(start, ps[0], text); return 'error' in r ? r : outside(r) ?? { eq: r, here: !!found }; }
   const vals = new Map<string, Node>();
   try {
     parts.forEach((t, i) => { const m = /^([A-Za-zα-ω])\s*=\s*(.+)$/.exec(t); vals.set(m ? m[1] : ps[i], parseExpr(m ? m[2] : t)); });
   } catch (err) { return { error: (err as Error).message }; }
+  for (const v of vals.keys()) if (!symbols(start).includes(v)) return { error: `There is no ${v} here to put a value in for.` };
+  if (found && [...vals.keys()].some(v => !holdsForEvery(cur, v))) return { error: `This says which ${[...vals.keys()].join(', ')} work${vals.size > 1 ? '' : 's'}, not something true for every value, so a value can't just be put in. p tries a value instead.` };
+  // all at once (f(y, x) swaps them, rather than putting one into the other)
   const put = (m: Node): Node => (m.k === 'sym' && vals.has(m.name) ? cloneFresh(vals.get(m.name)!) : withChildren(m, children(m).map(put)));
-  return eq(call(F, vec(ps.map(p => (vals.has(p) ? cloneFresh(vals.get(p)!) : sym(p))))), put(cloneFresh(d.body)));
+  const r = eq(put(cloneFresh(start.lhs)), put(cloneFresh(start.rhs)));
+  return outside(r) ?? { eq: r, here: !!found };
+}
+
+/** a number in that has no value out (√ of −4, ln 0): outside the function's domain, said so */
+function outside(r: Eq): { error: string } | null {
+  const inf = r.lhs.k === 'call' && argsOf(r.lhs).some(a => !symbols(a).length && Math.abs(evaluate(a, {})) === Infinity);
+  if (inf) return { error: `∞ isn't a value to put in. For where it heads, take a limit: C, then l, then inf.` };
+  if (symbols(r).length || Number.isFinite(evaluate(r.rhs, {}))) return null;
+  const args = r.lhs.k === 'call' ? argsOf(r.lhs) : [];
+  if (!args.length || !args.every(a => Number.isFinite(evaluate(a, {})))) return null;
+  return { error: `${toText(r.rhs)} has no real value: ${args.map(a => toText(a)).join(', ')} is outside where ${r.lhs.k === 'call' ? r.lhs.name : 'it'} is defined.` };
 }
 
 /** " = 10" when the value works out to a number */
@@ -287,9 +326,9 @@ function worth(r: Eq): string {
 }
 
 /** the value as an equation of its own, coming off the definition in the tree */
-export function addValueOf(this: App, F: string, r: Eq, text: string) {
+export function addValueOf(this: App, F: string, r: Eq, text: string, fromHere = false) {
   if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
-  const home = this.slots.find(sl => sl.steps.some(st => st.eq.rel === 'def' && st.eq.lhs.k === 'call' && st.eq.lhs.name === F)) ?? this.slot!;
+  const home = fromHere ? this.slot! : this.slots.find(sl => sl.steps.some(st => st.eq.rel === 'def' && st.eq.lhs.k === 'call' && st.eq.lhs.name === F)) ?? this.slot!;
   this.slots.push({ steps: [{ eq: r, label: `${F} at ${text}`, conditions: [], rule: 'put in a value', dir: '⇒' }], at: 0, sel: null, from: here(home) });
   this.cur = this.slots.length - 1;
   sound.commit();
@@ -308,4 +347,11 @@ export function typeInPal(this: App, start: string) {
   input.value = start;
   input.setSelectionRange(start.length, start.length);
   this.askPreview();
+}
+
+/** the function form in the equation you are on (I′ in I′(t) = 1/(t + 1)), by its first letter if given */
+function formHere(e: Eq, letter?: string): string | null {
+  let out: string | null = null;
+  walk(e, n => { if (!out && n.k === 'call' && (!letter || n.name[0] === letter) && argsOf(n).every(a => a.k === 'sym')) out = n.name; });
+  return out;
 }

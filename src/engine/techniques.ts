@@ -297,7 +297,9 @@ function moveAnyRaw(e: Eq, sel: string | null): MoveResult {
  *  out the numbers leaves it as it is, instead of 11 = 11. (y = f(4) still works f(4) out.) */
 export function isSubject(e: Eq, n: Node): boolean {
   const other = n === e.lhs ? e.rhs : n === e.rhs ? e.lhs : null;
-  return !!other && n.k === 'call' && !hasSymbols(n.arg) && !hasSymbols(other);
+  const subject = (m: Node, o: Node) => m.k === 'call' && !hasSymbols(m.arg) && !hasSymbols(o);
+  // one side at most: in g(7) = f⁻¹(7) the right side is what g(7) comes to, so it works out
+  return !!other && subject(n, other) && !(n === e.rhs && subject(e.lhs, e.rhs));
 }
 
 export function tidy(e: Eq): MoveOk | null {
@@ -940,7 +942,7 @@ export function simplifySpot(e: Eq): Spot | null {
   // plain arithmetic goes all the way in one press: the largest piece with no letters around it
   const found = hit as { n: Node; r: Node; h: ReturnType<typeof newHints> };
   if (!symbols(found.n).length) {
-    const top = findPath(e, found.n.id)?.find(m => m.k !== 'eq' && !symbols(m).length && !hasCalcNode(m));
+    const top = findPath(e, found.n.id)?.find(m => m.k !== 'eq' && !symbols(m).length && !hasCalcNode(m) && !isSubject(e, m));
     if (top && top !== found.n) {
       const h = newHints(), r = simplify(top, h);
       if (key(r) !== key(top) && toText(r) !== toText(top)) hit = { n: top, r, h };

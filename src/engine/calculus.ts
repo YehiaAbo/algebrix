@@ -127,6 +127,8 @@ export function substitute(n: Node, v: string, what: Node): Node {
 
 /** f′ for a defined f (and f″ for f′): its body, differentiated */
 function primeDef(name: string): { param: string; body: Node } | undefined {
+  // f″ and f‴ are f′′ and f′′′
+  if (/[″‴]$/.test(name)) return primeDef(name.replace(/″/g, '′′').replace(/‴/g, '′′′'));
   if (!name.endsWith('′')) return undefined;
   const base = name.slice(0, -1);
   const f = DEFS.get(base) ?? primeDef(base);

@@ -541,10 +541,10 @@ function definesAnew(name: string, param: string, body: Node): boolean {
 /** An equation, an inequality, or (with `allowExpr`) a lone expression. */
 export function parseEquation(src: string, allowExpr = false): Eq {
   // F(t) = … with t on the right defines F, whatever letter F is (I(t) = ∫₀¹ … dx), not F·t
-  const dm = /^\s*([A-Za-zα-ωΑ-Ω])\s*\(\s*([A-Za-zα-ω](?:\s*,\s*[A-Za-zα-ω])*)\s*\)\s*:?=([^=<>≤≥]*)$/.exec(src);
+  const dm = /^\s*([A-Za-zα-ωΑ-Ω](?:_\{?\w+\}?)?)\s*\(\s*([A-Za-zα-ω](?:\s*,\s*[A-Za-zα-ω])*)\s*\)\s*:?=([^=<>≤≥]*)$/.exec(src);
   const dps = dm ? dm[2].split(',').map(x => x.trim()) : [];
   if (dm && !DEFINING && !dps.includes(dm[1]) && dm[1] !== 'e' && dps.some(x => new RegExp(`(^|[^A-Za-z])${x}([^A-Za-z]|$)`).test(dm[3]))) {
-    DEFINING = dm[1];
+    DEFINING = dm[1].replace(/[{}]/g, '');
     try { return parseEquation(src.replace(/:=/, '='), allowExpr); } finally { DEFINING = null; }
   }
   const toks = tokenize(src);

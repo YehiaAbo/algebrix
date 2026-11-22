@@ -6,6 +6,7 @@ import { inverseFunction, unfold } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
 import { setDomains, Domain } from '../engine/moves';
 import { toText } from '../engine/print';
+import { sameEverywhere } from '../engine/general';
 import { isErr, solvedFor, checked, MoveOk, MoveResult } from '../engine/moves';
 import { newHints } from '../engine/simplify';
 import { absorbConstant, shareExponential, renameConstant } from '../engine/ode';
@@ -25,7 +26,7 @@ export function solveFor(this: App, v: string) {
   if (rel === 'def' && v === (this.eq.lhs.k === 'call' && this.eq.lhs.arg.k === 'sym' ? this.eq.lhs.arg.name : null)) { this.refuse(`This defines ${this.eq.lhs.k === 'call' ? this.eq.lhs.name : 'a function'}: there is nothing to solve for. p puts in a value; hold Tab + b for its inverse.`); return; }
   // true for every value of v (I′(t) = 1/(t + 1) when I is defined): a fact about a function, not
   // an equation that picks out some v, so there is nothing to solve
-  if (rel === '=' && holdsForAll(this.eq, v)) { const c = callName(this.eq); this.refuse(c ? `This holds for every ${v}: it says what ${c} is, so there is no ${v} to solve for. p puts in a value; C i integrates both sides.` : `This holds for every ${v} (both sides are the same), so every ${v} works.`); return; }
+  if (rel === '=' && sameEverywhere(this.eq, v)) { const c = callName(this.eq); this.refuse(c ? `This holds for every ${v}: it says what ${c} is, so there is no ${v} to solve for. p puts in a value; C i integrates both sides.` : `This holds for every ${v} (both sides are the same), so every ${v} works.`); return; }
   if (isIneq(this.eq)) {
     const Q = polyOf(add([this.eq.lhs, negate(this.eq.rhs)]));
     const linear = symbols(this.eq).length === 1 && !!Q && Q.c.length <= 2;
@@ -213,18 +214,4 @@ export function syncDefs(this: App) {
   defsSig.v = [...DEFS].map(([F, d]) => `${F}(${d.param})=${key(d.body)}`).join(';');
 }
 
-/** both sides agree at every value tried (numerically, with room for integrals worked out by number) */
-function holdsForAll(e: Eq, v: string): boolean {
-  if (!symbols(e).includes(v)) return false;
-  let hits = 0;
-  for (let i = 0; i < 12; i++) {
-    const env: Record<string, number> = {};
-    symbols(e).forEach(w => (env[w] = 0.3 + 0.37 * i + (w === v ? 0 : 0.11)));
-    const a = evaluate(e.lhs, env), b = evaluate(e.rhs, env);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
-    if (Math.abs(a - b) > 1e-6 * (1 + Math.abs(a) + Math.abs(b))) return false;
-    hits++;
-  }
-  return hits >= 6;
-}
 const callName = (e: Eq): string | null => { let n: string | null = null; walk(e, m => { if (!n && m.k === 'call') n = `${m.name}(…)`; }); return n; };

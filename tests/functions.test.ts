@@ -6,7 +6,7 @@ import { Eq, Node, walk, LETS, DEFS, relOf } from '../src/engine/ast';
 import { isErr, checked, setDomains } from '../src/engine/moves';
 import { unfold, inverseFunction } from '../src/engine/goals';
 import { toText } from '../src/engine/print';
-import { nameIt, putValue, tryValue, integrateBoth } from '../src/engine/general';
+import { nameIt, putValue, tryValue, integrateBoth, holdsForEvery, sameEverywhere } from '../src/engine/general';
 import { intStep } from '../src/engine/integrate';
 import { simplifySpot, moveAny, applyFn, fnTemplate, tidy, peel, wrapBoth } from '../src/engine/techniques';
 import { bothSides, finishCalc } from '../src/engine/calcmoves';
@@ -258,5 +258,33 @@ describe('functions of several letters, and inverses on a limited domain (K18)',
     } finally { setDomains({}); }
     const c = inverseFunction(parseEquation('f(x) = x^2'));
     expect('error' in c && c.error).toContain('Limit its domain');
+  });
+});
+
+describe('what goes into a function is read from the form in front of you (K21)', () => {
+  it('f(x) = 7 with f defined picks x; I(t) = … with I unknown holds for every t', () => {
+    const d = parseEquation('f(x) = 2x + 3');
+    DEFS.set('f', { param: 'x', body: d.rhs });
+    const e = parseEquation('f(x) = 7');
+    expect(e.rel).not.toBe('def');
+    expect(holdsForEvery(e, 'x')).toBe(false);
+    expect(holdsForEvery(parseEquation('f(x) = 2x + 3'), 'x')).toBe(true);
+    expect(holdsForEvery(parseEquation('J(t) = 1/(t + 1)'), 't')).toBe(true);
+    expect(sameEverywhere(parseEquation('f(x) = 2x + 3'), 'x')).toBe(true);
+  });
+  it('an identity, and a form with + C, hold for every value; y = x + C does not', () => {
+    const f = parseEquation('I(t) = int_0^1 (x^t - 1)/ln x dx');
+    DEFS.set('I', { param: 't', body: f.rhs });
+    expect(holdsForEvery(parseEquation('I(t) = ln|t + 1| + C'), 't')).toBe(true);
+    expect(holdsForEvery(parseEquation('I(t) = ln|t + 2| + C'), 't')).toBe(false);
+    expect(holdsForEvery({ ...parseEquation("I'(t) = 1/(t + 1)"), rel: '≟' }, 't')).toBe(true);
+    expect(sameEverywhere(parseEquation('y = x + C'), 'x')).toBe(false);
+    expect(sameEverywhere(parseEquation('x + y = y + x'), 'x')).toBe(true);
+  });
+  it('subscripted names define, primed ones never do, and (−1/2)² comes out exact', () => {
+    expect(parseEquation('v_0(t) = 3t').rel).toBe('def');
+    expect(parseEquation("I'(t) = 1/(t + 1)").rel).not.toBe('def');
+    const t = tidy(parseEquation('y = (-1/2)^2 + 1'));
+    expect(t && T(t.eq)).toBe('y = 5/4');
   });
 });

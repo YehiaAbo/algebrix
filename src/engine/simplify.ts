@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff, DEFS, cloneFresh, oneToOne } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, neg, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff, DEFS, cloneFresh, oneToOne } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -99,6 +99,11 @@ function rule(n: Node, h: Hints): Node | null {
       }
       // (1/b)ⁿ = 1/bⁿ: sec² typed as (1/cos x)² is 1/cos² x
       if (base.k === 'frac' && base.num.k === 'num' && base.num.v === 1 && exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 1) return frac(base.num, pow(base.den, exp), n.id);
+      // a minus or a fraction of numbers to a whole power: (−a)ⁿ = ±aⁿ, (a/b)ⁿ = aⁿ/bⁿ, so (−1/2)² is 1/4
+      if (exp.k === 'num' && Number.isInteger(exp.v) && exp.v > 1 && exp.v <= 12 && !hasSymbols(base)) {
+        if (base.k === 'neg') return exp.v % 2 ? neg(pow(base.arg, exp), n.id) : pow(base.arg, exp, n.id);
+        if (base.k === 'frac' && base.num.k === 'num' && base.den.k === 'num') return frac(pow(base.num, num(exp.v)), pow(base.den, exp), n.id);
+      }
       // whole roots of numbers: 8^(1/3) → 2, 8^(2/3) → 4, 4^(−1/2) → 1/2, (−8)^(1/3) → −2
       const pq = ratOf(exp.k === 'neg' ? exp.arg : exp);
       if (base.k === 'num' && Number.isInteger(base.v) && base.v !== 0 && pq && pq.q > 1 && Math.abs(pq.p) <= 6 && (base.v > 0 || pq.q % 2 === 1)) {
