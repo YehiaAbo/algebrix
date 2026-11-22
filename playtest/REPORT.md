@@ -1,20 +1,19 @@
 # Bank report
 
-304 of 308 solved by the engine (2026-11-22T11:13 UTC).
+307 of 310 solved by the engine (2026-11-22T11:15 UTC).
 
 | file | solved |
 |---|---|
-| openstax-calc2.txt | 46/47 |
-| classic.txt | 134/136 |
+| classic.txt | 136/138 |
 | openstax-calc1.txt | 82/83 |
 | openstax-algebra.txt | 36/36 |
+| openstax-calc2.txt | 47/47 |
 | sample.txt | 6/6 |
 
 | tag | solved |
 |---|---|
 | 0 times inf | 0/1 |
-| trig sub | 5/6 |
-| improper integrals | 6/7 |
+| trig sub | 7/8 |
 | substitution | 10/11 |
 | product | 5/5 |
 | chain | 11/11 |
@@ -76,6 +75,7 @@
 | half angle | 2/2 |
 | odd power bottom | 2/2 |
 | exponential rational | 2/2 |
+| improper | 2/2 |
 | linear | 4/4 |
 | complete the square | 1/1 |
 | quadratic formula | 2/2 |
@@ -93,6 +93,7 @@
 | exp and log integrals | 15/15 |
 | trig integrals | 10/10 |
 | trig substitution | 9/9 |
+| improper integrals | 7/7 |
 | factoring | 1/1 |
 | inequality | 1/1 |
 | limits | 1/1 |
@@ -104,4 +105,3 @@
 - **K-S5** (classic.txt:70, antideriv) `int sqrt(x^2 - 1)/x dx`: gave sqrt(1 − 1/(x^2))x − cos⁻¹(1/x) + C: its slope is not the integrand
 - **K-L8** (classic.txt:105, value) `lim x->0+ x ln x`: gave −0 = 0, numbers say NaN
 - **C1-5.5#283** (openstax-calc1.txt:66, antideriv) `int (y^5)/((1 - y^3 )^(3 / 2)) dy`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ y^5/((1 − y^3)^(3/2)) dy)
-- **C2-3.7#393** (openstax-calc2.txt:49, value) `int_(2)^(inf) (dx)/((x^2 - 1)^(3 / 2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{2}^{∞} 1/((x^2 − 1)^(3/2)) dx)

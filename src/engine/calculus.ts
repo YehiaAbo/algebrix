@@ -268,8 +268,10 @@ export function quad(f: (x: number) => number, a: number, b: number): number {
     if (!Number.isFinite(w) || w === 0 || x === a || x === b) return 0;
     const y = f(x);
     if (Number.isFinite(y)) return y * w;
-    // 1/√(4 − x²) at x a rounding away from 2: an end you can integrate up to, worth nothing here
-    if (Math.min(Math.abs(x - a), Math.abs(x - b)) < 1e-12 * (1 + Math.abs(x))) return 0;
+    // 1/√(4 − x²) at x a rounding away from 2: an end you can integrate up to, worth nothing here;
+    // and tan θ within 10⁻⁹ of its pole reads as undefined even where the whole (sin θ/(cos²θ tan³θ))
+    // is fine, so a point that close to an end is left out too
+    if (Math.min(Math.abs(x - a), Math.abs(x - b)) < 1e-7 * (1 + Math.abs(x))) return 0;
     return Math.abs(w) < 1e-200 ? 0 : NaN;
   };
   let h = 0.5, total = term(0);

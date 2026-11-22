@@ -397,7 +397,7 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     if (dependsOn(Q, v)) Q = idleIn(Q, v, u) ?? Q;
     if (dependsOn(Q, v)) continue;
     const def = !!(T.lo && T.hi);
-    const bound = (b: Node) => tidy(substitute(fresh(g), v, b));
+    const bound = (b: Node) => endOf(g, v, b);
     const next = def ? int(u, Q, bound(T.lo!), bound(T.hi!)) : int(u, Q);
     const label = `u-substitution: ${u} = ${toText(g)}`;
     const check = def ? undefined : (env: Env) => [[evaluate(Q, { ...env, [u]: evaluate(g, env) }) * evaluate(dg, env), evaluate(f, env)]] as [number, number][];
@@ -409,6 +409,18 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
   const other = aimed ? uSub(e, null) : null;
   const hint = other && !isErr(other.move) && other.g ? ` u = ${toText(other.g)} works: aim at it (or at nothing).` : ' Aim at another inside piece.';
   return { move: { error: aimed ? `Its derivative isn't there, so u = ${toText(aimed)} doesn't work.${hint}` : 'No inside function whose derivative is also there. Try by parts (C + b).' } };
+}
+
+/** where a new letter's end lands: g at the old end, and at ∞ the number it heads to (cos⁻¹(1/x) → π/2) */
+function endOf(g: Node, v: string, b: Node): Node {
+  const t = tidy(substitute(fresh(g), v, b));
+  let inf = false;
+  walk(t, n => { if (n.k === 'sym' && n.name === '∞') inf = true; });
+  if (!inf) return t;
+  const x = evaluate(t, {});
+  if (x === Infinity) return sym('∞');
+  if (x === -Infinity) return neg(sym('∞'));
+  return knownNumber(x) ?? t;
 }
 
 /** n with v in it only for show (it cancels): n at a whole-number v, else null */
@@ -534,7 +546,7 @@ export function trigSub(e: Eq, sel: string | null): { move: MoveResult; u?: stri
   const ratio = () => (isNum(a, 1) ? sym(v) : frac(sym(v), fresh(a)));
   const g = tidy(kind === 'sin' ? fn('asin', ratio()) : kind === 'tan' ? fn('atan', ratio()) : fn('acos', frac(fresh(a), sym(v))));
   const def = !!(T.lo && T.hi);
-  const bound = (b: Node) => tidy(substitute(fresh(g), v, b));
+  const bound = (b: Node) => endOf(g, v, b);
   const next = def ? int(th, Q, bound(T.lo!), bound(T.hi!)) : int(th, Q);
   const label = `trig substitution: ${v} = ${toText(X)}, so ${toText(r)} = ${toText(n === 1 ? root : pow(fresh(root), num(n)))}`;
   const dg = derivative(g, v);

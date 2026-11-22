@@ -176,3 +176,10 @@ describe('an integral that comes back inside m·I + b, and by parts on f(ln x) (
     slope('y = int cos(ln(3x)) dx', x => Math.cos(Math.log(3 * x)));
   });
 });
+
+describe('a substitution on an improper integral moves the ∞ end too (K39)', () => {
+  it('x = sec θ and x = tan θ to ∞ land on π/2', () => {
+    expect(value('y = int_2^inf 1/(x^2 - 1)^(3/2) dx')).toBeCloseTo(2 / Math.sqrt(3) - 1, 9);
+    expect(value('y = int_1^inf 1/(x^2 + 1)^(3/2) dx')).toBeCloseTo(1 - Math.SQRT2 / 2, 9);
+  });
+});

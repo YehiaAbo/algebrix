@@ -213,3 +213,6 @@ every core key on stress/corpus.txt; add an equation there for each new class.
 - **K38 An integral that came back was solved for only when the side was that integral alone,**
   and by parts refused sin(ln x) on its own. The side is now remembered as m·I + b, and a lone
   function of ln v takes by parts. (C2-3.1#23, K-H14, K-H15.) Guard: bookround.
+- **K39 A substitution on an improper integral failed:** the new end stayed cos⁻¹(1/∞), and tan θ near
+  its pole read as undefined, so the numbers couldn't check the step. Ends at ∞ now land on the number
+  they head to (π/2), and quadrature skips undefined points within 10⁻⁷ of an end. Guard: bookround.
