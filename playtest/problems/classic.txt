@@ -138,3 +138,6 @@ K-H3 | antideriv | int x^2 e^x dx | (x^2 - 2x + 2) e^x | by parts twice
 K-H4 | value | int_0^2 abs(x^2 - 1) dx | 2 | absolute value
 K-H5 | value | lim x->inf (sqrt(x^2 + 3x) - x) | 3/2 | conjugate
 K-H6 | antideriv | int (3x + 1)/(x^2 + 4) dx | (3/2) ln(x^2 + 4) + (1/2) atan(x/2) | quadratic factor
+K-H7 | value | int_0^pi sqrt(1 + cos(x)) dx | 2 sqrt(2) | half angle
+K-H8 | value | int_0^(2 pi) sqrt(2 - 2cos(t)) dt | 8 | half angle
+K-H9 | antideriv | int asin(3x) dx | x asin(3x) + sqrt(1 - 9x^2)/3 | by parts

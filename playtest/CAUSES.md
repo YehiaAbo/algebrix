@@ -202,3 +202,7 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   e on an instant (an equation of values) solves for the rate. Guards: bookround, e2e calc.
 - **K33 ⚠ dy/dx + 2 = 0 lost its + C** (the integrating factor with P = 0 gave e^C). Separable is now
   read from the slope whether or not y′ stands alone. Guard: bookround.
+- **K34 ⚠ u-substitutions went back first in, first out,** so w = 1 − u² was put back after u = 2x and
+  the check failed (∫ cos⁻¹(2x) dx stopped). Now the last one named goes back first. Guard: bookround.
+- **K35 √(1 − cos A) had no route for e.** The half angle read backwards under a root gives
+  √2·|sin(A/2)|, and the |g| split finishes definite ones (C2-3.2#111, K-H7, K-H8).

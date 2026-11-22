@@ -585,6 +585,22 @@ export function trigRewrite(e: Eq, sel: string | null): MoveResult {
     const next = simplify(expandAll(mul([...fs.filter((_, j) => j !== ev).map(fresh), frac(num(1), num(2 ** k)), pow(halfAngle, num(k))]), h), h);
     return done(next, `${b.name}² = (1 ${b.name === 'sin' ? '−' : '+'} cos 2θ)/2, then multiply out`, 'trig identity');
   }
+  // the half angle read backwards under a root: √(c − c cos A) = √(2c)·|sin(A/2)|, √(c + c cos A) = √(2c)·|cos(A/2)|
+  let root: Extract<Node, { k: 'sqrt' }> | null = null, out: Node | null = null;
+  walk(f, n => {
+    if (root || n.k !== 'sqrt' || n.arg.k !== 'add' || n.arg.terms.length !== 2 || !dependsOn(n, v)) return;
+    const [a, b] = n.arg.terms;
+    const [c, w] = a.k === 'num' ? [a, b] : b.k === 'num' ? [b, a] : [null, null];
+    if (!c || !w || c.v <= 0) return;
+    const k = w.k === 'fn' && w.name === 'cos' ? { s: 1, cs: w } : w.k === 'neg' && w.arg.k === 'fn' && w.arg.name === 'cos' ? { s: -1, cs: w.arg } : w.k === 'mul' && w.factors.length === 2 && w.factors[0].k === 'num' && w.factors[1].k === 'fn' && w.factors[1].name === 'cos' ? { s: w.factors[0].v, cs: w.factors[1] } : null;
+    if (!k || Math.abs(Math.abs(k.s) - c.v) > 1e-12) return;
+    root = n;
+    out = mul([sqrtN(num(2 * c.v)), fn('abs', fn(k.s < 0 ? 'sin' : 'cos', tidy(frac(fresh(k.cs.arg), num(2)))))]);
+  });
+  if (root && out) {
+    const r = root as Extract<Node, { k: 'sqrt' }>;
+    return done(tidy(replace(f, r.id, out)), `1 ${r.arg.k === 'add' && toText(r.arg).includes('−') ? '− cos A = 2 sin²' : '+ cos A = 2 cos²'}(A/2), under the root`, 'trig identity');
+  }
   return { error: 'No trig identity helps here.' };
 }
 
@@ -619,7 +635,7 @@ export function byParts(e: Eq, sel: string | null): MoveResult {
     const uv = times(fresh(U), fresh(V.F));
     const vdu = tidy(times(fresh(V.F), du));
     const next = def ? plus(at(v, uv, fresh(T.lo!), fresh(T.hi!)), times(num(-1), int(v, vdu, fresh(T.lo!), fresh(T.hi!)))) : plus(uv, times(num(-1), int(v, vdu)));
-    const r = checked(e, { eq: replace(e, T.id, next), label: `by parts: u = ${toText(U)}`, hints: newHints(), factor: one, select: null, rule: 'by parts' });
+    const r = checked(e, { eq: replace(e, T.id, next), label: `by parts: ${v === 'u' ? 'f' : 'u'} = ${toText(U)}`, hints: newHints(), factor: one, select: null, rule: 'by parts' });
     if (!isErr(r)) return r;
   }
   return { error: aimed ? "∫ of the rest has no quick answer. Aim at the other factor to make it u." : 'By parts needs a product where one factor integrates easily.' };

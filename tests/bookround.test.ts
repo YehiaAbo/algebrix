@@ -124,3 +124,14 @@ describe('related rates and slopes not written alone (K32, K33)', () => {
     }
   });
 });
+
+describe('substitutions go back last in, first out (K34)', () => {
+  it('∫ cos⁻¹(2x) dx and ∫ sin⁻¹(3x) dx end in x alone', () => {
+    for (const s of ['int acos(2x) dx', 'int asin(3x) dx']) {
+      const f = finishCalc(parseEquation(s, true));
+      expect(f.stuck, s).toBeUndefined();
+      const end = T(f.steps[f.steps.length - 1].eq);
+      expect(end, s).not.toMatch(/\b[uw]\b/);
+    }
+  });
+});

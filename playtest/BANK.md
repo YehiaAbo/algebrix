@@ -40,3 +40,9 @@ partial fractions: 1 · complex fractions: 2
 | H04 | classic (by hand) | ∫ x² eˣ dx | (x² − 2x + 2)eˣ | ✓ 11-22 | |
 | H05 | classic (by hand) | x + y = 5, xy = 6 | (2, 3), (3, 2) | ✓ 11-22 | |
 | H06 | classic (by hand) | lim x→∞ (√(x² + x) − x) | 1/2 | ✓ 11-22 | K23 fixed |
+| H07 | classic (by hand) | √(x + 7) = x − 5 (^ both sides) | 9 (2 not a solution) | ✓ 11-22 | K29 |
+| H08 | classic (by hand) | x + y + z = 6, 2x − y + z = 3, x + 2y − z = 2 | (1, 2, 3) | ✓ 11-22 | K30 fixed |
+| H09 | Stewart 4.7 style (by hand) | V = x(12 − 2x)², max on (0, 6) | V(2) = 128, V″(2) = −48 | ✓ 11-22 | K31 fixed |
+| H10 | Stewart 3.9 style (by hand) | x² + y² = 25, x = 3, y = 4, dx/dt = 2: dy/dt | −3/2 | ✓ 11-22 | K32 fixed |
+| H11 | classic | dy/dx + 2 = 0 | y = −2x + C | ✓ 11-22 | K33 ⚠ fixed |
+| H12 | classic (by hand) | 6 inequalities: (x−2)/(x+3) ≥ 0, |2x−1| < 5, x² − 4x > 5, 1/x < 2, x³ > 4x, |x−3| ≥ 2 | book answers | ✓ 11-22 | e only (C3) |

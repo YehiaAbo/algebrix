@@ -530,8 +530,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     const t = nextCalc(cur);
     let r: MoveResult;
     if (!t) {
-      // all worked out: put any u back
-      const u = Object.keys(active).find(w => symbols(cur).includes(w));
+      // all worked out: put any u back, the last one named first (w = 1 − u² before u = 2x)
+      const u = Object.keys(active).reverse().find(w => symbols(cur).includes(w));
       if (!u) break;
       r = backSub(cur, u, active[u]);
       delete active[u];
