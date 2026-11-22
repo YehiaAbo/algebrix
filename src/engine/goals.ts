@@ -1,5 +1,5 @@
 // What a piece of work is for: an identity to prove, a function to unfold or invert.
-import { Node, Eq, eq, sym, neg, call, cloneFresh, find, key, walk, evaluate, symbols, replace, Env, children, withChildren, paramsOf, argsOf } from './ast';
+import { Node, Eq, eq, sym, neg, call, cloneFresh, find, findPath, key, walk, evaluate, symbols, replace, Env, children, withChildren, paramsOf, argsOf } from './ast';
 import { MoveResult, checked, sampleIn, solvedFor, domainOf } from './moves';
 import { isolate } from './techniques';
 import { newHints } from './simplify';
@@ -73,14 +73,22 @@ function match(body: Node, p: string, n: Node, got: { a?: Node }): boolean {
 /** fold, unfold backwards: a piece written out like a function you defined becomes that function
  *  of something (∫₀¹ (x⁵ − 1)/ln x dx with I(t) = ∫₀¹ (xᵗ − 1)/ln x dx is I(5)) */
 export function fold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
-  const P = sel && sel !== 'eq' ? find(e, sel) : null;
-  if (!P || P.k === 'eq') return { error: 'Aim at the piece to fold into a function you defined.' };
-  for (const [F, d] of defs) {
-    const got: { a?: Node } = {};
-    if (P.k === 'call' || d.param.includes(',') || !match(d.body, d.param, P, got) || !got.a) continue;
-    const c = call(F, cloneFresh(got.a));
-    return checked(e, { eq: replace(e, P.id, c), label: `fold into ${F}(${toText(got.a)})`, hints: newHints(), factor: () => 1, select: c.id, rule: 'fold' });
+  // the aimed piece or the smallest piece around it that folds; nothing aimed: the first that folds
+  const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
+  const cands: Node[] = [];
+  if (path) cands.push(...[...path].reverse());
+  else walk(e, n => { cands.push(n); });
+  for (const P of cands) {
+    if (P.k === 'eq' || P.k === 'call') continue;
+    for (const [F, d] of defs) {
+      const got: { a?: Node } = {};
+      if (d.param.includes(',') || !match(d.body, d.param, P, got) || !got.a) continue;
+      const c = call(F, cloneFresh(got.a));
+      return checked(e, { eq: replace(e, P.id, c), label: `fold into ${F}(${toText(got.a)})`, hints: newHints(), factor: () => 1, select: c.id, rule: 'fold' });
+    }
   }
+  const P = path ? path[path.length - 1] : null;
+  if (!P || P.k === 'eq') return { error: 'Nothing here is written like a function you defined. Define one (I(t) = …), then fold.' };
   return { error: `${toText(P)} isn't written like any function you defined. Define one (I(t) = …), then fold.` };
 }
 

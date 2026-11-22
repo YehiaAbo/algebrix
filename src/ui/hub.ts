@@ -12,6 +12,7 @@ import { walk } from '../engine/ast';
 import { sound } from './sound';
 import { $, Tech, Hub, escapeHtml } from './shared';
 import { areCases } from './sheet';
+import { appearsIn } from '../engine/general';
 import { CALC_GROUPS } from './calc';
 import { calcForms } from './calcforms';
 import type { App } from './app';
@@ -34,7 +35,8 @@ export function techniques(this: App): Tech[] {
   else if (q && q.error.startsWith('b² − 4ac')) out.push({ key: 'g', label: `quadratic formula for ${qv}`, ok: true, run: () => this.refuse(q.error) });
   const hasCall = (() => { let c = false; walk(eq, n => { if (n.k === 'call' && DEFS.has(n.name)) c = true; }); return c; })();
   // u both ways: a call unfolds into its body; a piece written like a function you defined folds into it
-  const folded = !aimed || aimed.k === 'call' || !DEFS.size ? null : fold(eq, this.sel);
+  // (aimed at a call, or nothing aimed with a call here: unfold comes first)
+  const folded = !DEFS.size || aimed?.k === 'call' || (!aimed && hasCall) ? null : fold(eq, this.sel);
   if (folded && !isErr(folded)) out.push({ key: 'u', label: `${folded.label}`, ok: true, run: () => this.apply(fold(this.eq, this.sel), 1.1) });
   else if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
   if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
@@ -45,15 +47,13 @@ export function techniques(this: App): Tech[] {
   if (cv) out.push({ key: 'e', label: `compare coefficients of ${cv}`, ok: true, run: () => this.compareKey(cv) });
   // any piece times A/A: e⁻ˣ on top and below, a conjugate, a missing factor
   if (aimed) out.push({ key: 'm', label: 'multiply by 1…', ok: true, run: () => this.openOne() });
-  // the letters integrals here run over (x in ∫₀¹ … dx): a name for one subs in through its differentials
-  const over = new Set<string>();
-  walk(eq, n => { if (n.k === 'int') over.add(n.v); });
   this.slots.forEach((_, j) => {
     if (j === this.cur) return;
-    const shares = symbols(this.eqOf(j)).some(v => vars.includes(v));
+    // a shared letter, a letter an integral here runs over, or a side of it written here (I(0) = 0)
+    const shares = appearsIn(eq, this.eqOf(j));
     // another case of the same split is an alternative, not something that also holds
     const alt = areCases(this, this.cur, j);
-    out.push({ key: String(j + 1), label: alt ? `(${j + 1}) is another case` : `substitute from (${j + 1})`, ok: (shares || symbols(this.eqOf(j)).some(v => over.has(v))) && !alt, run: () => this.substituteFrom(j) });
+    out.push({ key: String(j + 1), label: alt ? `(${j + 1}) is another case` : `substitute from (${j + 1})`, ok: shares && !alt, run: () => this.substituteFrom(j) });
   });
   const partner = this.slots.findIndex((_, j) => j !== this.cur && !areCases(this, this.cur, j) && !isErr(eliminate(eq, this.eqOf(j), j + 1, aimVar ?? undefined)));
   if (this.slots.length > 1) out.push({

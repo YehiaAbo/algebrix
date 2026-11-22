@@ -4,7 +4,7 @@ import { parseEquation, parseExpr } from '../src/engine/parse';
 import { Eq, Node, walk, key, LETS, DEFS } from '../src/engine/ast';
 import { isErr, MoveResult, applyBoth, applyMove } from '../src/engine/moves';
 import { toText } from '../src/engine/print';
-import { nameIt, subIn, differentialsBoth, putValue, integrateBoth, separateChain, characteristicChain } from '../src/engine/general';
+import { appearsIn, nameIt, subIn, differentialsBoth, putValue, integrateBoth, separateChain, characteristicChain } from '../src/engine/general';
 import { bothSides, finishCalc } from '../src/engine/calcmoves';
 import { simplify, newHints } from '../src/engine/simplify';
 import { formsFor } from '../src/engine/forms';
@@ -226,5 +226,24 @@ describe('p refuses a value that makes a bottom 0 (playtest A13)', () => {
     const r = putValue(e, 'x', '0');
     expect('error' in r && r.error).toMatch(/x = 0 makes .* 0/);
     expect('error' in putValue(e, 'x', '1')).toBe(false);
+  });
+});
+
+describe('sub in a value of a function (K42)', () => {
+  const def = (src: string) => { const d = parseEquation(src); if (d.lhs.k === 'call' && d.lhs.arg.k === 'sym') DEFS.set(d.lhs.name, { param: d.lhs.arg.name, body: d.rhs }); };
+  it('I(0) = 0 goes into I(0) = ln|0 + 1| + C, aimed or not', () => {
+    def('I(t) = int_0^1 (x^t - 1)/ln(x) dx');
+    const e = parseEquation('I(0) = ln|0 + 1| + C'), src = parseEquation('I(0) = 0');
+    expect(appearsIn(e, src)).toBe(true);
+    expect(T(ok(subIn(e, src, null, 'Equation 3')))).toBe('0 = ln|0 + 1| + C');
+    expect(T(ok(subIn(e, src, idOf(e, 'I(0)'), 'Equation 3')))).toBe('0 = ln|0 + 1| + C');
+  });
+  it('f(2) = 5 goes into an equation holding f(2), either way round', () => {
+    def('f(x) = x^2 + 1');
+    const e = parseEquation('y = 3f(2) - 1');
+    expect(T(ok(subIn(e, parseEquation('5 = f(2)'), null, 'Equation 2')))).toBe('y = 3·5 − 1');
+  });
+  it('an equation sharing nothing does not appear', () => {
+    expect(appearsIn(parseEquation('y = 2x'), parseEquation('z = 4'))).toBe(false);
   });
 });

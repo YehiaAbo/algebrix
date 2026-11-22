@@ -225,3 +225,9 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   can't add up so slow a tail: the inside matching across the range is the check, the ends being
   g(a), g(b)); Σ of a fraction of polynomials (partial fractions, then it telescopes); x/cos²x had no
   by parts (a fraction is a product too); sin⁻¹ x was never tried as u; s left X − (X). 30/30.
+- **K42 Sub in judged "anything shared" by letters only:** I(0) = 0 has no letters, so Tab + n
+  said it didn't apply to I(0) = ln|0 + 1| + C. Now appearsIn(): a shared letter, an integral's
+  letter, or a side written here. subIn replaces a side that is here when neither side is a letter.
+- **K43 Fold needed the exact piece aimed:** after unfolding, an aim inside the integral (or no
+  aim) couldn't fold it back. fold() now tries the aim, then each piece around it, else the first
+  that folds anywhere.

@@ -115,6 +115,27 @@ export const tests = {
     await until(s => s.eq === 'C = 0', 'C = 0', 12000);
   },
 
+  async 'a value you found, I(0) = 0, subs in; u folds back from inside the integral'(h) {
+    const { load, key, type, hold, until, p } = h;
+    await load('I(t) = int_0^1 (x^t - 1)/ln x dx');
+    for (const line of ['I(0) = ln|0 + 1| + C', 'I(0) = 0']) {
+      await key('n'); await type(line); await key('Enter');
+    }
+    await until(s => s.slots === 3, 'three equations');
+    await key('2');
+    await dig(h, 'I(0)');
+    await hold('Tab', '3');
+    await until(s => s.eq === '0 = ln|0 + 1| + C', 'I(0) = 0 subbed in');
+    await key('u');
+    await until(s => s.eq === 'I(0) = ln|0 + 1| + C', 'undone');
+    await dig(h, 'I(0)');
+    await hold('Tab', 'u');
+    await until(s => s.eq.startsWith('∫_{0}^{1}'), 'unfolded');
+    await dig(h, 'x^0');
+    await hold('Tab', 'u');
+    await until(s => s.eq === 'I(0) = ln|0 + 1| + C', 'folded back from an aim inside it');
+  },
+
   async 'p on an equation to solve tries the value and says whether it works'(h) {
     const { load, key, type, p, assert, wait } = h;
     await load('x^2 = 4');

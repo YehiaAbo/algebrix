@@ -238,6 +238,15 @@ export function subIn(e: Eq, src: Eq, sel: string | null, name: string): MoveRes
     const g = solvedForm(src, W)?.expr, h = solvedForm(src, [X])?.expr;
     return changeVariable(e, T, d.eq, 'd' + X, 'd' + W[0], name, { g, h });
   }
+  // neither side a lone letter (I(0) = 0, f(2) = 5): a side that is here becomes the other side
+  if (src.lhs.k !== 'sym' && src.rhs.k !== 'sym') {
+    for (const [A, B] of [[src.lhs, src.rhs], [src.rhs, src.lhs]] as const) {
+      const at = A.k === 'num' ? [] : copiesOf(e, A);
+      if (!at.length) continue;
+      const next = swapAll(e, at, () => fresh(B)) as Eq;
+      return checked(e, { eq: next, label: `sub in ${t(A)} = ${t(B)}`, hints: newHints(), factor: one, select: null, rule: 'sub in', ties: tieFrom(src) });
+    }
+  }
   const L = solvedFor(src);
   const letter = L ?? (src.lhs.k === 'sym' ? src.lhs.name : src.rhs.k === 'sym' ? src.rhs.name : null);
   if (letter) {
@@ -266,6 +275,15 @@ export function subIn(e: Eq, src: Eq, sel: string | null, name: string): MoveRes
   walk(e, m => { if (m.k === 'sym' && m.name === sf.v && !boundAt(e, m, sf.v)) occ.push(m); });
   const next = swapAll(e, occ, () => fresh(sf.expr)) as Eq;
   return checked(e, { eq: next, label: `sub in ${sf.v} = ${t(sf.expr)}`, hints: newHints(), factor: one, select: null, rule: 'sub in', ties: { [sf.v]: sf.expr } });
+}
+
+/** does src say anything about this equation: a shared letter, the letter an integral here runs
+ *  over, or one of its sides written here (I(0), f(2), sin θ) */
+export function appearsIn(e: Eq, src: Eq): boolean {
+  const here = new Set(symbols(e));
+  walk(e, n => { if (n.k === 'int') here.add(n.v); });
+  if (symbols(src).some(v => here.has(v))) return true;
+  return [src.lhs, src.rhs].some(A => A.k !== 'num' && copiesOf(e, A).length > 0);
 }
 
 /** is this occurrence of v bound by a definite integral, sum or limit around it? */

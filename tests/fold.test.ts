@@ -32,3 +32,20 @@ describe('fold', () => {
     expect(isErr(fold(e, e.rhs.id))).toBe(true);
   });
 });
+
+describe('fold finds the piece itself (K43)', () => {
+  it('aimed inside the integral, it folds the integral around the aim', () => {
+    def('I(t) = int_0^1 (x^t - 1)/ln x dx');
+    const e = parseEquation('int_0^1 (x^0 - 1)/ln x dx = ln|0 + 1| + C');
+    expect(T(fold(e, idOf(e, 'x^0')))).toBe('I(0) = ln|0 + 1| + C');
+  });
+  it('nothing aimed: the first piece that folds', () => {
+    def('f(x) = x^2 + 1');
+    const e = parseEquation('y = 3((a + b)^2 + 1)');
+    expect(T(fold(e, null))).toBe('y = 3f(a + b)');
+  });
+  it('nothing that folds says so', () => {
+    def('f(x) = x^2 + 1');
+    expect(T(fold(parseEquation('y = 2x'), null))).toContain('Nothing here');
+  });
+});
