@@ -7,12 +7,12 @@
 import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num, key, defsSig, oneToOne } from '../engine/ast';
 import { toText } from '../engine/print';
 import { asPrime } from '../engine/leibniz';
-import { supHtml, escapeHtml, onResize } from './shared';
+import { supHtml, escapeHtml } from './shared';
 import { substitute } from '../engine/calculus';
 
 /** what decides the colours: theme, look, and the system's dark mode */
 const darkMq = matchMedia('(prefers-color-scheme: dark)');
-const themeKey = () => { const d = document.documentElement; return `${d.className}|${document.body.className}|${d.dataset.theme ?? ''}|${d.dataset.look ?? ''}|${darkMq.matches}`; };
+const themeKey = () => { const d = document.documentElement; return `${d.className}|${document.body.className}|${d.dataset.theme ?? ''}|${d.dataset.look ?? ''}|${d.dataset.accent ?? ''}|${darkMq.matches}`; };
 /** a CSS colour, remembered until the theme changes: getComputedStyle in a frame forces the
  *  page's styles to be worked out right there, and the graph asks for colours every frame */
 const cssMemo = new Map<string, string>();
@@ -135,7 +135,18 @@ export class Graph {
     this.ctx = canvas.getContext('2d')!;
     // the canvas size, kept from the observer: reading clientWidth in a frame after the stage has
     // changed forces the whole page's layout right there, every frame of a curve morph
-    onResize(canvas, r => { this.box = { w: r.width, h: r.height }; this.render(); });
+    // and its size in device pixels, so the drawing buffer matches the screen pixel for pixel
+    // (a fractional CSS width scaled to a whole buffer, or an old density, draws soft)
+    let raf = 0;
+    const ro = new ResizeObserver(es => {
+      const e = es[es.length - 1], d = e.devicePixelContentBoxSize?.[0];
+      this.box = { w: e.contentRect.width, h: e.contentRect.height, pw: d ? d.inlineSize : 0, ph: d ? d.blockSize : 0 };
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(() => this.render());
+    });
+    try { ro.observe(canvas, { box: 'device-pixel-content-box' }); } catch { ro.observe(canvas); }
+    // moved to a screen with another pixel density (or the page zoomed)
+    const watch = () => matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener('change', () => { this.box = null; this.render(); watch(); }, { once: true });
+    watch();
     canvas.addEventListener('pointerdown', e => {
       this.drag = { x: e.clientX, y: e.clientY, moved: false };
       canvas.setPointerCapture(e.pointerId);
@@ -303,14 +314,14 @@ export class Graph {
     let eq = this.eq;
     if (!eq) return;
     const dpr = window.devicePixelRatio || 1;
-    const { w: W, h: H } = this.box ?? (this.box = { w: this.canvas.clientWidth, h: this.canvas.clientHeight });
+    const b = this.box ?? (this.box = { w: this.canvas.clientWidth, h: this.canvas.clientHeight, pw: 0, ph: 0 });
+    const W = b.w, H = b.h;
     if (!W || !H) return;
-    if (this.canvas.width !== Math.round(W * dpr) || this.canvas.height !== Math.round(H * dpr)) {
-      this.canvas.width = Math.round(W * dpr); this.canvas.height = Math.round(H * dpr);
-    }
+    const pw = b.pw || Math.round(W * dpr), ph = b.ph || Math.round(H * dpr);
+    if (this.canvas.width !== pw || this.canvas.height !== ph) { this.canvas.width = pw; this.canvas.height = ph; }
     this.W = W; this.H = H;
     const c = this.ctx;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.setTransform(pw / W, 0, 0, ph / H, 0, 0);
     c.clearRect(0, 0, W, H);
     const full = eq;
     const vars = plotVars(eq);
@@ -671,20 +682,20 @@ export class Graph {
   /** the grid, axes and labels: the same from frame to frame while the view stands still, so they
    *  are drawn once into their own canvas and copied in (a step's curve morph redraws only curves) */
   private gridCache: { key: string; img: HTMLCanvasElement } | null = null;
-  private box: { w: number; h: number } | null = null;
+  private box: { w: number; h: number; pw: number; ph: number } | null = null;
   /** the caption under the graph, written only when it changes (render runs every frame of a morph) */
   private html = '';
   private set caption(v: string) { if (v !== this.html) { this.html = v; this.note.innerHTML = v; } }
   private set captionText(v: string) { this.caption = v.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
   private grid(X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number, xl: string, yl: string) {
-    const { W, H } = this, dpr = window.devicePixelRatio || 1;
+    const { W, H } = this, pw = this.canvas.width, ph = this.canvas.height;
     const theme = themeKey();
-    const key = [W, H, dpr, this.view.cx, this.view.cy, this.view.span, xl, yl, theme].join('|');
+    const key = [W, H, pw, ph, this.view.cx, this.view.cy, this.view.span, xl, yl, theme].join('|');
     if (this.gridCache?.key !== key) {
       const img = this.gridCache?.img ?? document.createElement('canvas');
-      img.width = Math.round(W * dpr); img.height = Math.round(H * dpr);
+      img.width = pw; img.height = ph;
       const g = img.getContext('2d')!;
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.setTransform(pw / W, 0, 0, ph / H, 0, 0);
       this.drawGrid(g, X, Y, ux, uy, xl, yl);
       this.gridCache = { key, img };
     }

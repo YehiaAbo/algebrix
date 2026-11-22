@@ -18,13 +18,17 @@ export interface Prefs {
   railW: number;
   sideW: number;
   sideH: number;
-  graphAt: 'right' | 'below' | 'hidden';
+  graphAt: 'right' | 'below' | 'float' | 'hidden';
+  /** the floating graph's window: left, top, width, height in px (x < 0 until first placed) */
+  floatX: number; floatY: number; floatW: number; floatH: number;
+  /** your accent colour ('' keeps the theme's own) */
+  accent: string;
   /** how tall the work tree across the top is */
   treeH: number;
 }
 
 const KEY = 'algebrix.prefs';
-const DEFAULTS: Prefs = { theme: 'system', look: 'studio', sounds: 'classic', volume: 0.8, muted: false, speed: 'standard', tempo: 1, size: 1, hints: true, railW: 216, sideW: 400, sideH: 300, graphAt: 'right', treeH: 176 };
+const DEFAULTS: Prefs = { theme: 'system', look: 'studio', sounds: 'classic', volume: 0.8, muted: false, speed: 'standard', tempo: 1, size: 1, hints: true, railW: 216, sideW: 400, sideH: 300, graphAt: 'right', treeH: 176, floatX: -1, floatY: 0, floatW: 460, floatH: 380, accent: '' };
 /** how long animations take relative to standard; flash is fast but still visible */
 export const SPEED_FACTOR: Record<Speed, number> = { calm: 1.45, standard: 1, flash: 0.38 };
 

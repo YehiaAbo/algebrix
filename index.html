@@ -100,6 +100,16 @@
     </main>
 
     <aside class="side">
+      <div id="graph-head" class="graph-head">
+        <span class="gh-grip" title="Drag the graph anywhere. Its edges and corners stretch it.">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="6" r="1.2"/><circle cx="13" cy="6" r="1.2"/><circle cx="7" cy="10" r="1.2"/><circle cx="13" cy="10" r="1.2"/><circle cx="7" cy="14" r="1.2"/><circle cx="13" cy="14" r="1.2"/></svg>
+          <span>Graph</span>
+        </span>
+        <button type="button" data-at="right" title="Dock on the right"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M12 4v12"/></svg></button>
+        <button type="button" data-at="below" title="Dock under the work"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 11h14"/></svg></button>
+        <button type="button" data-at="float" title="Float it: move and stretch it anywhere"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2"/><rect x="9" y="8" width="6" height="5" rx="1"/></svg></button>
+        <button type="button" data-at="hidden" title="Hide (Shift+G brings it back)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6l8 8M14 6l-8 8"/></svg></button>
+      </div>
       <div class="graph-wrap"><canvas id="graph"></canvas></div>
       <p id="graph-note" class="graph-note"></p>
       <p class="graph-keys"><span>drag</span><span>scroll</span><span>double-click resets</span><span><kbd>[</kbd><kbd>]</kbd> zoom</span></p>

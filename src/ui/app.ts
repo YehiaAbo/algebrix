@@ -16,7 +16,7 @@ import { group, ungroup } from '../engine/select';
 import { walk } from '../engine/ast';
 import { sound } from './sound';
 import { prefs, setPref, onPrefs, ms } from './prefs';
-import { applyTheme, applyLook, applySpeed, isDark } from './appearance';
+import { applyTheme, applyLook, applySpeed, applyAccent, isDark } from './appearance';
 import { works } from './works';
 import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
@@ -1085,11 +1085,12 @@ export class App {
   /** a setting changed (from the settings panel or a shortcut): show it everywhere */
   prefsChanged(k: string) {
     if (k === 'theme') { applyTheme(); this.themeLabel(); }
+    if (k === 'accent') applyAccent();
     if (k === 'look') applyLook();
     if (k === 'speed' || k === 'tempo') { applySpeed(); this.flashLabel(); }
     if (k === 'graphAt') applyPanels();
     if (k === 'muted') { $('sound').classList.toggle('off', prefs.muted); $('sound').setAttribute('aria-pressed', String(!prefs.muted)); }
-    if (['theme', 'look', 'size', 'hints'].includes(k) && this.shown) { this.stage.clear(); this.renderAll(null); }
+    if (['theme', 'look', 'size', 'hints', 'accent'].includes(k) && this.shown) { this.stage.clear(); this.renderAll(null); }
   }
 
 }

@@ -121,4 +121,30 @@ export const tests = {
     await key('='); await type('ln'); await key('Enter');
     await until(s => s.eq === 'ln(e^x) = ln(3)', 'ln both sides');
   },
+
+  async 'the graph pops out by its grip, moves, stretches, docks back, and an accent colours it'({ load, p, assert, wait }) {
+    await load('x^2 + x = 6');
+    const side = () => p.evaluate(() => { const r = document.querySelector('.side').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, at: document.querySelector('.app').dataset.graph }; });
+    await p.hover('.side'); await wait(250);
+    const g = await p.locator('.gh-grip').boundingBox();
+    await p.mouse.move(g.x + 20, g.y + 10); await p.mouse.down(); await p.mouse.move(g.x - 300, g.y + 150, { steps: 8 }); await p.mouse.up();
+    const a = await side();
+    assert(a.at === 'float', `popped out: ${a.at}`);
+    const c = await p.locator('.gh-rs.se').boundingBox();
+    await p.mouse.move(c.x + 8, c.y + 8); await p.mouse.down(); await p.mouse.move(c.x + 108, c.y + 58, { steps: 6 }); await p.mouse.up();
+    const b = await side();
+    assert(Math.abs(b.w - a.w - 100) < 3 && Math.abs(b.h - a.h - 50) < 3 && Math.abs(b.x - a.x) < 1, `stretched from the corner: ${JSON.stringify([a, b])}`);
+    // the canvas buffer matches the screen pixel for pixel (no soft lines)
+    await wait(100);
+    const crisp = await p.evaluate(() => { const c = document.getElementById('graph'); return Math.abs(c.width - c.getBoundingClientRect().width * devicePixelRatio) <= 1; });
+    assert(crisp, 'graph buffer matches its size');
+    await p.click('.graph-head button[data-at="right"]');
+    assert((await side()).at === 'right', 'docked back');
+    await p.keyboard.press(','); await wait(150);
+    await p.click('.set-swatch[title="Violet"]');
+    const sel = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sel').trim());
+    assert(sel.includes('124') || sel.toLowerCase().includes('7c5cff') || sel.includes('color-mix'), `the accent took: ${sel}`);
+    await p.click('.set-opt:text("Theme")');
+    await p.keyboard.press('Escape');
+  },
 };

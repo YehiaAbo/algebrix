@@ -8,6 +8,13 @@ interface Row { key?: keyof Prefs; label: string; options?: Option[]; range?: { 
 
 const $ = (id: string) => document.getElementById(id)!;
 
+/** the accent colours: the theme's own first, then presets; the last swatch takes any colour */
+const ACCENTS: Option[] = [
+  { v: '', name: 'Theme', blurb: 'Blue in light, ember in dark.' },
+  { v: '#d97757', name: 'Ember' }, { v: '#2d5be3', name: 'Blue' }, { v: '#7c5cff', name: 'Violet' }, { v: '#14958a', name: 'Teal' },
+  { v: '#3f9a4a', name: 'Green' }, { v: '#c98a12', name: 'Amber' }, { v: '#d6453d', name: 'Red' }, { v: '#d4508f', name: 'Pink' },
+];
+
 export class Settings {
   private row = 0;
   private rows: Row[];
@@ -15,8 +22,9 @@ export class Settings {
   constructor(actions: { tour: () => void }) {
     this.rows = [
       { key: 'theme', label: 'Theme', options: [{ v: 'system', name: 'System' }, { v: 'dark', name: 'Dark' }, { v: 'light', name: 'Light' }] },
+      { key: 'accent', label: 'Accent', options: ACCENTS },
       { key: 'look', label: 'Look', options: LOOKS.map(l => ({ v: l.id, name: l.name, blurb: l.blurb })) },
-      { key: 'graphAt', label: 'Graph', options: [{ v: 'right', name: 'Right' }, { v: 'below', name: 'Below', blurb: 'Under the work, with a wide sheet. Shift+G cycles. Drag the gaps between panels to resize.' }, { v: 'hidden', name: 'Hidden' }] },
+      { key: 'graphAt', label: 'Graph', options: [{ v: 'right', name: 'Right' }, { v: 'below', name: 'Below', blurb: 'Under the work, with a wide sheet. Shift+G cycles. Drag the gaps between panels to resize.' }, { v: 'float', name: 'Floating', blurb: 'A window you move and stretch anywhere: drag its top bar, pull its edges.' }, { v: 'hidden', name: 'Hidden' }] },
       { key: 'size', label: 'Math size', options: [{ v: 0.85, name: 'Small' }, { v: 1, name: 'Normal' }, { v: 1.15, name: 'Large' }, { v: 1.3, name: 'Huge' }] },
       { key: 'tempo', label: 'Speed', range: { min: 0.5, max: 3, step: 0.25, show: v => `${v}×`, blurb: 'How fast every move animates. z jumps to ⚡ flash and back.' } },
       { key: 'sounds', label: 'Sounds', options: SOUND_PACKS.map(p => ({ v: p.id, name: p.name, blurb: p.blurb })) },
@@ -52,8 +60,23 @@ export class Settings {
           const b = document.createElement('button');
           b.className = 'set-opt' + (o.v === cur ? ' on' : '');
           b.textContent = o.name;
+          if (r.key === 'accent' && o.v) { b.className = 'set-swatch' + (o.v === cur ? ' on' : ''); b.textContent = ''; b.title = o.name; b.setAttribute('aria-label', o.name); b.style.setProperty('--c', o.v as string); }
           b.addEventListener('click', () => { this.row = i; this.set(r, o); });
           opts.append(b);
+        }
+        if (r.key === 'accent') {
+          // any colour: the last swatch opens the colour picker
+          const own = !r.options.some(o => o.v === cur);
+          const lab = document.createElement('label');
+          lab.className = 'set-swatch own' + (own ? ' on' : '');
+          lab.title = 'Your own colour';
+          if (own) lab.style.setProperty('--c', String(cur));
+          const pick = document.createElement('input');
+          pick.type = 'color'; pick.value = own ? String(cur) : '#d97757'; pick.tabIndex = -1; pick.setAttribute('aria-label', 'Your own colour');
+          pick.addEventListener('input', () => { this.row = i; setPref('accent', pick.value); lab.style.setProperty('--c', pick.value); lab.classList.add('on'); opts.querySelectorAll('.set-swatch:not(.own), .set-opt').forEach(x => x.classList.remove('on')); });
+          pick.addEventListener('change', () => { sound.tick(1); this.render(); });
+          lab.append(pick);
+          opts.append(lab);
         }
         const now = r.options.find(o => o.v === cur);
         if (now?.blurb) { const p = document.createElement('div'); p.className = 'set-blurb'; p.textContent = now.blurb; opts.append(p); }

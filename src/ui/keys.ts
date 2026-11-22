@@ -238,7 +238,7 @@ export function key(this: App, e: KeyboardEvent) {
     case 'w': handled(); this.closeModes(); return this.library.open();
     case ',': handled(); this.closeModes(); return this.settings.open();
     case 'z': handled(); return this.toggleFlash();
-    case 'G': handled(); { const at = cycleGraph(); sound.tick(2); return this.say(at === 'right' ? 'Graph on the right.' : at === 'below' ? 'Graph under the work.' : 'Graph hidden. Shift+G brings it back.'); }
+    case 'G': handled(); { const at = cycleGraph(); sound.tick(2); return this.say(at === 'right' ? 'Graph on the right.' : at === 'below' ? 'Graph under the work.' : at === 'float' ? 'Graph floating: drag its top bar to move it, its edges to stretch it.' : 'Graph hidden. Shift+G brings it back.'); }
     case 'R': handled(); return this.resetWork();
     case 'P': handled(); return this.startReplay();
     case '[': handled(); return this.graph.zoom(1.25);

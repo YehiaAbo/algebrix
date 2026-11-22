@@ -42,6 +42,17 @@
   --key-bg: #30302e; --key-edge: #4a4944; --on-sel: #1f1e1d; --shadow: rgba(0, 0, 0, 0.45); color-scheme: dark;
 }
 
+/* your accent (settings): aim, tree, first curve. Dark lifts it toward white so it stays readable.
+   The second colour keeps clear of it: blue normally, amber when your accent is blue-ish */
+:root[data-accent] { --sel: var(--accent); --sel-fill: color-mix(in srgb, var(--accent) 10%, transparent); --graph-a: var(--accent); }
+:root[data-accent="cool"] { --copy: #c9821a; --graph-b: #c9821a; }
+@media (prefers-color-scheme: dark) {
+  :root[data-accent]:not([data-theme="light"]) { --sel: color-mix(in oklab, var(--accent) 84%, white); --sel-fill: color-mix(in srgb, var(--accent) 17%, transparent); --graph-a: color-mix(in oklab, var(--accent) 84%, white); }
+  :root[data-accent="cool"]:not([data-theme="light"]) { --copy: #f0a96b; --graph-b: #f0a96b; }
+}
+:root[data-accent][data-theme="dark"] { --sel: color-mix(in oklab, var(--accent) 84%, white); --sel-fill: color-mix(in srgb, var(--accent) 17%, transparent); --graph-a: color-mix(in oklab, var(--accent) 84%, white); }
+:root[data-accent="cool"][data-theme="dark"] { --copy: #f0a96b; --graph-b: #f0a96b; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
@@ -490,6 +501,12 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .set-range { width: 180px; accent-color: var(--sel); vertical-align: middle; }
 .set-val { display: inline-block; min-width: 3.2em; margin-left: 8px; font-variant-numeric: tabular-nums; color: var(--ink); font-size: 13px; }
 .set-opt.on { background: var(--sel); color: var(--on-sel); box-shadow: none; }
+.set-swatch { width: 26px; height: 26px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--c); box-shadow: 0 0 0 1px rgba(0, 0, 0, .1) inset; position: relative; margin: 0 2px; transition: transform .15s var(--ease); }
+.set-swatch:hover { transform: scale(1.1); }
+.set-swatch.on::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ink); }
+.set-swatch.own { background: var(--c, conic-gradient(#e5484d, #f5a524, #46a758, #3e63dd, #8e4ec6, #e5484d)); overflow: visible; display: inline-block; }
+.set-swatch.own:not(.on) { background: conic-gradient(#e5484d, #f5a524, #46a758, #3e63dd, #8e4ec6, #e5484d); }
+.set-swatch.own input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 .set-blurb { width: 100%; color: var(--faint); font-size: 12px; margin-top: 3px; }
 
 /* flash mode: overlay pops keep up too */
@@ -626,6 +643,37 @@ body.ctrl .sel[data-r="1"] .nr i { animation-name: nudge-r; }
 .app[data-graph="below"] .graph-note { align-self: end; }
 .app[data-graph="hidden"] { grid-template-columns: var(--rail-w, 216px) minmax(0, 1fr); }
 .app[data-graph="hidden"] .side { display: none; }
+/* the graph's own bar: dock it, float it, hide it. Docked, it shows over the graph's corner on hover */
+.side { position: relative; }
+.graph-head { position: absolute; top: 6px; right: 6px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 9px;
+  background: color-mix(in srgb, var(--desk) 88%, transparent); box-shadow: 0 0 0 1px var(--line); opacity: 0; transition: opacity .18s var(--ease); }
+.side:hover .graph-head, .graph-head:focus-within, body.graph-moving .graph-head { opacity: 1; }
+.graph-head button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; background: none; border-radius: 7px; cursor: pointer; color: var(--muted); padding: 0; }
+.graph-head button:hover { background: var(--sel-fill); color: var(--ink); }
+.graph-head button svg, .gh-grip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.gh-grip svg circle { fill: currentColor; stroke: none; }
+.app[data-graph="right"] .graph-head button[data-at="right"], .app[data-graph="below"] .graph-head button[data-at="below"], .app[data-graph="float"] .graph-head button[data-at="float"] { color: var(--sel); }
+.gh-grip { display: flex; align-items: center; gap: 4px; padding: 0 6px 0 2px; height: 26px; color: var(--muted); font-size: 12px; font-weight: 500; cursor: grab; user-select: none; touch-action: none; }
+.gh-grip:active { cursor: grabbing; }
+.gh-rs { display: none; position: absolute; z-index: 4; touch-action: none; }
+/* floating: a window you move and stretch anywhere, with all its detail */
+.app[data-graph="float"] { grid-template-columns: var(--rail-w, 216px) minmax(0, 1fr); }
+.app[data-graph="float"] .side { position: fixed; left: var(--fx); top: var(--fy); width: var(--fw); height: var(--fh); z-index: 8;
+  background: var(--desk); border-radius: 14px; box-shadow: 0 0 0 1px var(--line), 0 18px 48px var(--shadow); padding: 34px 6px 4px; gap: 4px; grid-template-rows: minmax(0, 1fr) auto; }
+.app[data-graph="float"] .graph-wrap { border-radius: 10px; }
+.app[data-graph="float"] .graph-keys { display: none; }
+.app[data-graph="float"] .graph-note { min-height: 0; }
+.app[data-graph="float"] .graph-head { opacity: 1; left: 4px; right: 4px; top: 3px; background: none; box-shadow: none; }
+.app[data-graph="float"] .gh-grip { flex: 1; }
+.app[data-graph="float"] .gh-rs { display: block; }
+.gh-rs.n, .gh-rs.s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
+.gh-rs.e, .gh-rs.w { top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
+.gh-rs.n { top: -4px; } .gh-rs.s { bottom: -4px; } .gh-rs.e { right: -4px; } .gh-rs.w { left: -4px; }
+.gh-rs.ne, .gh-rs.nw, .gh-rs.se, .gh-rs.sw { width: 16px; height: 16px; }
+.gh-rs.ne { top: -4px; right: -4px; cursor: nesw-resize; } .gh-rs.sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.gh-rs.nw { top: -4px; left: -4px; cursor: nwse-resize; } .gh-rs.se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.app[data-graph="float"] .split-side { display: none; }
+body.graph-moving .app[data-graph="float"] .side { box-shadow: 0 0 0 1.5px var(--sel), 0 22px 56px var(--shadow); }
 .split { position: absolute; z-index: 5; opacity: 0; transition: opacity .15s; }
 .split::after { content: ''; position: absolute; border-radius: 2px; background: var(--sel); }
 .split:hover, .split.drag { opacity: 1; }

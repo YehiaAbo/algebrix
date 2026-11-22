@@ -54,4 +54,16 @@ export function applySpeed() {
   document.documentElement.dataset.speed = prefs.speed;
 }
 
-export function applyAll() { applyTheme(); applyLook(); applySpeed(); }
+/** your accent colour: aim, tree and the first curve take it (style.css lifts it a little in dark).
+ *  A blue-ish accent moves the second colour (copies, the second curve) from blue to amber */
+export function applyAccent() {
+  const root = document.documentElement, c = prefs.accent;
+  if (!/^#[0-9a-f]{6}$/i.test(c)) { delete root.dataset.accent; root.style.removeProperty('--accent'); return; }
+  const n = parseInt(c.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
+  const hue = !d ? 0 : ((mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60 + 360) % 360;
+  root.style.setProperty('--accent', c);
+  root.dataset.accent = hue > 170 && hue < 265 && d > 0.15 ? 'cool' : 'warm';
+}
+
+export function applyAll() { applyTheme(); applyLook(); applySpeed(); applyAccent(); }
