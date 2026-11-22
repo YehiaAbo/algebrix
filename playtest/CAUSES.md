@@ -208,3 +208,5 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   √2·|sin(A/2)|, and the |g| split finishes definite ones (C2-3.2#111, K-H7, K-H8).
 - **K36 An odd trig power on the bottom had no route** (∫ tan² sec = sin²/cos³, ∫ sec³). × cos/cos
   makes it even, cos⁴ = (1 − sin²)², then u = sin x and partial fractions. Guard: bookround.
+- **K37 u = eᵗ failed when e⁻ᵗ was written too,** and 1/((u − 1/u)²u) had no route. e⁻ᵗ is now read as
+  1/u, and little fractions inside a fraction clear by × uᵐ top and bottom before partial fractions.

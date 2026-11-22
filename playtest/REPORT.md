@@ -1,11 +1,11 @@
 # Bank report
 
-298 of 304 solved by the engine (2026-11-22T11:09 UTC).
+301 of 306 solved by the engine (2026-11-22T11:11 UTC).
 
 | file | solved |
 |---|---|
-| openstax-calc2.txt | 44/47 |
-| classic.txt | 130/132 |
+| openstax-calc2.txt | 45/47 |
+| classic.txt | 132/134 |
 | openstax-calc1.txt | 82/83 |
 | openstax-algebra.txt | 36/36 |
 | sample.txt | 6/6 |
@@ -14,7 +14,6 @@
 |---|---|
 | 0 times inf | 0/1 |
 | trig sub | 5/6 |
-| partial fractions | 6/7 |
 | improper integrals | 6/7 |
 | substitution | 10/11 |
 | by parts | 33/34 |
@@ -42,6 +41,7 @@
 | trick | 1/1 |
 | product to sum | 2/2 |
 | u-sub or trig sub | 1/1 |
+| partial fractions | 7/7 |
 | repeated factor | 1/1 |
 | long division | 2/2 |
 | quadratic factor | 3/3 |
@@ -75,6 +75,7 @@
 | two roots | 1/1 |
 | half angle | 2/2 |
 | odd power bottom | 2/2 |
+| exponential rational | 2/2 |
 | linear | 4/4 |
 | complete the square | 1/1 |
 | quadratic formula | 2/2 |
@@ -104,5 +105,4 @@
 - **K-L8** (classic.txt:105, value) `lim x->0+ x ln x`: gave −0 = 0, numbers say NaN
 - **C1-5.5#283** (openstax-calc1.txt:66, antideriv) `int (y^5)/((1 - y^3 )^(3 / 2)) dy`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ y^5/((1 − y^3)^(3/2)) dy)
 - **C2-3.1#23** (openstax-calc2.txt:10, antideriv) `int sin ( ln ( 2 x ) ) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at (∫ sin(ln(u)) du)/2)
-- **C2-3.4#219** (openstax-calc2.txt:40, antideriv) `int (dt)/(( e^t - e^(- t) )^2)`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ 1/((e^t − e^(−t))^2) dt)
 - **C2-3.7#393** (openstax-calc2.txt:49, value) `int_(2)^(inf) (dx)/((x^2 - 1)^(3 / 2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{2}^{∞} 1/((x^2 − 1)^(3/2)) dx)

@@ -196,6 +196,26 @@ function target<K extends 'int' | 'at' | 'sum'>(e: Eq, sel: string | null, k: K)
   return (t as Extract<Node, { k: K }>) ?? null;
 }
 
+/** a fraction with 1/v, 1/v² … inside its top or bottom: × vᵐ top and bottom, multiplied out */
+function clearInner(u: Extract<Node, { k: 'frac' }>, v: string): { n: Node; by: Node } | null {
+  const h0 = newHints();
+  const N = tidy(expandAll(fresh(u.num), h0)), D = tidy(expandAll(fresh(u.den), h0));
+  // the lowest power of v among the terms: c·vᵏ read off at two points
+  let low = 0;
+  for (const side of [N, D]) for (const t of side.k === 'add' ? side.terms : [side]) {
+    if (!dependsOn(t, v)) continue;
+    const a = evaluate(t, { [v]: 1.7 }), b = evaluate(t, { [v]: 3.4 });
+    const k = Math.log2(b / a);
+    if (!Number.isFinite(k) || Math.abs(k - Math.round(k)) > 1e-9) return null;
+    low = Math.min(low, Math.round(k));
+  }
+  if (low === 0) return null;
+  const by = low === -1 ? sym(v) : pow(sym(v), num(-low));
+  const h = newHints();
+  const n = frac(simplify(expandAll(mul([N, fresh(by)]), h), h), simplify(expandAll(mul([D, fresh(by)]), h), h));
+  return partialFractions(n) || longDivide(n) ? { n, by } : null;
+}
+
 /** a fraction of polynomials made integrable: partial fractions, or long division first */
 function rational(u: Node): { p: Node; label: string } | null {
   const pf = partialFractions(u);
@@ -274,6 +294,11 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
     const up = pow(fresh(u.den.base), neg(fresh(u.den.exp)));
     const top = u.num.k === 'num' && u.num.v === 1 ? up : mul([fresh(u.num), up]);
     return checked(e, { eq: replace(e, T.arg.id, top), label: '1/aᵘ = a⁻ᵘ', hints: newHints(), factor: one, select: null, rule: 'simplify' });
+  }
+  else if (u.k === 'frac' && clearInner(u, v)) {
+    // 1/((u − 1/u)² u): × u² top and bottom clears the little fractions, and it is a fraction of polynomials
+    const c = clearInner(u, v)!;
+    return checked(e, { eq: replace(e, T.arg.id, c.n), label: `× ${toText(c.by)} top and bottom`, hints: newHints(), factor: one, select: null, rule: 'simplify' });
   }
   else {
     const known = noFormula(u, v);
@@ -408,16 +433,18 @@ function powersOf(n: Node, g: Node, v: string, u: string): Node {
   const go = (m: Node): Node => {
     if ((m.k === 'pow' || m.k === 'sqrt') && dependsOn(m, v)) {
       const mv = xs.map(x => evaluate(m, { [v]: x }));
-      for (const k of [1, 2, 3, 4]) {
+      // negative ones too: e^(−t) is 1/u with u = eᵗ
+      for (const k of [1, 2, 3, 4, -1, -2, -3, -4]) {
         const r = mv.map((y, i) => y / gv[i] ** k);
         if (r.every(y => Number.isFinite(y) && Math.abs(y - r[0]) < 1e-9 * (1 + Math.abs(r[0])))) {
           const c = ratNode(r[0]);
           if (!c) break;
-          const p = k === 1 ? sym(u) : pow(sym(u), ratNode(k)!);
+          const p = k === 1 ? sym(u) : k === -1 ? frac(num(1), sym(u)) : k < 0 ? frac(num(1), pow(sym(u), ratNode(-k)!)) : pow(sym(u), ratNode(k)!);
           return isNum(c, 1) ? p : mul([c, p]);
         }
       }
-      return m;
+      // not a power of g as a whole: its pieces may be ((eᵗ − e⁻ᵗ)² has e⁻ᵗ inside)
+      return withKids(m, go);
     }
     return withKids(m, go);
   };

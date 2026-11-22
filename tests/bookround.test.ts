@@ -153,3 +153,14 @@ describe('an odd trig power on the bottom (K36) and the half angle under a root 
     expect(value('y = int_0^(2 pi) sqrt(2 - 2cos(t)) dt')).toBeCloseTo(8, 9);
   });
 });
+
+describe('rational in eᵗ, e⁻ᵗ written too (K37)', () => {
+  it('u = eᵗ reads e⁻ᵗ as 1/u, and the little fractions clear before partial fractions', () => {
+    const slope = (src: string, f: (t: number) => number, v = 't') => {
+      const F = last(src).rhs, h = 1e-5;
+      for (const t of [0.4, 0.9, 1.5]) expect(Math.abs((evaluate(F, { [v]: t + h, C: 0 }) - evaluate(F, { [v]: t - h, C: 0 })) / (2 * h) - f(t)), src).toBeLessThan(1e-4);
+    };
+    slope('y = int 1/(e^t - e^(-t))^2 dt', t => 1 / (Math.exp(t) - Math.exp(-t)) ** 2);
+    slope('y = int 1/(e^x + 4e^(-x)) dx', x => 1 / (Math.exp(x) + 4 * Math.exp(-x)), 'x');
+  });
+});

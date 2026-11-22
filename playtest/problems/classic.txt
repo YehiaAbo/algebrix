@@ -143,3 +143,5 @@ K-H8 | value | int_0^(2 pi) sqrt(2 - 2cos(t)) dt | 8 | half angle
 K-H9 | antideriv | int asin(3x) dx | x asin(3x) + sqrt(1 - 9x^2)/3 | by parts
 K-H10 | antideriv | int sec(x)^3 dx | (sec(x) tan(x) + ln(abs(sec(x) + tan(x))))/2 | odd power bottom
 K-H11 | antideriv | int cos(x)^2/sin(x) dx | cos(x) + ln(abs(1/sin(x) - cos(x)/sin(x))) | odd power bottom
+K-H12 | antideriv | int 1/(e^x + 4e^(-x)) dx | atan(e^x/2)/2 | exponential rational
+K-H13 | antideriv | int (e^x - e^(-x))/(e^x + e^(-x)) dx | ln(e^x + e^(-x)) | exponential rational
