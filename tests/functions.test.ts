@@ -155,3 +155,15 @@ describe('the safety net gives the same verdict whatever it checked before', () 
     expect(run()).toEqual(first);
   });
 });
+
+describe('d/dt both sides of a function defined by an ∫ with no bounds', () => {
+  it('I(t) = ∫ (x^t − 1)/ln x dx: d/dt, Leibniz, and the easy integral', () => {
+    const d = define('I(t) = int (x^t - 1)/ln x dx');
+    const b = bothSides(d, 't');
+    if (isErr(b)) throw new Error(b.error);
+    const f = finishCalc(b.eq);
+    expect(f.stuck).toBe(undefined);
+    expect(f.steps.map(s => s.label)).toContain('Leibniz rule: d/dt under the ∫');
+    expect(T(f.steps[f.steps.length - 1].eq)).toBe('I′(t) = x^(t + 1)/(t + 1) + C');
+  });
+});

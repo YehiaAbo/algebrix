@@ -167,13 +167,28 @@ svg.g.int path, svg.g.sum path, svg.g.prod path { fill: currentColor; stroke: no
 .mini .g { color: inherit; }
 
 .sel {
-  position: absolute; pointer-events: none; opacity: 0;
-  background: var(--sel-fill);
-  box-shadow: 0 0 0 1.5px var(--sel);
-  transition: transform calc(.2s * var(--pace, 1)) var(--ease), width calc(.2s * var(--pace, 1)) var(--ease), height calc(.2s * var(--pace, 1)) var(--ease), opacity .12s, box-shadow .2s, background .2s;
+  /* the aim: nine pieces that only ever move by transform, so the compositor glides it at the
+     screen's own rate and the ring stays 1.5px at every frame (a box resized by width/height
+     moves on the main thread and snaps its edges to whole pixels) */
+  position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; opacity: 0;
+  --ring: var(--sel); --rt: 1.5px; --fill: var(--sel-fill);
+  transition: opacity .12s;
 }
+.sel > * { position: absolute; left: 0; top: 0; transform-origin: 0 0; transition: transform calc(.2s * var(--pace, 1)) var(--ease); }
+.sel .sf { width: 100px; height: 100px; background: var(--fill); transition: transform calc(.2s * var(--pace, 1)) var(--ease), background .2s, box-shadow .2s; }
+.sel .sc { box-sizing: border-box; border: 0 solid var(--ring); }
+.sel .tl { border-top-width: var(--rt); border-left-width: var(--rt); }
+.sel .tr { border-top-width: var(--rt); border-right-width: var(--rt); }
+.sel .bl { border-bottom-width: var(--rt); border-left-width: var(--rt); }
+.sel .br { border-bottom-width: var(--rt); border-right-width: var(--rt); }
+/* each edge is a 10px strip drawing its ring with a border, so no layer is thinner than a pixel */
+.sel .se { box-sizing: border-box; border: 0 solid var(--ring); }
+.sel .et, .sel .eb { width: 100px; height: 10px; }
+.sel .el, .sel .er { width: 10px; height: 100px; }
+.sel .et { border-top-width: var(--rt); } .sel .eb { border-bottom-width: var(--rt); }
+.sel .el { border-left-width: var(--rt); } .sel .er { border-right-width: var(--rt); }
 .sel.on { opacity: 1; }
-.sel.refused { box-shadow: 0 0 0 2px var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.sel.refused { --ring: var(--bad); --rt: 2px; --fill: color-mix(in srgb, var(--bad) 10%, transparent); }
 .stage.solved .g { animation: settle calc(.7s * var(--pace, 1)) var(--ease); }
 @keyframes settle { 30% { color: var(--good); } }
 
@@ -499,16 +514,17 @@ body:not([data-mode="solve"]) .spots { display: none; }
 .tour-pick.done .tp-name::after { content: ' ✓'; color: var(--good); }
 
 /* highlight: a run of terms, and grow arrows while Ctrl is held */
-.sel { box-shadow: 0 0 0 1.5px var(--sel), 0 6px 18px -8px color-mix(in srgb, var(--sel) 55%, transparent); }
-.sel.run { background: color-mix(in srgb, var(--sel) 13%, transparent); box-shadow: 0 0 0 1.5px var(--sel), 0 0 0 5px color-mix(in srgb, var(--sel) 12%, transparent); }
-.sel::before, .sel::after {
-  content: ''; position: absolute; top: 50%; width: 0; height: 0; opacity: 0; transition: opacity .12s, transform .15s var(--ease);
-  border-top: 6px solid transparent; border-bottom: 6px solid transparent; margin-top: -6px;
+.sel .sf { box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--sel) 55%, transparent); }
+.sel.run { --fill: color-mix(in srgb, var(--sel) 13%, transparent); }
+.sel.run .sf { box-shadow: 0 0 0 5px color-mix(in srgb, var(--sel) 12%, transparent); }
+.sel .nub i {
+  position: absolute; width: 0; height: 0; opacity: 0; transition: opacity .12s, transform .15s var(--ease);
+  border-top: 6px solid transparent; border-bottom: 6px solid transparent;
 }
-.sel::before { left: -13px; border-right: 7px solid var(--sel); transform: translateX(4px); }
-.sel::after { right: -13px; border-left: 7px solid var(--sel); transform: translateX(-4px); }
-body.ctrl .sel[data-l="1"]::before, body.ctrl .sel[data-r="1"]::after { opacity: .9; transform: none; animation: nudge-l 1s ease-in-out infinite; }
-body.ctrl .sel[data-r="1"]::after { animation-name: nudge-r; }
+.sel .nl i { border-right: 7px solid var(--sel); transform: translateX(4px); }
+.sel .nr i { border-left: 7px solid var(--sel); transform: translateX(-4px); }
+body.ctrl .sel[data-l="1"] .nl i, body.ctrl .sel[data-r="1"] .nr i { opacity: .9; transform: none; animation: nudge-l 1s ease-in-out infinite; }
+body.ctrl .sel[data-r="1"] .nr i { animation-name: nudge-r; }
 @keyframes nudge-l { 50% { transform: translateX(-3px); } }
 @keyframes nudge-r { 50% { transform: translateX(3px); } }
 

@@ -22,7 +22,7 @@ import { initPanels, applyPanels } from './panels';
 import { Library } from './library';
 import { Settings } from './settings';
 import { initMeter } from './fps';
-import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty, setHtml, onResize } from './shared';
+import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty, setHtml, onResize, aimBox } from './shared';
 import * as nav from './nav';
 import { notationFor } from './notation';
 import * as sheet from './sheet';
@@ -210,8 +210,7 @@ export class App {
     if (!r || this.mode === 'write') { el.classList.remove('on'); return; }
     const S = this.stage.layout ? this.stage.layout.glyphs[0]?.s ?? 60 : 60;
     const p = Math.max(5, S * 0.1);
-    // placed by transform, which the compositor glides on its own; only a size change needs layout
-    Object.assign(el.style, { left: '0px', top: '0px', transform: `translate(${r.x - p}px, ${r.y - p * 0.6}px)`, width: `${r.w + 2 * p}px`, height: `${r.h + p * 1.2}px`, borderRadius: `${Math.max(6, S * 0.12)}px` });
+    aimBox(el, r.x - p, r.y - p * 0.6, r.w + 2 * p, r.h + p * 1.2, Math.max(6, S * 0.12), el.classList.contains('refused') ? 2 : 1.5);
     el.classList.add('on');
     // a run of several terms (Ctrl + arrows, or the mouse box) reads as one piece with a softer fill
     el.classList.toggle('run', !!this.grouped && id === this.grouped.id);
@@ -798,7 +797,7 @@ export class App {
     if (lo < 0 || hi >= sibs.length) return; // the end of the sum: nothing to add, and not a mistake
     sound.tick(2 + (hi - lo));
     this.selectRange(sibs[lo].id, sibs[hi].id);
-    $('sel').animate([{ boxShadow: `${dir < 0 ? '-6px' : '6px'} 0 0 -1px var(--sel), 0 0 0 1.5px var(--sel)` }, { boxShadow: '0 0 0 1.5px var(--sel)' }], { duration: ms(260), easing: 'ease-out' });
+    $('sel').querySelector('.sf')?.animate([{ boxShadow: `${dir < 0 ? '-6px' : '6px'} 0 0 -1px var(--sel)` }, { boxShadow: '0 0 0 0 transparent' }], { duration: ms(260), easing: 'ease-out' });
   }
 
   /** e: solve. Aimed at a variable (or only one variable): straight to the answer; otherwise pick one */

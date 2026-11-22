@@ -2,9 +2,9 @@
 // limits (plug in, L'Hôpital), differentiating both sides, and the definition of the
 // derivative. Every step goes through the same numeric check as an algebra move: the kernel
 // in calculus.ts says what a derivative or limit is worth.
-import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
+import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad, DEFS } from './ast';
 import { dependsOn, derivative, limit2, substitute } from './calculus';
-import { checked, MoveOk, MoveResult, isErr } from './moves';
+import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
 import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries, trigRewrite, trigSub } from './integrate';
@@ -369,7 +369,7 @@ const CALC = ['deriv', 'lim', 'int', 'at', 'sum', 'grad'];
 /** the innermost piece of calculus: children before parents, left to right */
 function nextCalc(n: Node): Node | null {
   // d/dt of an integral with t inside: Leibniz first, so the integral that is left is the easier one
-  if (n.k === 'deriv' && n.arg.k === 'int' && n.arg.lo && n.arg.v !== n.v && dependsOn(n.arg.arg, n.v, n.dep)) return n;
+  if (n.k === 'deriv' && n.arg.k === 'int' && n.arg.v !== n.v && dependsOn(n.arg.arg, n.v, n.dep)) return n;
   // ∫ d/dx(F) dx: the fundamental theorem gives F back, with no need to work the derivative out
   if (n.k === 'int' && !n.lo && n.arg.k === 'deriv' && n.arg.v === n.v && !n.arg.partial) return n;
   for (const c of children(n)) { const t = nextCalc(c); if (t) return t; }
@@ -575,7 +575,9 @@ export function bothSides(e: Eq, v: string): MoveResult {
   // a definition holds for every value, so its sides' slopes are equal too: I(t) = … gives I′(t) = …
   if (relOf(e) === 'def') e = eq(e.lhs, e.rhs);
   if (relOf(e) !== '=') return { error: 'Differentiate both sides of an equation (=). An inequality may not keep its order.' };
-  const others = symbols(e).filter(w => w !== v && !w.endsWith('′'));
+  // the letter of an indefinite ∫ … dx runs on its own: it doesn't depend on v (I(t) = ∫ f(x, t) dx)
+  const own = indefiniteVars(e);
+  const others = symbols(e).filter(w => w !== v && !w.endsWith('′') && !own.includes(w));
   const D = (s: Node) => deriv(v, s, others);
   const next = eq(D(e.lhs), D(e.rhs));
   const F = add([e.lhs, neg(e.rhs)]);
@@ -583,8 +585,25 @@ export function bothSides(e: Eq, v: string): MoveResult {
   if (!dF) return { error: 'There is no derivative rule for something in here yet.' };
   return checked(e, {
     eq: next, label: `d/d${v} both sides${others.length ? ` (${others.join(', ')} ${others.length > 1 ? 'depend' : 'depends'} on ${v})` : ''}`, hints: newHints(), factor: one, select: null, rule: 'differentiate both sides', implies: true,
-    check: env => [[evaluate(next, env), evaluate(dF, env)]],
+    check: env => [[evaluate(pinned(next), env), evaluate(pinned(dF), env)]],
   });
+}
+
+/** for a numeric check only: every ∫ … dx with no bounds as one particular antiderivative,
+ *  ∫ from a fixed start to x, so both sides of a check can be worked out (the same start on both,
+ *  so the constants agree) */
+export function pinned<T extends Node>(n: T): T {
+  const ks = children(n);
+  const m = (ks.length ? withChildren(n, ks.map(pinned)) : n) as Node;
+  // a function you defined as such an ∫: its body, pinned the same way
+  // (and I′, I″: the slopes of that body)
+  const base = m.k === 'call' ? m.name.replace(/′+$/, '') : '', d = DEFS.get(base);
+  if (m.k === 'call' && d && indefiniteVars(d.body).length) {
+    let body: Node = d.body;
+    for (let i = base.length; i < m.name.length; i++) body = deriv(d.param, body, []);
+    return pinned(substitute(body, d.param, m.arg)) as T;
+  }
+  return (m.k === 'int' && !(m.lo && m.hi) ? { ...m, lo: num(0.37), hi: sym(m.v) } : m) as T;
 }
 
 /* ---------- forms for the C hub ---------- */

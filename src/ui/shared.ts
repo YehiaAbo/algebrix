@@ -137,3 +137,29 @@ export const pretty = (s: string) => s
   .replace(/_\{([^{}]+)\}/g, (m, t) => small(t, SUB) ?? m)
   .replace(/\^\{([^{}]+)\}/g, (m, t) => small(t, SUP) ?? m)
   .replace(/\^([0-9]+|[a-z])(?![\w.(])/g, (m, t) => small(t, SUP) ?? m);
+
+/** The aim box at x, y, w × h with corner radius R and a ring t thick (outside the box), as nine
+ *  pieces placed only by transform: a fill scaled to size, four corners that move, four edges that
+ *  move and stretch along their length, and the two Ctrl arrows. Built on first use. */
+export function aimBox(el: HTMLElement, x: number, y: number, w: number, h: number, R: number, t: number) {
+  if (!el.firstChild) el.innerHTML = '<i class="sf"></i><i class="sc tl"></i><i class="sc tr"></i><i class="sc bl"></i><i class="sc br"></i><i class="se et"></i><i class="se eb"></i><i class="se el"></i><i class="se er"></i><span class="nub nl"><i></i></span><span class="nub nr"><i></i></span>';
+  const [f, tl, tr, bl, br, et, eb, el_, er, nl, nr] = [...el.children] as HTMLElement[];
+  // the box's edges on whole device pixels, so the ring is crisp when it lands
+  const d = window.devicePixelRatio || 1, px = (v: number) => Math.round(v * d) / d;
+  [x, y, w, h] = [px(x), px(y), px(w), px(h)];
+  R = Math.min(R, w / 2, h / 2);
+  const X = x - t, Y = y - t, W = w + 2 * t, H = h + 2 * t, Rr = R + t;
+  const at = (n: HTMLElement, a: number, b: number, sx = 1, sy = 1) => { n.style.transform = `translate(${a}px, ${b}px)${sx !== 1 || sy !== 1 ? ` scale(${sx}, ${sy})` : ''}`; };
+  at(f, x, y, w / 100, h / 100);
+  f.style.borderRadius = `${(R / w) * 100}% / ${(R / h) * 100}%`;
+  for (const [n, rad] of [[tl, 'borderTopLeftRadius'], [tr, 'borderTopRightRadius'], [bl, 'borderBottomLeftRadius'], [br, 'borderBottomRightRadius']] as const) {
+    n.style.width = n.style.height = `${Rr}px`;
+    n.style[rad] = `${Rr}px`;
+  }
+  at(tl, X, Y); at(tr, X + W - Rr, Y); at(bl, X, Y + H - Rr); at(br, X + W - Rr, Y + H - Rr);
+  // the edges reach half a pixel into the corners, so no seam shows where they meet
+  const lx = Math.max(0, W - 2 * Rr + 1) / 100, ly = Math.max(0, H - 2 * Rr + 1) / 100;
+  at(et, X + Rr - 0.5, Y, lx); at(eb, X + Rr - 0.5, Y + H - 10, lx);
+  at(el_, X, Y + Rr - 0.5, 1, ly); at(er, X + W - 10, Y + Rr - 0.5, 1, ly);
+  at(nl, X - 11, y + h / 2 - 6); at(nr, X + W + 4, y + h / 2 - 6);
+}

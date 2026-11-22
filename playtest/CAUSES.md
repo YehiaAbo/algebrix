@@ -88,3 +88,13 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   their own copy of it, and the aim box moved by left/top (layout, main thread). Now one glide
   (SMOOTH, and CSS --ease) everywhere, at most about 6% per frame at 144 Hz, a little longer for
   long trips; the aim moves by transform. Rule: a new animation uses SMOOTH, never its own curve.
+- **K13 The letter of an ∫ with no bounds counted as an unknown that depends on t.** d/dt both
+  sides of I(t) = ∫ (x^t − 1)/ln x dx read x as x(t) and had no rule for it, and the safety net
+  could not work out an ∫ with no bounds at all, so it refused anyway; then e integrated inside
+  before differentiating. Now the letter of ∫ … dx is its own, a check reads each ∫ … dx (and a
+  function defined by one, and its slopes) as ∫ from a fixed start to x, and d/dt goes under an
+  ∫ with or without bounds before anything inside is worked out. Guard: tests/functions.test.ts.
+- **K14 One box moved by two engines.** The aim box glided its position on the compositor but its
+  size by width/height on the main thread, snapping edges to whole pixels, so walking with the
+  arrows looked less smooth than the screen's rate. It is now nine pieces that only move by
+  transform (aimBox in shared.ts). Rule: anything that moves every key press moves by transform.
