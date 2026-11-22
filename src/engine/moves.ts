@@ -368,7 +368,19 @@ export function applyBoth(e: Eq, text: string, others: Eq[] = []): MoveResult {
     factor = env => evaluate(x, env);
   } else {
     const div = (s: Node, f: Node): Node => (s.k === 'frac' ? { ...s, den: s.den.k === 'mul' ? { ...s.den, factors: [...s.den.factors, f] } : mul([s.den, f]) } : frac(s, f));
-    L = div(e.lhs, x); R = div(e.rhs, c);
+    // ÷ dt on differentials: each one becomes a rate (2x dx + 2y dy = 0 gives 2x dx/dt + 2y dy/dt = 0)
+    const dt = x.k === 'sym' && isDiff(x.name) ? x : null;
+    const hasD = (s: Node) => symbols(s).some(w => isDiff(w) && w !== dt?.name);
+    const rate = (s: Node): Node | null => {
+      if (s.k === 'num' && s.v === 0) return s;
+      if (s.k === 'sym' && isDiff(s.name) && s.name !== dt!.name) return frac(s, cloneFresh(dt!));
+      if (s.k === 'neg') { const a = rate(s.arg); return a && { ...s, arg: a }; }
+      if (s.k === 'add') { const ts = s.terms.map(rate); return ts.every(Boolean) ? { ...s, terms: ts as Node[] } : null; }
+      if (s.k === 'mul') { const i = s.factors.findIndex(f => f.k === 'sym' && isDiff(f.name) && f.name !== dt!.name); if (i < 0) return null; const fs = [...s.factors]; fs[i] = frac(fs[i], cloneFresh(dt!)); return { ...s, factors: fs }; }
+      return null;
+    };
+    const rates = dt && (hasD(e.lhs) || hasD(e.rhs)) ? [rate(e.lhs), rate(e.rhs)] : null;
+    if (rates && rates[0] && rates[1]) { L = rates[0]; R = rates[1]; } else { L = div(e.lhs, x); R = div(e.rhs, c); }
     factor = env => 1 / evaluate(x, env);
   }
   const sym = { '+': '+', '-': '−', '*': '×', '/': '÷' }[op]!;

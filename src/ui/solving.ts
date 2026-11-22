@@ -1,6 +1,6 @@
 // Solving: isolate a variable, split into cases, check answers, domains, inverses.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { symbols, relOf, isIneq, DEFS, defsSig, add, key, holds, Eq, Node, walk, eq, call, sym, cloneFresh } from '../engine/ast';
+import { symbols, relOf, isIneq, DEFS, defsSig, add, key, holds, Eq, Node, walk, eq, call, sym, cloneFresh, frac, children, withChildren } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
 import { inverseFunction, unfold } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
@@ -22,6 +22,18 @@ import type { App } from './app';
 export function solveFor(this: App, v: string) {
   const rel = relOf(this.eq);
   if (rel === 'expr') { this.refuse('An expression has nothing to solve. Add “= …” to make it an equation.'); return; }
+  // a rate at one instant (12 + 8 dy/dt = 0): solved for like a letter, and it stays written dy/dt
+  const rate = /^(d.+)\/(d.+)$/.exec(v);
+  if (rate) {
+    const isRate = (n: Node) => n.k === 'frac' && n.num.k === 'sym' && n.num.name === rate[1] && n.den.k === 'sym' && n.den.name === rate[2];
+    const there = (n: Node): Node => (isRate(n) ? sym(v, n.id) : withChildren(n, children(n).map(there)));
+    const back = (n: Node): Node => (n.k === 'sym' && n.name === v ? frac(sym(rate[1]), sym(rate[2]), n.id) : withChildren(n, children(n).map(back)));
+    const r = isolate(there(this.eq) as Eq, v);
+    if (!Array.isArray(r)) { this.refuse(r.error); return; }
+    if (!r.length) { this.refuse(`Already solved for ${v}.`); return; }
+    this.play(r.map(s => ({ ...s, eq: back(s.eq) as Eq, select: null, focus: undefined })), () => this.say(`Solved for ${v}.`));
+    return;
+  }
   if (rel === '≟') { this.refuse('This holds for every value, so there is nothing to solve: prove it instead, one side at a time.'); return; }
   if (rel === 'def' && v === (this.eq.lhs.k === 'call' && this.eq.lhs.arg.k === 'sym' ? this.eq.lhs.arg.name : null)) { this.refuse(`This defines ${this.eq.lhs.k === 'call' ? this.eq.lhs.name : 'a function'}: there is nothing to solve for. p puts in a value; hold Tab + b for its inverse.`); return; }
   // true for every value of v (I′(t) = 1/(t + 1) when I is defined): a fact about a function, not

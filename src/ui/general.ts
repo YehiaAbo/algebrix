@@ -102,8 +102,10 @@ export function addName(this: App, r: Named) {
 
 /** p: put a value into a statement that holds for every value, as an equation of its own */
 export function openValue(this: App) {
-  const v = valueVar(this.eq, this.sel);
-  if (!v) return this.refuse('Aim at the letter to put a value in for, then press p.');
+  // nothing to go by: the box opens empty, for x = 3, y = 4, dx/dt = 2 (a bare value is the first letter's)
+  const guess = valueVar(this.eq, this.sel);
+  const v = guess ?? symbols(this.eq).find(w => w !== 'C' && !isDiff(w));
+  if (!v) return this.refuse('There is no letter here to put a value in for.');
   // on an equation that says which v works, a value is tried (true or false) instead of giving a new equation
   this.valueCheck = !holdsForEvery(this.eq, v);
   this.opKind = 'value';
@@ -111,7 +113,7 @@ export function openValue(this: App) {
   this.closeHub(false);
   this.setMode('op');
   const input = $<HTMLInputElement>('op-input');
-  input.value = '0';
+  input.value = guess ? '0' : '';
   $('op').hidden = false;
   this.place($('op'));
   input.focus();

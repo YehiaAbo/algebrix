@@ -172,4 +172,16 @@ export const tests = {
     const ans = await p.evaluate(() => document.getElementById('answer').textContent);
     assert(ans.includes('no limit') && ans.includes('y = x'), `two paths: ${ans}`);
   },
+  async 'related rates by hand: C k differentials, / dt, p with several values, e finds dy/dt'(h) {
+    const { load, key, type, hold, until } = h;
+    await load('x^2 + y^2 = 25');
+    await hold('c', 'k');
+    await until(s => s.eq === '2x dx + 2y dy = 0', 'differentials of both sides');
+    await key('/'); await type('dt'); await key('Enter');
+    await until(s => s.eq === '2x dx/dt + 2y dy/dt = 0', 'rates, not (…)/dt');
+    await key('p'); await type('x = 3, y = 4, dx/dt = 2'); await key('Enter');
+    await until(s => s.slots === 2 && s.eq === '2·3·2 + 2·4 dy/dt = 0', 'values at that instant');
+    await key('e');
+    await until(s => s.eq === 'dy/dt = −3/2', 'dy/dt found, not y(t)');
+  },
 };

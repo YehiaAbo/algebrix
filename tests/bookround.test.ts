@@ -101,3 +101,26 @@ describe('played by hand (K25–K27)', () => {
     expect(isErr(r) && r.error).toContain('u = cos(x) works');
   });
 });
+
+import { applyBothChecked } from '../src/engine/moves';
+import { putValue } from '../src/engine/general';
+import { odeKind, separate } from '../src/engine/ode';
+import { asPrime, slopeVar } from '../src/engine/leibniz';
+
+describe('related rates and slopes not written alone (K32, K33)', () => {
+  it('÷ dt turns differentials into rates, and p puts values in for letters and rates', () => {
+    const r = applyBothChecked(parseEquation('2x dx + 2y dy = 0'), '/dt');
+    expect(!isErr(r) && T(r.eq)).toBe('2x dx/dt + 2y dy/dt = 0');
+    const s = applyBothChecked(parseEquation('x dx = 3 dV'), '/dt');
+    expect(!isErr(s) && T(s.eq)).toBe('x dx/dt = 3 dV/dt');
+    const p = putValue((r as { eq: Eq }).eq, 'x', 'x = 3, y = 4, dx/dt = 2');
+    expect('error' in p ? p.error : T(p)).toBe('2·3·2 + 2·4 dy/dt = 0');
+  });
+  it('a first-order equation whose slope splits is separable, y′ alone or not, and keeps its + C', () => {
+    for (const src of ['dy/dx + 2 = 0', '3y\' - 6x = 0', 'x y\' = y']) {
+      const e0 = parseEquation(src), e = asPrime(e0), v = slopeVar(e0);
+      expect(odeKind(e, v), src).toBe('separable');
+      expect(isErr(separate(e, v)), src).toBe(false);
+    }
+  });
+});

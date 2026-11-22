@@ -197,3 +197,8 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   page. = #n and Tab k now follow with a "collect like terms" step. Guard: e2e byhand.
 - **K31 The f box doubled what you typed:** V then ( gave V((, and V then '' added primes to the V″ the
   box offered. Typing the name yourself now goes on from what the box started. Guard: e2e byhand.
+- **K32 Related rates had no way through.** ÷ dt left (2x dx + 2y dy)/dt; p refused with nothing aimed
+  and took only single letters. Now ÷ dt writes rates, p opens empty for x = 3, y = 4, dx/dt = 2, and
+  e on an instant (an equation of values) solves for the rate. Guards: bookround, e2e calc.
+- **K33 ⚠ dy/dx + 2 = 0 lost its + C** (the integrating factor with P = 0 gave e^C). Separable is now
+  read from the slope whether or not y′ stands alone. Guard: bookround.

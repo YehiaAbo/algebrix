@@ -384,6 +384,18 @@ export function putValue(e: Eq, v: string, text: string): Eq | { error: string }
   [[v, text]] = parts;
   let a: Node;
   try { a = parseExpr(text); } catch (err) { return { error: (err as Error).message }; }
+  // a rate (dx/dt = 2): every dx/dt here is that value
+  const r = /^(d.+)\/(d.+)$/.exec(v);
+  if (r) {
+    const isRate = (n: Node) => n.k === 'frac' && n.num.k === 'sym' && n.num.name === r[1] && n.den.k === 'sym' && n.den.name === r[2];
+    let seen = false;
+    walk(e, n => { if (isRate(n)) seen = true; });
+    if (!seen) return { error: `There is no ${v} here to put a value in for.` };
+    if (!holdsForEvery(e, v)) return { error: `This says which ${v} works, so a value can't just be put in.` };
+    const swap = (n: Node): Node => (isRate(n) ? cloneFresh(a) : withChildren(n, children(n).map(swap)));
+    const out = swap(e) as Eq;
+    return eq(out.lhs, out.rhs);
+  }
   if (!symbols(e).includes(v)) return { error: `There is no ${v} here to put a value in for.` };
   if (!holdsForEvery(e, v)) return { error: `This says which ${v} works, not something true for every ${v}, so a value can't just be put in. To check a value, press e.` };
   const next = substitute(e, v, a) as Eq;
@@ -421,8 +433,8 @@ export function tryValue(e: Eq, v: string, text: string): { text: string; holds:
 export function valueParts(text: string, v: string): [string, string][] | { error: string } {
   const out: [string, string][] = [];
   for (const piece of text.split(/[,;]/)) {
-    const m = /^\s*([A-Za-zα-ωΑ-Ω](?:_\w+)?)\s*(?::=|=|→|->)\s*(.*)$/.exec(piece);
-    if (m) out.push([m[1], m[2]]);
+    const m = /^\s*(d[A-Za-zα-ω]\s*\/\s*d[A-Za-zα-ω]|[A-Za-zα-ωΑ-Ω](?:_\w+)?)\s*(?::=|=|→|->)\s*(.*)$/.exec(piece);
+    if (m) out.push([m[1].replace(/\s+/g, ''), m[2]]);
     else if (piece.trim()) out.push([v, piece]);
   }
   if (!out.length || out.some(([, t]) => !t.trim())) return { error: 'Type a value, like 0 or t = 0.' };
@@ -436,6 +448,10 @@ export function holdsForEvery(e: Eq, v: string): boolean {
   // a relation with other letters (1 = A(x + 1) + B(x − 1), x² + y² = 25): what follows at a value
   // of v is a consequence (⇒), not a claim that v is that value
   if (relOf(e) === '=' && symbols(e).some(w => w !== v && w !== 'C' && !isDiff(w))) return true;
+  // a rate is an unknown too (2·3 dx/dt + 2y dy/dt = 0 at x = 3): related rates put values in one by one
+  let rate = false;
+  walk(e, n => { if (n.k === 'frac' && n.num.k === 'sym' && n.den.k === 'sym' && isDiff(n.num.name) && isDiff(n.den.name) && n.num.name !== `d${v}`) rate = true; });
+  if (relOf(e) === '=' && rate) return true;
   // about a function of v: one with no definition (I(t) = … while I is unknown) holds for every t;
   // one you defined (f(x) = 7 with f(x) = 2x + 3) only when the sides really agree everywhere
   let unknown = false, known = false;

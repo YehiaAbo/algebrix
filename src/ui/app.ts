@@ -804,10 +804,22 @@ export class App {
   }
 
   /** e: solve. Aimed at a variable (or only one variable): straight to the answer; otherwise pick one */
+  /** the one rate (dy/dt) left in an equation of values at an instant, the only unknown in it */
+  instantRate(): string | null {
+    if (this.slot?.steps[0].rule !== 'put in a value' || relOf(this.eq) !== '=') return null;
+    const rates = new Set<string>();
+    walk(this.eq, n => { if (n.k === 'frac' && n.num.k === 'sym' && n.den.k === 'sym' && isDiff(n.num.name) && isDiff(n.den.name)) rates.add(`${n.num.name}/${n.den.name}`); });
+    const loose = symbols(this.eq).filter(w => !isDiff(w));
+    return rates.size === 1 && !loose.length ? [...rates][0] : null;
+  }
+
   solveKey() {
     // calculus to work out, or a u to put back
     if (hasCalc(this.eq) || Object.keys(this.substitutions()).some(u => symbols(this.eq).includes(u))) return this.finishCalculus();
     if (relOf(this.eq) === '=' && (isVector(this.eq.lhs) || isVector(this.eq.rhs))) return this.splitComponents();
+    // at one instant (values put in with p), a rate is a number to find, not a function to solve for
+    const inst = this.instantRate();
+    if (inst) return this.solveFor(inst);
     if (odeKind(asPrime(this.eq), slopeVar(this.eq)) || hasDifferentials(this.eq)) return this.solveOde();
     if (relOf(this.eq) === 'expr') {
       // nothing to solve in a lone expression: e tidies it as far as it goes instead

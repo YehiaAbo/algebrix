@@ -104,9 +104,21 @@ export function odeKind(e: Eq, v?: string): OdeKind | null {
   const u = unknown(e, v);
   if (!u || relOf(e) !== '=') return null;
   if (u.order === 2) return 'error' in coefficients(e, u.y) ? null : 'second';
-  const R = slopeForm(e, u.y);
-  if (R && splitXY(R, u.x, u.y)) return 'separable';
+  const R = slopeOf(e, v);
+  if (R && splitXY(R.R, u.x, u.y)) return 'separable';
   return 'error' in linearForm(e, v) ? null : 'linear';
+}
+
+/** what y′ equals, with y′ alone or not (dy/dx + 2 = 0 has y′ = −2), and what F = lhs − rhs is
+ *  divided by to give y′ − R */
+function slopeOf(e: Eq, v?: string): { R: Node; a: Node } | null {
+  const u = unknown(e, v);
+  if (!u || u.order !== 1) return null;
+  const R = slopeForm(e, u.y);
+  if (R) return { R, a: num(e.lhs.k === 'sym' && e.lhs.name === primed(u.y) ? 1 : -1) };
+  const f = linearForm(e, v);
+  if ('error' in f) return null;
+  return { R: S(add([cloneFresh(f.Q), neg(mul([cloneFresh(f.P), sym(u.y)]))])), a: f.a };
 }
 
 /* ---------- separable ---------- */
@@ -115,8 +127,9 @@ export function odeKind(e: Eq, v?: string): OdeKind | null {
 export function separate(e: Eq, v?: string): MoveResult {
   const u = unknown(e, v);
   if (!u || u.order !== 1) return { error: 'Separating needs a first-order equation with y′ in it.' };
-  const R = slopeForm(e, u.y);
-  if (!R) return { error: `Get ${u.y}′ on its own first (e solves for it).` };
+  const s = slopeOf(e, v);
+  if (!s) return { error: `Get ${u.y}′ on its own first (e solves for it).` };
+  const R = s.R;
   const p = splitXY(R, u.x, u.y);
   if (!p) return { error: `This doesn't split into (something in ${u.x}) × (something in ${u.y}). Try the integrating factor (C + f).` };
   const L = S(frac(num(1), p.h)), g = S(p.g);
@@ -126,7 +139,7 @@ export function separate(e: Eq, v?: string): MoveResult {
     eq: next, label: `separate: ${u.y}s left, ${u.x}s right`, hints: newHints(), factor: one, select: null, rule: 'separation of variables', implies: true,
     conditions: neverZero(p.h) ? [] : [`${toText(p.h)} ≠ 0 (where it is 0, ${u.y} = constant may be a solution too)`],
     // differentiating back with y depending on x: y′/h(y) − g(x) is the old equation divided by h(y)
-    check: env => [[evaluate(L, env) * env[yp] - evaluate(g, env), (evaluate(e.lhs, env) - evaluate(e.rhs, env)) / evaluate(p.h, env) * (e.lhs.k === 'sym' && e.lhs.name === yp ? 1 : -1)]],
+    check: env => [[evaluate(L, env) * env[yp] - evaluate(g, env), (evaluate(e.lhs, env) - evaluate(e.rhs, env)) / evaluate(s.a, env) / evaluate(p.h, env)]],
   });
 }
 
