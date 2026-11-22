@@ -181,7 +181,12 @@ export function judge(this: App, i: number): string | null {
 
 export function cycleDomain(this: App, v: string) {
   const order: Domain[] = ['real', 'positive', 'nonneg', 'integer'];
-  const next = order[(order.indexOf(this.domains[v] ?? 'real') + 1) % order.length];
+  this.setDomain(v, order[(order.indexOf(this.domains[v] ?? 'real') + 1) % order.length]);
+}
+
+/** what a letter can be (the rail's card, or a click on it): every answer is judged again */
+export function setDomain(this: App, v: string, next: Domain) {
+  if ((this.domains[v] ?? 'real') === next) return;
   if (next === 'real') delete this.domains[v]; else this.domains[v] = next;
   setDomains(this.domains);
   sound.tick(2);

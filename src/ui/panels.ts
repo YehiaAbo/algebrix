@@ -3,7 +3,7 @@
 import { prefs, setPref, PANEL_DEFAULTS } from './prefs';
 
 type Key = 'railW' | 'sideW' | 'sideH';
-const LIMITS: Record<Key, [number, number]> = { railW: [150, 360], sideW: [220, 760], sideH: [160, 600] };
+const LIMITS: Record<Key, [number, number]> = { railW: [150, 560], sideW: [220, 760], sideH: [160, 600] };
 const VAR: Record<Key, string> = { railW: '--rail-w', sideW: '--side-w', sideH: '--side-h' };
 
 export function applyPanels() {

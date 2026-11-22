@@ -1,4 +1,4 @@
-import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate, isDiff, defsSig } from '../engine/ast';
+import { Eq, Node, find, findPath, children, symbols, relOf, key, isVector, evaluate, isDiff, defsSig, DEFS } from '../engine/ast';
 import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
 import { parseEquation, ParseError, setRedefining } from '../engine/parse';
@@ -28,6 +28,7 @@ import { notationFor } from './notation';
 import * as sheet from './sheet';
 import { hasCalc } from '../engine/calcmoves';
 import { odeKind } from '../engine/ode';
+import { letterCard, fnCard, mathEl } from './railinfo';
 import { asPrime, hasDifferentials, slopeVar } from '../engine/leibniz';
 import { TreeView, TreeBig, HeadInfo } from './treeview';
 import { treeOf, goto, here, visibleAt } from './tree';
@@ -391,7 +392,7 @@ export class App {
     const vars = $('vars');
     const solved = eq && this.mode === 'write' ? null : eq && solvedFor(eq);
     // the rail only changes when what it shows changes: skip the rebuild otherwise
-    const sig = eq ? `${key(eq)}|${defsSig.v}|${solved}|${this.slot?.bad}|${JSON.stringify(this.domains)}|${(this.step?.conditions ?? []).join(';')}` : '';
+    const sig = eq ? `${key(eq)}|${defsSig.v}|${solved}|${this.slot?.bad}|${JSON.stringify(this.domains)}|${(this.step?.conditions ?? []).join(';')}|${this.railOpen}|${this.cur}|${this.slots.map((_, j) => key(this.eqOf(j))).join(';')}|${document.documentElement.dataset.accent ?? ''}` : '';
     const same = sig === this.railSig;
     this.railSig = sig;
     this.renderRailCounts();
@@ -403,11 +404,20 @@ export class App {
       const li = document.createElement('li');
       const conds = (this.step?.conditions ?? []).filter(c => new RegExp(`(^|[^a-zα-ω])${v}([^a-zα-ω]|$)`).test(c));
       const dom = this.domains[v] ?? 'real';
-      li.innerHTML = `<span class="var">${varHtml(v)}</span><button class="dom" title="Click to change what ${escapeHtml(v)} can be">${DOMAIN_TEXT[dom]}</button>${solved === v ? (this.slot?.bad ? '<span class="solved no">not a solution</span>' : noValue(eq) ? '<span class="solved no" title="What it equals has no finite value: an integral that diverges, or a limit that does not exist">no value</span>' : '<span class="solved">solved</span>') : ''}`;
-      li.querySelector('.dom')!.addEventListener('click', () => this.cycleDomain(v));
+      li.innerHTML = `<span class="var">${varHtml(v)}</span><span class="dom">${DOMAIN_TEXT[dom]}</span>${solved === v ? (this.slot?.bad ? '<span class="solved no">not a solution</span>' : noValue(eq) ? '<span class="solved no" title="What it equals has no finite value: an integral that diverges, or a limit that does not exist">no value</span>' : '<span class="solved">solved</span>') : ''}`;
       if (conds.length) li.title = conds.join(', ');
-      vars.append(li);
+      vars.append(li, ...this.railItem(li, `v:${v}`, () => letterCard(this, v)));
     }
+    // the functions you defined: click one for its definition and a small graph
+    const fns = $('fns');
+    fns.replaceChildren();
+    for (const [name, d] of DEFS) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="var">${escapeHtml(name)}(${escapeHtml(d.param)})</span><span class="fn-body"></span>`;
+      li.querySelector('.fn-body')!.append(mathEl(d.body, 14));
+      fns.append(li, ...this.railItem(li, `f:${name}`, () => fnCard(this, name)));
+    }
+    $('fns-sec').hidden = !DEFS.size;
     const conds = $('conds');
     conds.replaceChildren();
     for (const c of this.step?.conditions ?? []) {
@@ -420,6 +430,19 @@ export class App {
   }
 
   private railSig = '';
+  /** the rail item opened for its details ('v:x' a letter, 'f:I' a function) */
+  railOpen: string | null = null;
+  /** a rail row that opens in place: click it for its card, again to close */
+  private railItem(li: HTMLLIElement, id: string, card: () => HTMLElement): HTMLElement[] {
+    li.classList.add('ri');
+    li.addEventListener('click', () => { this.railOpen = this.railOpen === id ? null : id; sound.tick(this.railOpen ? 2 : 0); this.renderRail(); });
+    if (this.railOpen !== id) return [];
+    li.classList.add('open');
+    const host = document.createElement('li');
+    host.className = 'ri-host';
+    host.append(card());
+    return [host];
+  }
   private renderRailCounts() {
     $('step-count').textContent = this.mode === 'write' ? 'Writing…' : this.at === 0 ? 'At the start' : `${this.at} step${this.at > 1 ? 's' : ''} in`;
     $('redo-count').textContent = this.at < this.steps.length - 1 ? `${this.steps.length - 1 - this.at} ahead, r to redo` : '';

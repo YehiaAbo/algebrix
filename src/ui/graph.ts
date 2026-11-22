@@ -717,16 +717,16 @@ export class Graph {
       c.stroke();
     };
     c.lineWidth = 1;
-    c.strokeStyle = css('--grid'); c.globalAlpha = 0.55; lines(minor);
-    c.globalAlpha = 1; lines(step);
+    c.strokeStyle = css('--grid'); lines(minor);
+    c.strokeStyle = css('--grid-major') || css('--grid'); lines(step);
     c.strokeStyle = css('--axis'); c.lineWidth = 1.25;
     c.beginPath();
     c.moveTo(Math.round(X(0)) + 0.5, 0); c.lineTo(Math.round(X(0)) + 0.5, H);
     c.moveTo(0, Math.round(Y(0)) + 0.5); c.lineTo(W, Math.round(Y(0)) + 0.5);
     c.stroke();
     // labels with a halo, pinned to the edge when the axis is off screen
-    c.font = `11px ${css('--ui-font')}`;
-    c.lineWidth = 3; c.strokeStyle = css('--desk'); c.fillStyle = css('--muted');
+    c.font = `11.5px ${css('--ui-font')}`;
+    c.lineWidth = 3; c.strokeStyle = css('--desk'); c.fillStyle = css('--graph-label') || css('--muted');
     const halo = (t: string, x: number, y: number) => { c.strokeText(t, x, y); c.fillText(t, x, y); };
     c.textAlign = 'center'; c.textBaseline = 'top';
     const ly = Math.min(H - 16, Math.max(4, Y(0) + 4));

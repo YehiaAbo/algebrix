@@ -2,26 +2,29 @@
 [hidden] { display: none !important; }
 
 :root {
-  --bg: #e9edf1;
-  --desk: #f6f7f9;
-  --panel: #e9edf1;
-  --ink: #18202b;
-  --muted: #5b6573;
-  --faint: #97a0ac;
-  --line: #d3d9e0;
+  /* light: white paper on a quiet neutral (no blue cast), near-black ink, one hairline colour */
+  --bg: #f4f4f3;
+  --desk: #ffffff;
+  --panel: #f4f4f3;
+  --ink: #131416;
+  --muted: #50545b;
+  --faint: #8d9098;
+  --line: #dcdddf;
   --sel: #2d5be3;
-  --sel-fill: rgba(45, 91, 227, 0.09);
-  --copy: #d9901a;
+  --sel-fill: rgba(45, 91, 227, 0.08);
+  --copy: #d9821a;
   --bad: #c8423b;
-  --good: #2e8a5b;
+  --good: #23804f;
   --graph-a: #2d5be3;
-  --graph-b: #d9901a;
-  --grid: rgba(24, 32, 43, 0.055);
-  --axis: rgba(24, 32, 43, 0.3);
+  --graph-b: #d9821a;
+  --grid: rgba(20, 22, 26, 0.075);
+  --grid-major: rgba(20, 22, 26, 0.17);
+  --axis: rgba(20, 22, 26, 0.78);
+  --graph-label: #2b2e33;
   --key-bg: #ffffff;
-  --key-edge: #c5ccd6;
+  --key-edge: #cdced2;
   --on-sel: #ffffff;
-  --shadow: rgba(10, 20, 40, 0.16);
+  --shadow: rgba(10, 12, 16, 0.12);
   --ui-font: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --math-font: "STIX Two Text", "STIX Two Math", "Cambria Math", "Times New Roman", serif;
   --ease: cubic-bezier(.3, .6, .2, 1);
@@ -31,14 +34,14 @@
   :root:not([data-theme="light"]) {
     --bg: #1f1e1d; --desk: #262624; --panel: #1f1e1d; --ink: #f2f0e8; --muted: #b1aea3; --faint: #7f7c73;
     --line: #3a3935; --sel: #d97757; --sel-fill: rgba(217, 119, 87, 0.15); --copy: #8fb2f5; --bad: #f07b71; --good: #86c58a;
-    --graph-a: #d97757; --graph-b: #8fb2f5; --grid: rgba(242, 240, 232, 0.045); --axis: rgba(242, 240, 232, 0.28);
+    --graph-a: #d97757; --graph-b: #8fb2f5; --grid: rgba(242, 240, 232, 0.028); --grid-major: rgba(242, 240, 232, 0.065); --axis: rgba(242, 240, 232, 0.3); --graph-label: #b1aea3;
     --key-bg: #30302e; --key-edge: #4a4944; --on-sel: #1f1e1d; --shadow: rgba(0, 0, 0, 0.45); color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #1f1e1d; --desk: #262624; --panel: #1f1e1d; --ink: #f2f0e8; --muted: #b1aea3; --faint: #7f7c73;
   --line: #3a3935; --sel: #d97757; --sel-fill: rgba(217, 119, 87, 0.15); --copy: #8fb2f5; --bad: #f07b71; --good: #86c58a;
-  --graph-a: #d97757; --graph-b: #8fb2f5; --grid: rgba(242, 240, 232, 0.045); --axis: rgba(242, 240, 232, 0.28);
+  --graph-a: #d97757; --graph-b: #8fb2f5; --grid: rgba(242, 240, 232, 0.028); --grid-major: rgba(242, 240, 232, 0.065); --axis: rgba(242, 240, 232, 0.3); --graph-label: #b1aea3;
   --key-bg: #30302e; --key-edge: #4a4944; --on-sel: #1f1e1d; --shadow: rgba(0, 0, 0, 0.45); color-scheme: dark;
 }
 
@@ -74,7 +77,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* ---------- left rail ---------- */
-.rail { display: flex; flex-direction: column; gap: 26px; padding: 14px 10px 8px 12px; min-height: 0; }
+.rail { display: flex; flex-direction: column; gap: 26px; padding: 14px 10px 8px 12px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .brand { display: flex; align-items: baseline; gap: 9px; }
 .brand .mark {
   font: italic 22px/1 var(--math-font);
@@ -738,3 +741,33 @@ body[data-mode="write"] .input-keys { display: flex; }
 .pal-ask.typed input::placeholder { color: var(--muted); opacity: .6; font-size: 15px; }
 #fps { position: fixed; top: 8px; right: 8px; z-index: 50; padding: 3px 9px; border-radius: 999px; font: 600 11.5px/1.5 var(--ui-font); font-variant-numeric: tabular-nums; background: var(--panel); color: var(--good); border: 1px solid var(--line); pointer-events: none; }
 #fps.bad { color: var(--bad); }
+
+/* ---------- the rail's letters and functions open in place ---------- */
+.vars li.ri { cursor: pointer; transition: background .15s var(--ease), box-shadow .15s var(--ease); }
+.vars li.ri:hover { box-shadow: 0 0 0 1px var(--line) inset; }
+.vars li.ri.open { box-shadow: 0 0 0 1.5px var(--sel) inset; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.vars li.ri-host { display: block; padding: 0; background: none; margin-top: -4px; }
+.ri-card { display: grid; gap: 8px; padding: 10px; border-radius: 0 0 8px 8px; background: var(--desk); box-shadow: 0 0 0 1.5px var(--sel) inset; animation: ri-in .2s var(--ease); font-size: 12.5px; color: var(--muted); }
+@keyframes ri-in { from { opacity: 0; transform: translateY(-4px); } }
+.ri-row { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.ri-row b { font-weight: 500; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.ri-val { font: 16px var(--math-font); }
+.ri-val.bad { color: var(--bad); text-decoration: line-through; }
+.ri-or { font-style: normal; color: var(--faint); margin: 0 6px; font-size: 12px; }
+.ri-eqs { display: flex; flex-wrap: wrap; gap: 4px; }
+.ri-eq { min-width: 22px; height: 22px; border: 0; border-radius: 6px; background: var(--bg); color: var(--ink); font: 600 11.5px var(--ui-font); cursor: pointer; box-shadow: 0 0 0 1px var(--line) inset; }
+.ri-eq:hover { box-shadow: 0 0 0 1.5px var(--sel) inset; }
+.ri-eq.here { background: var(--sel); color: var(--on-sel); box-shadow: none; }
+.ri-none { color: var(--faint); font-weight: 400; }
+.ri-def { font: 16px/1.35 var(--math-font); color: var(--ink); overflow-wrap: anywhere; }
+.ri-graph { width: 100%; height: 120px; display: block; border-radius: 6px; background: var(--bg); }
+.fns .var { font-size: 16px; white-space: nowrap; }
+.fns li { align-items: center; }
+.fns .fn-body { color: var(--muted); overflow: hidden; min-width: 0; flex: 1; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
+.ri-def { overflow-x: auto; color: var(--ink); padding: 2px 0; }
+.ri-doms { display: flex; flex-wrap: wrap; gap: 4px; }
+.ri-dom { border: 0; background: none; border-radius: 6px; padding: 2px 7px; font: 12px var(--ui-font); color: var(--muted); cursor: pointer; box-shadow: 0 0 0 1px var(--line) inset; }
+.ri-dom:hover { color: var(--ink); }
+.ri-dom.on { background: var(--sel); color: var(--on-sel); box-shadow: none; }
+.ri-card i, .fns i { font-style: italic; }
+.ri-row.stack { grid-template-columns: minmax(0, 1fr); gap: 5px; }

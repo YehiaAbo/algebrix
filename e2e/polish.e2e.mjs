@@ -147,4 +147,24 @@ export const tests = {
     await p.click('.set-opt:text("Theme")');
     await p.keyboard.press('Escape');
   },
+
+  async 'a letter in the rail opens its details; a function opens its definition and a mini graph'({ load, key, type, p, assert, wait, until }) {
+    await load('f(x) = x^3 - 3x');
+    await key('n'); await type('x = 3'); await key('Enter');
+    await until(s => s.slots === 2, 'two equations');
+    await p.click('#vars li.ri .var'); await wait(150);
+    const card = await p.evaluate(() => document.querySelector('#vars .ri-card')?.textContent ?? '');
+    assert(card.includes('Equals') && card.includes('3') && card.includes('In equations'), `the letter's card: ${card}`);
+    await p.click('#vars .ri-dom[data-d="positive"]'); await wait(100);
+    const dom = await p.evaluate(() => document.querySelector('#vars li.ri .dom').textContent);
+    assert(dom === 'positive', `the card set what x can be: ${dom}`);
+    await p.click('#vars .ri-dom[data-d="real"]');
+    await p.click('#vars .ri-eq[data-j="0"]');
+    await until(s => s.cur === 0, 'a chip goes to that equation');
+    await p.click('#fns li.ri'); await wait(200);
+    const drawn = await p.evaluate(() => { const c = document.querySelector('#fns .ri-graph'); return !!c && c.width > 0 && !!document.querySelector('#fns .ri-def .mini'); });
+    assert(drawn, 'the function opens with its definition and a graph');
+    await p.click('#fns li.ri'); await wait(100);
+    assert(!(await p.evaluate(() => document.querySelector('#fns .ri-card'))), 'a second click closes it');
+  },
 };
