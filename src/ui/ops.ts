@@ -13,6 +13,12 @@ import type { App } from './app';
 /** What you most likely want to apply, given what is aimed: the thing that cancels it. */
 export function prefill(this: App, op: string): string {
   const n = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
+  // ^ undoes the root that is aimed, or the one a side is
+  if (op === '^') {
+    const rootOf = (r: Node) => r.k === 'sqrt' ? '2' : r.k === 'pow' && r.exp.k === 'frac' && r.exp.num.k === 'num' && r.exp.num.v === 1 && r.exp.den.k === 'num' ? String(r.exp.den.v) : '';
+    const e = this.eq;
+    return (n && rootOf(n)) || (e.k === 'eq' ? rootOf(e.lhs) || rootOf(e.rhs) : '');
+  }
   if (!n) return '';
   const path = findPath(this.eq, n.id)!;
   const side = path[1];
@@ -26,6 +32,7 @@ export function prefill(this: App, op: string): string {
     if (side.k === 'frac' && (n === side || n === side.den)) return txt(side.den);
     return txt(n);
   }
+  // ^ undoes the root that is aimed (or the one that a side is)
   return '';
 }
 

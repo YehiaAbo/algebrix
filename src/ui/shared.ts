@@ -39,8 +39,8 @@ export const MOVE_KEYS: { key: string; name: MoveName | 'any'; verb: string; pit
 ];
 
 /** typing an operator starts a both-sides operation; no Shift needed (= is +, . is ×) */
-export const OP_KEYS: Record<string, string> = { '=': '+', '+': '+', '-': '-', '.': '*', '*': '*', '/': '/' };
-export const OP_SHOW: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+export const OP_KEYS: Record<string, string> = { '=': '+', '+': '+', '-': '-', '.': '*', '*': '*', '/': '/', '^': '^' };
+export const OP_SHOW: Record<string, string> = { '+': '+', '-': '−', '*': '×', '/': '÷', '^': 'power of' };
 
 export const LABEL_CHARS = 'asdfghjklqwertyuiopzxcvbnm';
 export const DOMAIN_TEXT: Record<Domain, string> = { real: 'real number', positive: 'positive', nonneg: 'zero or more', integer: 'whole number' };

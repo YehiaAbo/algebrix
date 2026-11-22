@@ -270,11 +270,14 @@ export class App {
    *  the equation you're on (lit while the algebra menu is open, when you'd use it) */
   treeHeads(): HeadInfo[] {
     const aimed = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
-    const mine = this.shown ? symbols(this.shown) : [];
+    // a letter this equation is already solved for has nothing more to take in
+    const done = this.shown ? solvedFor(this.shown) : null;
+    const mine = this.shown ? symbols(this.shown).filter(v => v !== done) : [];
     return this.slots.map((_, i) => {
       const e = this.eqOf(i);
       if (i === this.cur) return { tag: this.slotTag(i, e), offer: '', linked: false, focus: true };
-      const shared = symbols(e).filter(v => mine.includes(v));
+      // a case of the same split, or an answer that fails, has nothing to give this equation
+      const shared = sheet.areCases(this, this.cur, i) || this.slots[i].bad ? [] : symbols(e).filter(v => mine.includes(v));
       const solved = solvedFor(e);
       const keys = `<span class="sep">·</span><kbd>Tab</kbd>+<kbd>${i + 1}</kbd>`;
       let offer = '';

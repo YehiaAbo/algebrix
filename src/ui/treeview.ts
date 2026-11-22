@@ -167,6 +167,11 @@ export class TreeView {
       if (!this.o.strip) b.style.top = `${h.y - 30}px`;
       b.addEventListener('click', e => { e.stopPropagation(); this.o.pick(Number(b.dataset.col), null); });
     });
+    // heads never overlap: where two would touch, the offers go first, then the tags (the title keeps them)
+    const bs = [...this.headsEl.querySelectorAll<HTMLElement>('.thead')];
+    const touch = (i: number) => (this.o.strip || Math.abs(L.heads[i].y - L.heads[i - 1].y) < 20) &&
+      L.heads[i - 1].x + bs[i - 1].offsetWidth / 2 + 6 > L.heads[i].x - bs[i].offsetWidth / 2;
+    for (const drop of ['.toffer', '.ttag']) for (let i = 1; i < bs.length; i++) if (touch(i)) for (const b of [bs[i - 1], bs[i]]) b.querySelector(drop)?.remove();
   }
 
   /** move the big view's camera (pan and zoom); no tween */

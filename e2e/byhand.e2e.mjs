@@ -420,4 +420,31 @@ export const tests = {
     await hold('Tab', 'u');
     await until(s => s.eq === 'y = ∫_{0}^{1} (x^5 − 1)/ln(x) dx', 'and unfolded back');
   },
+  async 'a tapped C or Tab hub hands the next key on: e solves and n starts a new equation'(h) {
+    const { p, load, key, type, until } = h;
+    await load('x - 1 = 2');
+    await p.keyboard.down('c'); await new Promise(r => setTimeout(r, 120)); await p.keyboard.up('c');
+    await key('e');
+    await until(s => s.eq === 'x = 3', 'e solved after the tapped C');
+    await p.keyboard.down('Tab'); await new Promise(r => setTimeout(r, 120)); await p.keyboard.up('Tab');
+    await key('n'); await type('y = 2'); await key('Enter');
+    await until(s => s.slots === 2 && s.eq === 'y = 2', 'n and typing worked after the tapped Tab');
+  },
+  async '^ raises both sides to a power (2 to undo a root); the root that fails is not a solution; heads never overlap'(h) {
+    const { p, load, key, until, assert, wait } = h;
+    await load('sqrt(x+7) = x - 5');
+    await key('^');
+    await until(s => s.mode === 'op', 'the both-sides box is open');
+    await key('Enter');
+    await until(s => s.eq === '(sqrt(x + 7))^2 = (x − 5)^2', 'both sides squared');
+    await key('e');
+    await until(s => s.slots === 2, 'two cases');
+    await wait(1500);
+    const r = await p.evaluate(() => {
+      const hs = [...document.querySelectorAll('#tree .thead')].map(b => b.getBoundingClientRect());
+      return { bad: document.querySelectorAll('#tree .ttag.no').length, overlap: hs.some((a, i) => hs.slice(i + 1).some(b => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)) };
+    });
+    assert(r.bad === 1, `one case is marked not a solution (got ${r.bad})`);
+    assert(!r.overlap, 'the heads do not overlap');
+  },
 };

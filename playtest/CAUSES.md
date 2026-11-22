@@ -187,3 +187,9 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   u-sub aimed at the wrong piece names the one that works. Guards: e2e byhand.
 - **K27 sin³x had no way to split off one sin.** Tab d ("one factor out") writes aⁿ as a·aⁿ⁻¹, so
   the odd-power technique (sin²x = 1 − cos²x, then u = cos x) is all general moves. Guard: bookround.
+- **K28 A tapped C or Tab hub swallowed every later key.** Tapped and released, the hub stays open to
+  browse, and then refused anything not on it, so a typed equation or e vanished. Now a key the hub
+  doesn't show closes it and acts as usual (the K2 rule: a key means one thing). Guard: e2e byhand.
+- **K29 Squaring both sides had no key of its own, and the tree heads collided.** ^ now opens the
+  both-sides box as a power (2 offered when a side is a root). Heads drop their offers, then tags,
+  where two would touch; a sibling case or a failed answer offers nothing to sub in. Guard: e2e byhand.

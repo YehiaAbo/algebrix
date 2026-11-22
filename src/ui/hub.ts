@@ -143,6 +143,8 @@ export function hubKey(this: App, e: KeyboardEvent): unknown {
   if (/^[1-9]$/.test(k)) return this.refuse(Number(k) - 1 === this.cur ? 'That’s this equation. Hold Tab and press another equation’s number.' : `There is no equation ${k}.`);
   const form = h.forms.find(f => f.chord === k);
   if (form) { h.i = h.forms.indexOf(form); return this.applyForm(); }
+  // a tapped hub shows only the forms that apply: any other key is not on it, so it acts as it would with the hub shut (K28)
+  if (h.sticky && !h.moved && k.length === 1 && k !== 'f') { this.closeHub(true); return this.key(e); }
   if (h.calc) return this.refuse(`Press one of ${h.techs.map(t => t.key).join(', ')}.`);
   if (k === 'f') { this.closeHub(false); return this.apply(applyMove('factor', this.eq, this.sel), 0.85); }
   const known = 'zdxswctolprhqvn';
@@ -207,6 +209,8 @@ export function calcKey(this: App, e: KeyboardEvent) {
   const all = h.techs.filter(t => t.key === k);
   const tech = all.find(t => t.ok) ?? all[0];
   if (tech) return this.runTech(tech);
+  // opened with a tap and left open: a key it doesn't offer closes it and does its usual job (K2)
+  if (h.sticky && !h.moved) { this.closeHub(true); return this.key(e); }
   return this.refuse(h.techs.length ? `Press one of ${[...new Set(h.techs.map(t => t.key))].join(', ')}, or ← → for the sections.` : 'No calculus here yet. ← → shows what each section takes.');
 }
 
