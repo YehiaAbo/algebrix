@@ -122,3 +122,12 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   one-to-one), and - writes out f⁻¹. s leaves f(4) alone in f(4) = 2·4 + 3 (it is the subject).
   Rule: one key, one meaning in a menu; a menu row never swallows keys another row shows.
   Guards: tests/functions.test.ts (K16), e2e byhand "your functions in the f menu".
+- **K17 "Values" were read as numbers only, and I fixed the entry point I assumed.** Asked three
+  times to put values into functions, I made your functions take values (K16) but never opened
+  the f menu's own boxes (power n, nth root, b to the, log base b), which refused anything with a
+  letter ("use a plain number"). Adding a multiple of another equation refused letters the same
+  way. Now every box takes anything algebraic: a letter in the power or base goes through the
+  general any-function move (checked the same way) and records what the letters must be (n ≠ 0,
+  a > 0, a ≠ 1, and that it can add solutions). Rule: when the user says a thing doesn't work,
+  try every place that thing is entered before saying it's fixed, with letters and expressions,
+  not only numbers. Guard: tests/functions.test.ts (K17), e2e byhand.

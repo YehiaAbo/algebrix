@@ -69,7 +69,7 @@ export function renderPal(this: App) {
       ? `<span>each side →</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a function of each side" placeholder="e^_   _^2 + 1   ln   f⁻¹   f(3)"><span id="pal-note" class="op-note">a name, _ for each side, or f(3) for a value</span>`
       : mine
       ? `<span>${P.ask.tpl}(</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a value for ${P.ask.tpl}"><span>)</span><span id="pal-note" class="op-note">${YOURS_NOTE(P.ask.tpl!)}</span>`
-      : `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">type a number, Enter applies</span>`;
+      : `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">a number or anything algebraic (a, k + 1, 1/x), Enter applies</span>`;
     host.append(ask);
   }
   const tip = document.createElement('div');
@@ -174,7 +174,7 @@ export function askArg(this: App): Node | { error: string } {
   if (this.pal.ask === TYPED) return fnTemplate(v);
   // yours with nothing typed: that function of both sides
   if (isYours(this.pal.ask) && !v) return fnTemplate(this.pal.ask!.tpl!);
-  if (!v) return { error: 'Type a number.' };
+  if (!v) return { error: 'Type a number or an expression.' };
   try { return parseExpr(v); } catch (e) { return { error: (e as Error).message }; }
 }
 
@@ -243,13 +243,13 @@ export function valueAsked(this: App): { F: string; text: string } | null {
   if (isYours(w) && v) return { F: w!.tpl!, text: v };
   if (w !== TYPED) return null;
   const m = /^([A-Za-zα-ω](?:⁻¹)?)\s*\((.+)\)$/.exec(v);
-  return m && DEFS.has(m[1]) && !m[2].includes('_') ? { F: m[1], text: m[2] } : null;
+  return m && !m[2].includes('_') ? { F: m[1], text: m[2] } : null;
 }
 
 /** F(a) = its body at a: the definition with a value put in */
 function valueInto(F: string, text: string): Eq | { error: string } {
   const d = DEFS.get(F);
-  if (!d) return { error: `${F} isn't defined.` };
+  if (!d) return { error: `${F} isn't defined yet. Type ${F}(x) = … as an equation first (n), then put values in here.` };
   return putValue(eq(call(F, sym(d.param)), cloneFresh(d.body), 'def'), d.param, text);
 }
 

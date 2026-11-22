@@ -1,13 +1,13 @@
 // Functions you define are ordinary math: a definition is an equation like any other, a name
 // that already means something is used (not redefined), and every box takes values as typed.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { parseEquation, setRedefining } from '../src/engine/parse';
+import { parseEquation, parseExpr, setRedefining } from '../src/engine/parse';
 import { Eq, Node, walk, LETS, DEFS, relOf } from '../src/engine/ast';
 import { isErr, checked } from '../src/engine/moves';
 import { toText } from '../src/engine/print';
 import { nameIt, putValue, tryValue, integrateBoth } from '../src/engine/general';
 import { intStep } from '../src/engine/integrate';
-import { simplifySpot, moveAny, applyFn, fnTemplate, tidy, peel } from '../src/engine/techniques';
+import { simplifySpot, moveAny, applyFn, fnTemplate, tidy, peel, wrapBoth } from '../src/engine/techniques';
 import { bothSides, finishCalc } from '../src/engine/calcmoves';
 
 const T = (e: Eq) => toText(e);
@@ -214,5 +214,22 @@ describe('inverses of your functions (K16)', () => {
     expect(isErr(c) ? c.error : T(c.eq)).toBe('x + 1 = f⁻¹(7)');
     const g = peel(parseEquation('g(x) = 9'), null);
     expect(isErr(g) && g.error).toContain('one-to-one');
+  });
+});
+
+describe('the f menu takes anything algebraic, not only numbers (K17)', () => {
+  it('power, root, base and log base with letters', () => {
+    const P = (s: string) => parseEquation(s);
+    const pw = wrapBoth(P('x^2 = 4'), 'power', parseExpr('k + 1'));
+    if (isErr(pw)) throw new Error(pw.error);
+    const c = checked(P('x^2 = 4'), pw);
+    expect(isErr(c) ? c.error : T(c.eq)).toBe('(x^2)^(k + 1) = 4^(k + 1)');
+    expect(pw.conditions).toContain('k + 1 ≠ 0');
+    for (const [f, a] of [['root', 'n'], ['powb', 'a'], ['logb', 'a']] as const) {
+      const r = wrapBoth(P('x = 3'), f, parseExpr(a));
+      if (isErr(r)) throw new Error(r.error);
+      const k = checked(P('x = 3'), r);
+      expect(isErr(k) ? k.error : '').toBe('');
+    }
   });
 });

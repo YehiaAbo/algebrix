@@ -288,6 +288,9 @@ export const tests = {
     await load('x^(1/2) = 3');
     await key('f'); await key('q');
     await until(s => s.eq.startsWith('(x^(1/2))^2'), 'q squares (1–9 are for your functions)');
+    await load('x^2 = 4');
+    await key('f'); await key('n'); await type('k + 1'); await key('Enter');
+    await until(s => s.eq === '(x^2)^(k + 1) = 4^(k + 1)', 'power n takes anything algebraic, not only numbers');
   },
 
   async 'a defined function is used, not redefined: f(a) = 10 solves, s works out f(3), the definition moves freely'(h) {

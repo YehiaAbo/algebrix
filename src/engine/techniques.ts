@@ -91,7 +91,19 @@ const LABELS: Partial<Record<Wrap, string>> = {
 
 /** Wrap both sides in f. Pointwise checked: new side = f(old side). */
 export function wrapBoth(e: Eq, f: Wrap, arg: Node = num(2)): MoveResult {
-  if (hasSymbols(arg)) return { error: 'Use a plain number here, like 4 or 1/2.' };
+  // a power, root or base with letters in it (xⁿ, log_a): the same function, written with a hole for
+  // each side and applied as any typed function is, plus what the letters have to be
+  if (hasSymbols(arg)) {
+    const r = applyFn(e, wrapNode(sym(HOLE), f, arg));
+    if (isErr(r)) return r;
+    const a = t(arg), conditions = [...(r.conditions ?? [])];
+    const add = (c: string) => { if (!conditions.includes(c)) conditions.push(c); };
+    if (f === 'power') { add(`${a} ≠ 0`); add('this can add solutions: check answers'); }
+    if (f === 'root') { add(`${a} ≠ 0`); add('this can add solutions: check answers'); }
+    if (f === 'powb' || f === 'logb') { add(`${a} > 0`); add(`${a} ≠ 1`); }
+    const label = ({ power: `power ${a} both sides`, root: `root ${a} both sides`, powb: `${a} to both sides`, logb: `log base ${a} both sides` } as Record<string, string>)[f] ?? r.label;
+    return { ...r, label, conditions };
+  }
   const k = evaluate(arg, {});
   const a = t(arg);
   if (!Number.isFinite(k)) return { error: `${a} isn't a usable number.` };

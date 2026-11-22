@@ -382,9 +382,9 @@ function addEquation(e: Eq, op: string, coefText: string, j: number, others: Eq[
   if (relOf(o) !== '=' && relOf(o) !== 'def') return { error: `Equation ${j} isn’t an equation (it’s ${relOf(o) === 'expr' ? 'an expression' : 'an inequality'}), so it can’t be added to both sides.` };
   let k: Node;
   try { k = coefText.trim() ? parseExpr(coefText) : num(1); } catch (err) { return { error: (err as Error).message }; }
-  if (hasSymbols(k)) return { error: 'Use a plain number to multiply the other equation by.' };
-  const kv = evaluate(k, {});
-  if (!Number.isFinite(kv) || kv === 0) return { error: 'Multiplying an equation by 0 adds nothing.' };
+  // any multiple, letters too: what equation j says is 0 (its left minus its right) times anything is 0
+  const kv = hasSymbols(k) ? NaN : evaluate(k, {});
+  if (!hasSymbols(k) && (!Number.isFinite(kv) || kv === 0)) return { error: 'Multiplying an equation by 0 adds nothing.' };
   // the other equation's terms come in one by one, already scaled (2·(x − y) arrives as −2x + 2y),
   // so what cancels sits next to what it cancels
   const h0 = newHints();
@@ -397,7 +397,7 @@ function addEquation(e: Eq, op: string, coefText: string, j: number, others: Eq[
   const sgn = op === '-' ? -1 : 1;
   return {
     eq: eq(L, R), label: `${op === '-' ? '−' : '+'} ${kv === 1 ? '' : t(k) + '× '}equation ${j}`, hints: newHints(), factor: one, select: null, rule: 'eliminate',
-    check: env => [[evaluate(L, env) - evaluate(R, env), evaluate(e.lhs, env) - evaluate(e.rhs, env) + sgn * kv * (evaluate(o.lhs, env) - evaluate(o.rhs, env))]],
+    check: env => [[evaluate(L, env) - evaluate(R, env), evaluate(e.lhs, env) - evaluate(e.rhs, env) + sgn * evaluate(k, env) * (evaluate(o.lhs, env) - evaluate(o.rhs, env))]],
   };
 }
 
