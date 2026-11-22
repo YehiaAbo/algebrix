@@ -164,3 +164,15 @@ describe('rational in eᵗ, e⁻ᵗ written too (K37)', () => {
     slope('y = int 1/(e^x + 4e^(-x)) dx', x => 1 / (Math.exp(x) + 4 * Math.exp(-x)), 'x');
   });
 });
+
+describe('an integral that comes back inside m·I + b, and by parts on f(ln x) (K38)', () => {
+  it('∫ sin(ln 2x) (after u = 2x it is (∫ …)/2) and 3∫ eˣ cos x finish', () => {
+    const slope = (src: string, f: (x: number) => number) => {
+      const F = last(src).rhs, h = 1e-5;
+      for (const x of [0.4, 0.9, 1.5]) expect(Math.abs((evaluate(F, { x: x + h, C: 0 }) - evaluate(F, { x: x - h, C: 0 })) / (2 * h) - f(x)), src).toBeLessThan(1e-4);
+    };
+    slope('y = int sin(ln(2x)) dx', x => Math.sin(Math.log(2 * x)));
+    slope('y = 3 int e^x cos(x) dx', x => 3 * Math.exp(x) * Math.cos(x));
+    slope('y = int cos(ln(3x)) dx', x => Math.cos(Math.log(3 * x)));
+  });
+});

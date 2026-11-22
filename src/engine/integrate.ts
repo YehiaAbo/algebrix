@@ -663,7 +663,10 @@ export function byParts(e: Eq, sel: string | null): MoveResult {
   const fs = T.arg.k === 'mul' ? T.arg.factors : [T.arg];
   // a lone factor only when it is a log or inverse trig (∫ ln x dx: u = ln x, dv = dx)
   const lone = fs.length === 1 && fs[0].k === 'pow' && !dependsOn(fs[0].exp, v) ? fs[0].base : fs[0];
-  if (fs.length === 1 && LIATE(lone) > 1) return { error: 'By parts needs a product (or a lone ln or inverse trig).' };
+  // or a function of ln v (sin(ln x)): its slope times v is the same kind again, so it comes back
+  let ofLn = false;
+  walk(lone, n => { if (n !== lone && n.k === 'fn' && (n.name === 'ln' || n.name === 'log') && n.arg.k === 'sym' && n.arg.name === v) ofLn = true; });
+  if (fs.length === 1 && LIATE(lone) > 1 && !(ofLn && lone.k === 'fn')) return { error: 'By parts needs a product (or a lone ln or inverse trig).' };
   const aimed = sel && sel !== 'eq' ? fs.find(f => f.id === sel) : undefined;
   const order = aimed ? [aimed] : [...fs].filter(f => dependsOn(f, v)).sort((a, b) => LIATE(a) - LIATE(b));
   for (const U of order) {

@@ -210,3 +210,6 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   makes it even, cos⁴ = (1 − sin²)², then u = sin x and partial fractions. Guard: bookround.
 - **K37 u = eᵗ failed when e⁻ᵗ was written too,** and 1/((u − 1/u)²u) had no route. e⁻ᵗ is now read as
   1/u, and little fractions inside a fraction clear by × uᵐ top and bottom before partial fractions.
+- **K38 An integral that came back was solved for only when the side was that integral alone,**
+  and by parts refused sin(ln x) on its own. The side is now remembered as m·I + b, and a lone
+  function of ln v takes by parts. (C2-3.1#23, K-H14, K-H15.) Guard: bookround.

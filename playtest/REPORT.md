@@ -1,11 +1,11 @@
 # Bank report
 
-301 of 306 solved by the engine (2026-11-22T11:11 UTC).
+304 of 308 solved by the engine (2026-11-22T11:13 UTC).
 
 | file | solved |
 |---|---|
-| openstax-calc2.txt | 45/47 |
-| classic.txt | 132/134 |
+| openstax-calc2.txt | 46/47 |
+| classic.txt | 134/136 |
 | openstax-calc1.txt | 82/83 |
 | openstax-algebra.txt | 36/36 |
 | sample.txt | 6/6 |
@@ -16,7 +16,6 @@
 | trig sub | 5/6 |
 | improper integrals | 6/7 |
 | substitution | 10/11 |
-| by parts | 33/34 |
 | product | 5/5 |
 | chain | 11/11 |
 | quotient | 3/3 |
@@ -32,8 +31,9 @@
 | linear inside | 1/1 |
 | split | 1/1 |
 | arcsin | 1/1 |
+| by parts | 34/34 |
 | by parts twice | 3/3 |
-| comes back | 2/2 |
+| comes back | 4/4 |
 | identity | 2/2 |
 | odd power | 4/4 |
 | even power | 1/1 |
@@ -104,5 +104,4 @@
 - **K-S5** (classic.txt:70, antideriv) `int sqrt(x^2 - 1)/x dx`: gave sqrt(1 − 1/(x^2))x − cos⁻¹(1/x) + C: its slope is not the integrand
 - **K-L8** (classic.txt:105, value) `lim x->0+ x ln x`: gave −0 = 0, numbers say NaN
 - **C1-5.5#283** (openstax-calc1.txt:66, antideriv) `int (y^5)/((1 - y^3 )^(3 / 2)) dy`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ y^5/((1 − y^3)^(3/2)) dy)
-- **C2-3.1#23** (openstax-calc2.txt:10, antideriv) `int sin ( ln ( 2 x ) ) dx`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at (∫ sin(ln(u)) du)/2)
 - **C2-3.7#393** (openstax-calc2.txt:49, value) `int_(2)^(inf) (dx)/((x^2 - 1)^(3 / 2))`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫_{2}^{∞} 1/((x^2 − 1)^(3/2)) dx)

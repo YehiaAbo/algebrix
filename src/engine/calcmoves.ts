@@ -525,7 +525,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
   const active = { ...subs };
   let cur = e;
   // by parts on a side that is one integral: if that integral comes back (eˣ sin x), solve for it
-  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string } | null = null, parts = 0, trigs = 0, tsubs = 0;
+  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node } | null = null, parts = 0, trigs = 0, tsubs = 0;
   for (let i = 0; i < 60; i++) {
     const t = nextCalc(cur);
     let r: MoveResult;
@@ -556,7 +556,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     else if (t.k === 'grad') r = gradStep(cur, t.id);
     else if (t.k === 'mul') r = dotStep(cur, t.id);
     else {
-      const back = origin && t.k === 'int' ? cameBack(cur, origin.side, origin.f, origin.v, t) : null;
+      const back = origin && t.k === 'int' ? cameBack(cur, origin, t) : null;
       r = back ?? intStep(cur, t.id);
       // an indefinite one inside a definite one: nothing else will fix that, it needs bounds
       if (isErr(r) && /has no bounds/.test(r.error)) return { steps, stuck: r.error };
@@ -572,8 +572,13 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
           const b = byParts(cur, t.id);
           if (!isErr(b)) {
             if (++parts > 4) return { steps, stuck: 'By parts keeps going without the integral getting simpler. Try another u (aim at it, then C + b).' };
-            const side = cur.lhs.id === t.id ? 'lhs' : cur.rhs.id === t.id ? 'rhs' : null;
-            if (!origin && side && t.k === 'int' && !t.lo) origin = { side, f: t.arg, v: t.v };
+            // the side is m·I + b (I alone, or (∫ …)/2 after a substitution): remembered to solve for I later
+            const side = findPath(cur.lhs, t.id) ? 'lhs' : findPath(cur.rhs, t.id) ? 'rhs' : null;
+            if (!origin && side && t.k === 'int' && !t.lo) {
+              const S = cur[side], A = replace(S, t.id, num(0)), B = replace(S, t.id, num(1));
+              const ms = [0.37, 0.91, 1.53].map(x => evaluate(B, { [t.v]: x }) - evaluate(A, { [t.v]: x }));
+              if (ms.every(m => Number.isFinite(m) && Math.abs(m - ms[0]) < 1e-9 * (1 + Math.abs(m))) && Math.abs(ms[0]) > 1e-12) origin = { side, f: t.arg, v: t.v, m: ms[0], b: simplify(A, newHints()) };
+            }
             r = b;
           } else { const x = expandInside(cur, t); if (x) r = x; }
         }
@@ -595,7 +600,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
 
 /** ∫ eˣ sin x by parts twice gives eˣ sin x − eˣ cos x − ∫ eˣ sin x: the integral I came back.
  *  The side was I all along, so I = A + kI, and I = A/(1 − k) */
-function cameBack(e: Eq, side: 'lhs' | 'rhs', f: Node, v: string, t: Node): MoveResult | null {
+function cameBack(e: Eq, o: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node }, t: Node): MoveResult | null {
+  const { side, f, v, m, b } = o;
   if (t.k !== 'int' || t.lo || t.v !== v || !findPath(e[side], t.id)) return null;
   const xs = [0.37, 0.91, 1.53];
   const ratios = xs.map(x => evaluate(t.arg, { [v]: x }) / evaluate(f, { [v]: x }));
@@ -603,13 +609,15 @@ function cameBack(e: Eq, side: 'lhs' | 'rhs', f: Node, v: string, t: Node): Move
   const S = e[side], A = replace(S, t.id, num(0)), B = replace(S, t.id, num(1));
   const ks = xs.map(x => evaluate(B, { [v]: x }) - evaluate(A, { [v]: x }));
   if (!ks.every(k => Math.abs(k - ks[0]) < 1e-9 * (1 + Math.abs(k)))) return null;
+  // the side was m·I + b all along and is now A + k·I: I = (A − b)/(m − k), and the side is m·I + b
   const k = ks[0] * ratios[0];
-  if (Math.abs(1 - k) < 1e-9) return null;
+  if (Math.abs(m - k) < 1e-9) return null;
   const h = newHints();
-  const I = simplify(frac(A, ratNode(1 - k) ?? num(1 - k)), h);
+  const rn = (x: number) => ratNode(x) ?? num(x);
+  const I = simplify(m === 1 ? frac(add([A, neg(cloneFresh(b))]), rn(1 - k)) : add([mul([rn(m), frac(add([A, neg(cloneFresh(b))]), rn(m - k))]), cloneFresh(b)]), h);
   const next = side === 'lhs' ? eq(plus(I, sym('C')), e.rhs, e.rel) : eq(e.lhs, plus(I, sym('C')), e.rel);
-  const m = ratNode(Math.abs(k)), mt = !m ? `${+Math.abs(k).toPrecision(4)}I` : m.k === 'num' ? `${m.v === 1 ? '' : m.v}I` : m.k === 'frac' && m.num.k === 'num' && m.den.k === 'num' ? `${m.num.v === 1 ? '' : m.num.v}I/${m.den.v}` : 'kI';
-  const r = checked(e, { eq: next, label: `the integral came back: I = … ${k > 0 ? '+' : '−'} ${mt}, so solve for I`, hints: h, factor: one, select: null, rule: 'solve for the integral' });
+  const kr = Math.round((k / m) * 1e9) / 1e9, kn = ratNode(Math.abs(kr)), mt = !kn ? `${+Math.abs(kr).toPrecision(4)}I` : kn.k === 'num' ? `${kn.v === 1 ? '' : kn.v}I` : kn.k === 'frac' && kn.num.k === 'num' && kn.den.k === 'num' ? `${kn.num.v === 1 ? '' : kn.num.v}I/${kn.den.v}` : 'kI';
+  const r = checked(e, { eq: next, label: `the integral came back: I = … ${kr > 0 ? '+' : '−'} ${mt}, so solve for I`, hints: h, factor: one, select: null, rule: 'solve for the integral' });
   return isErr(r) ? null : r;
 }
 

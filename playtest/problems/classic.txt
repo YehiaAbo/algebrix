@@ -145,3 +145,5 @@ K-H10 | antideriv | int sec(x)^3 dx | (sec(x) tan(x) + ln(abs(sec(x) + tan(x))))
 K-H11 | antideriv | int cos(x)^2/sin(x) dx | cos(x) + ln(abs(1/sin(x) - cos(x)/sin(x))) | odd power bottom
 K-H12 | antideriv | int 1/(e^x + 4e^(-x)) dx | atan(e^x/2)/2 | exponential rational
 K-H13 | antideriv | int (e^x - e^(-x))/(e^x + e^(-x)) dx | ln(e^x + e^(-x)) | exponential rational
+K-H14 | antideriv | int cos(ln(3x)) dx | x (cos(ln(3x)) + sin(ln(3x)))/2 | comes back
+K-H15 | antideriv | int 5 e^x sin(x) dx | 5 e^x (sin(x) - cos(x))/2 | comes back
