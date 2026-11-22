@@ -82,6 +82,8 @@ export function fold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
     if (P.k === 'eq' || P.k === 'call') continue;
     for (const [F, d] of defs) {
       const got: { a?: Node } = {};
+      // not the body of the definition itself (I(t) = … folding into I(t) = I(t))
+      if (e.lhs.k === 'call' && e.lhs.name === F) continue;
       if (d.param.includes(',') || !match(d.body, d.param, P, got) || !got.a) continue;
       const c = call(F, cloneFresh(got.a));
       return checked(e, { eq: replace(e, P.id, c), label: `fold into ${F}(${toText(got.a)})`, hints: newHints(), factor: () => 1, select: c.id, rule: 'fold' });
