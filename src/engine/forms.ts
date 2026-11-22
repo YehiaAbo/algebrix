@@ -22,7 +22,7 @@ const CHORDS: Record<string, string> = {
   'as a power of a power': 'p', 'powers combined': 'p',
   'one log': 'l', 'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
   'as dy/dx': 'y', 'as y′': 'y', 'as d²y/dx²': 'y', 'as y″': 'y', 'as differentials': 'k', 'product rule backwards': 'b',
-  'split the sum': 't', 'split the product': 't', 'as a limit of partial sums': 'm',
+  'split the sum': 't', 'split the product': 't', 'as a limit of partial sums': 'm', 'one factor out': 'd',
 };
 
 const one = () => 1;
@@ -138,6 +138,8 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   if (logs) { at('one log', h => simplify(logs.n, h)); const f = out.find(x => x.name === 'one log'); if (f) f.conditions = logs.conditions; }
   at('as powers', () => asPowers(target));
   at('as a power of a power', () => splitPower(target));
+  // sin³x → sin x · sin²x: one factor apart, so the rest can take an identity (odd trig powers)
+  at('one factor out', () => target.k === 'pow' && target.exp.k === 'num' && Number.isInteger(target.exp.v) && target.exp.v >= 2 ? mul([cloneFresh(target.base), target.exp.v === 2 ? cloneFresh(target.base) : pow(cloneFresh(target.base), num(target.exp.v - 1))]) : null);
   at('powers combined', h => (target.k === 'pow' && target.base.k === 'pow' ? pow(target.base.base, simplify(mul([target.exp, target.base.exp]), h), target.id) : null));
   at('as roots', () => asRoots(target));
   // after the named rules, so a rule that also simplifies (ln 2^x → x ln 2) keeps its own name and key

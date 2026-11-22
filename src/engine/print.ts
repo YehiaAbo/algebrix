@@ -1,6 +1,6 @@
 // Linear text form. `ascii` is what the input bar shows when you edit;
 // the pretty form is for labels like "÷ 7" and conditions like "x ≠ 0".
-import { Node, FN_TEXT, isDiff, isDiff2, isLeibniz2 } from './ast';
+import { Node, FN_TEXT, isDiff, isDiff2, isLeibniz2, logBase } from './ast';
 import { isNeg, absOf } from './terms';
 
 export function toText(n: Node, ascii = false): string {
@@ -46,6 +46,8 @@ export function toText(n: Node, ascii = false): string {
       return out;
     }
     case 'frac': {
+      const lb = logBase(n);
+      if (lb) return `log_${toText(lb.base, ascii)}(${toText(lb.arg, ascii)})`;
       const simple = (m: Node): boolean => m.k === 'num' && m.v >= 0 || m.k === 'sym' || m.k === 'pow' || m.k === 'sqrt' || m.k === 'fn' || (m.k === 'mul' && !isNeg(m) && m.factors.every(f => f.k !== 'add' && f.k !== 'frac'));
       if (isNeg(n.num) && n.num.k !== 'add') return minus + toText({ ...n, num: absOf(n.num) }, ascii);
       if (isLeibniz2(n)) return `${toText(n.num, ascii)}/${toText(n.den, ascii)}`;

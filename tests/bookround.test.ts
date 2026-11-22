@@ -72,3 +72,32 @@ describe('|g| between bounds, and ends where it has no value (K24)', () => {
     expect(value('y = int_0^1 ln(x) dx')).toBeCloseTo(-1, 9);
   });
 });
+
+describe('played by hand (K25–K27)', () => {
+  it('log₂ stays log₂: shown that way, its logs combine, 2^ undoes it, log₂ 8 is 3', async () => {
+    const { combineLogs, inverseOf } = await import('../src/engine/techniques');
+    const { simplify, newHints } = await import('../src/engine/simplify');
+    const e = parseEquation('log_2(x) + log_2(x - 2) = 3');
+    expect(T(e)).toBe('log_2(x) + log_2(x − 2) = 3');
+    const c = combineLogs(e.lhs);
+    expect(c && toText(simplify(c.n, newHints()))).toBe('log_2(x(x − 2))');
+    expect(c?.label).toBe('log₂ a + log₂ b = log₂(ab)');
+    expect(inverseOf(parseExpr('log_2(x)'))?.f).toBe('powb');
+    expect(toText(simplify(parseExpr('2^(log_2(x + 1))'), newHints()))).toBe('x + 1');
+    expect(toText(simplify(parseExpr('log_2(8)'), newHints()))).toBe('3');
+    expect(toText(simplify(parseExpr('log_3(3^(x+1))'), newHints()))).toBe('x + 1');
+  });
+  it('one factor comes out of a power, so an odd trig power can take an identity', async () => {
+    const { formsFor } = await import('../src/engine/forms');
+    const e = parseEquation('int sin(x)^3 cos(x)^2 dx', true);
+    let id = ''; (await import('../src/engine/ast')).walk(e, n => { if (!id && n.k === 'pow' && toText(n) === 'sin(x)^3') id = n.id; });
+    const f = formsFor(e, id).find(x => x.name === 'one factor out');
+    expect(f && T(f.eq)).toBe('∫ sin(x) sin(x)^2 cos(x)^2 dx');
+  });
+  it('u-sub aimed at the wrong piece says which one works', () => {
+    const e = parseEquation('int sin(x)(1 - cos(x)^2) cos(x)^2 dx', true);
+    let id = ''; e.lhs.k === 'int' && e.lhs.arg.k === 'mul' && (id = e.lhs.arg.factors[1].id);
+    const r = uSub(e, id).move;
+    expect(isErr(r) && r.error).toContain('u = cos(x) works');
+  });
+});

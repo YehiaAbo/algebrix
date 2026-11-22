@@ -73,7 +73,7 @@ describe('spellings people type', () => {
   const cases: [string, string][] = [
     ['x²+2x+1=0', 'x^2 + 2x + 1 = 0'], ['πr²', 'πr^2'], ['x**2', 'x^2'], ['½x = 3', '(1/2)x = 3'], ['∛x', 'x^(1/3)'],
     ['e^x^2', 'e^(x^2)'], ['sin2x', 'sin(2x)'], ['sin 2x cos x', 'sin(2x) cos(x)'], ['sin^2 x + cos²x', 'sin(x)^2 + cos(x)^2'],
-    ['\\sin^2 x', 'sin(x)^2'], ['log_2 8', 'ln(8)/ln(2)'], ['\\log_2 x', 'ln(x)/ln(2)'], ['log_10 x', 'log(x)'],
+    ['\\sin^2 x', 'sin(x)^2'], ['log_2 8', 'log_2(8)'], ['\\log_2 x', 'log_2(x)'], ['log_10 x', 'log(x)'],
     ['sec x', '1/cos(x)'], ['cot x', '1/tan(x)'], ['sinh x', '(e^x − e^(−x))/2'], ['theta + alpha', 'θ + α'],
     ['x1 + x2', 'x_1 + x_2'], ['\\frac12', '1/2'], ['50%', '50/100'], ['x =< 2', 'x ≤ 2'], ['1 000', '1·0'],
     ['x - (y + 1)', 'x − (y + 1)'], ['-(x+1)', '−(x + 1)'], ['|2|x||', '|2·|x||'], ['−x·y', '−xy'], ['3 – 1', '3 − 1'],

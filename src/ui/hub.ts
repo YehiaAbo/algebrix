@@ -101,10 +101,23 @@ export function hubKey(this: App, e: KeyboardEvent): unknown {
   if (k === 'Escape') return this.closeHub(true);
   if (e.repeat) return;
   if (h.awaitVar) {
-    const v = symbols(this.eq).find(s => s === k);
-    if (v) { this.closeHub(false); return this.solveFor(v); }
-    if (k === 'Tab') return this.closeHub(true);
     if (['Shift', 'Control', 'Alt', 'Meta'].includes(k)) return;
+    const vars = symbols(this.eq);
+    // y′ is y then ′ (or '): a letter with primed ones beside it waits for the primes
+    const N = (s: string) => s.replace(/″/g, '′′').replace(/‴/g, '′′′');
+    const exact = (p: string) => vars.find(s => N(s) === p);
+    const longer = (p: string) => vars.some(s => N(s).startsWith(p) && N(s) !== p);
+    const pick = (p: string) => { h.pending = undefined; this.closeHub(false); return this.solveFor(exact(p)!); };
+    const wait = (p: string) => { h.pending = p; sound.tick(1); this.renderHub(); };
+    if (h.pending && (k === "'" || k === '′')) {
+      const p = h.pending + '′';
+      if (longer(p)) return wait(p);
+      if (exact(p)) return pick(p);
+    }
+    // any other key: the letter as it stands
+    if (h.pending && exact(h.pending)) return pick(h.pending);
+    if (/^[A-Za-zα-ω]$/.test(k) && (exact(k) || longer(k))) return longer(k) ? wait(k) : pick(k);
+    if (k === 'Tab') return this.closeHub(true);
     // a question never holds the keys hostage: any other key closes it and does its usual job
     this.closeHub(true);
     return this.key(e);
@@ -122,7 +135,7 @@ export function hubKey(this: App, e: KeyboardEvent): unknown {
   if (k === (h.calc ? 'c' : 'Tab') || (h.calc && k === 'C')) return h.moved ? this.applyForm() : this.closeHub(true);
   const tech = h.techs.find(t => t.key === k);
   if (tech) {
-    if (!tech.ok) return this.refuse(`${tech.label[0].toUpperCase()}${tech.label.slice(1)} doesn't apply here.`);
+    if (!tech.ok) return this.refuse(tech.why ?? `${tech.label[0].toUpperCase()}${tech.label.slice(1)} doesn't apply here.`);
     if (tech.key === 'i' && tech.label.endsWith('…')) return tech.run();
     this.closeHub(false);
     return tech.run();
@@ -200,7 +213,7 @@ export function calcKey(this: App, e: KeyboardEvent) {
 /** run a technique from C, asking for input first when it needs some */
 export function runTech(this: App, t: Tech) {
   const h = this.hub!;
-  if (!t.ok) return this.refuse(`${t.label[0].toUpperCase()}${t.label.slice(1)} doesn't apply here.`);
+  if (!t.ok) return this.refuse(t.why ?? `${t.label[0].toUpperCase()}${t.label.slice(1)} doesn't apply here.`);
   if (t.ask) {
     h.asking = t; h.sticky = true; h.moved = true;
     h.tab = CALC_GROUPS.findIndex(g => g.name === t.group);
@@ -305,7 +318,7 @@ export function renderHub(this: App) {
   const tip = document.createElement('div');
   tip.className = 'forms-tip';
   const hk = h.calc ? 'C' : 'Tab';
-  tip.innerHTML = h.awaitVar ? 'press the variable' : h.sticky ? `press a key, or <kbd>←</kbd><kbd>→</kbd> browse + <kbd>${hk}</kbd> applies. <kbd>Esc</kbd> closes` : `keep holding <kbd>${hk}</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd> and release`;
+  tip.innerHTML = h.awaitVar ? (h.pending ? `<kbd>'</kbd> for ${h.pending}′${symbols(this.eq).some(v => v.replace(/″/g, '′′') === h.pending) ? `, or Enter for ${h.pending}` : ''}` : 'press the variable (y′ is <kbd>y</kbd> then <kbd>\'</kbd>)') : h.sticky ? `press a key, or <kbd>←</kbd><kbd>→</kbd> browse + <kbd>${hk}</kbd> applies. <kbd>Esc</kbd> closes` : `keep holding <kbd>${hk}</kbd>: press a key, or <kbd>←</kbd><kbd>→</kbd> and release`;
   host.append(tip);
   host.hidden = false;
   this.place(host);

@@ -34,3 +34,9 @@ partial fractions: 1 · complex fractions: 2
 | A17 | OS 2.6 #42 | x^(−2) − x^(−1) − 12 = 0 | −1/3, 1/4 (even #, sympy) | ✓ 11-21 | |
 | A18 | OS 2.6 #44 | t^10 − 2t^5 + 1 = 0 | 1 (even #, sympy) | ✓ 11-21 | |
 | A19 | OS 6.6 #27 | e^(2x) − e^x − 6 = 0 | ln 3 | ✓ 11-21 | |
+| H01 | classic (by hand) | log₂ x + log₂(x − 2) = 3 | 4 (−2 extraneous) | ✓ 11-22 | K25 fixed |
+| H02 | classic (by hand) | x² + xy + y² = 7, y′ | (−2x − y)/(x + 2y) | ✓ 11-22 | K26 fixed |
+| H03 | classic (by hand) | ∫ sin³x cos²x dx | −cos³x/3 + cos⁵x/5 | ✓ 11-22 | K27 fixed |
+| H04 | classic (by hand) | ∫ x² eˣ dx | (x² − 2x + 2)eˣ | ✓ 11-22 | |
+| H05 | classic (by hand) | x + y = 5, xy = 6 | (2, 3), (3, 2) | ✓ 11-22 | |
+| H06 | classic (by hand) | lim x→∞ (√(x² + x) − x) | 1/2 | ✓ 11-22 | K23 fixed |

@@ -12,7 +12,7 @@ import { formsFor } from '../engine/forms';
 import { asPrime, hasDifferentials, integrateDifferentials, toDifferentials, letters, slopeVar } from '../engine/leibniz';
 import { tidy } from '../engine/techniques';
 import { derivStep, plugIn, lhopital, expLog, asQuotient, divideHighest, conjugateLim, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
-import { intStep, uCandidate, byParts, plugBounds, ratioTest, taylor, writeOut } from '../engine/integrate';
+import { intStep, uSub, uCandidate, byParts, plugBounds, ratioTest, taylor, writeOut } from '../engine/integrate';
 import { bothVar, differentialsBoth, integrateBoth } from '../engine/general';
 import { knownSum } from '../engine/sums';
 import { ms } from './prefs';
@@ -80,14 +80,14 @@ export function calcTechniques(this: App): Tech[] {
   // Limits
   if (has(eq, 'lim')) {
     const p = plugIn(eq, this.sel), l = lhopital(eq, this.sel);
-    add('Limits', { lead: true, key: 'p', label: 'plug in', ok: !isErr(p), run: () => this.apply(plugIn(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'l', label: "L'Hôpital", ok: !isErr(l), run: () => this.apply(lhopital(this.eq, this.sel), 1.1) });
+    add('Limits', { lead: true, key: 'p', label: 'plug in', ok: !isErr(p), why: isErr(p) ? p.error : undefined, run: () => this.apply(plugIn(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'l', label: "L'Hôpital", ok: !isErr(l), why: isErr(l) ? l.error : undefined, run: () => this.apply(lhopital(this.eq, this.sel), 1.1) });
     // the other forms made ready for L'Hôpital: 0·∞ as a fraction, 1^∞ (0⁰, ∞⁰) with the power brought down
     const q = asQuotient(eq, this.sel), x = expLog(eq, this.sel), hp = divideHighest(eq, this.sel), cj = conjugateLim(eq, this.sel);
-    add('Limits', { key: 'h', label: isErr(hp) ? '÷ highest power' : hp.label, ok: !isErr(hp), run: () => this.apply(divideHighest(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'j', label: 'times the conjugate', ok: !isErr(cj), run: () => this.apply(conjugateLim(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'q', label: '0·∞ as a fraction', ok: !isErr(q), run: () => this.apply(asQuotient(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'g', label: 'power down: e^(g ln f)', ok: !isErr(x), run: () => this.apply(expLog(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'h', label: isErr(hp) ? '÷ highest power' : hp.label, ok: !isErr(hp), why: isErr(hp) ? hp.error : undefined, run: () => this.apply(divideHighest(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'j', label: 'times the conjugate', ok: !isErr(cj), why: isErr(cj) ? cj.error : undefined, run: () => this.apply(conjugateLim(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'q', label: '0·∞ as a fraction', ok: !isErr(q), why: isErr(q) ? q.error : undefined, run: () => this.apply(asQuotient(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'g', label: 'power down: e^(g ln f)', ok: !isErr(x), why: isErr(x) ? x.error : undefined, run: () => this.apply(expLog(this.eq, this.sel), 1.1) });
   } else if (fresh) {
     add('Limits', { key: 'l', label: `limit as ${v} →`, ok: true, run: () => {}, ask: { prompt: `${v} →`, hint: 'a number, or inf', run: text => this.addWork(limitOf(this.eq, v!, text), 'limit') } });
   }
@@ -95,9 +95,9 @@ export function calcTechniques(this: App): Tech[] {
   // Integrals
   if (has(eq, 'int')) {
     const r = intStep(eq, this.sel), u = uCandidate(eq, this.sel), b = byParts(eq, this.sel);
-    add('Integrals', { lead: true, key: 'i', label: isErr(r) ? 'integrate' : r.label, ok: !isErr(r), run: () => this.apply(intStep(this.eq, this.sel), 1.1) });
-    add('Integrals', { key: 'b', label: isErr(b) ? 'by parts' : b.label, ok: !isErr(b), run: () => this.apply(byParts(this.eq, this.sel), 1.1) });
-    add('Integrals', { key: 'u', label: u ? `u-substitution: u = ${toText(u)}` : 'u-substitution', shortcut: true, ok: !!u, run: () => this.uSubShortcut() });
+    add('Integrals', { lead: true, key: 'i', label: isErr(r) ? 'integrate' : r.label, ok: !isErr(r), why: isErr(r) ? r.error : undefined, run: () => this.apply(intStep(this.eq, this.sel), 1.1) });
+    add('Integrals', { key: 'b', label: isErr(b) ? 'by parts' : b.label, ok: !isErr(b), why: isErr(b) ? b.error : undefined, run: () => this.apply(byParts(this.eq, this.sel), 1.1) });
+    add('Integrals', { key: 'u', label: u ? `u-substitution: u = ${toText(u)}` : 'u-substitution', shortcut: true, ok: !!u, why: u ? undefined : (() => { const m = uSub(eq, this.sel).move; return isErr(m) ? m.error : undefined; })(), run: () => this.uSubShortcut() });
   } else if (isEq && !diffs && bv) {
     const r = integrateBoth(eq, bv);
     add('Integrals', { key: 'i', label: `∫ both sides d${bv}`, ok: !isErr(r), run: () => this.integrateBothKey() });

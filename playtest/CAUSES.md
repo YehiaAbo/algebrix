@@ -178,3 +178,12 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   check failed at a corner; [x² ln x]₀ had no value at 0. Now e splits at each turn (exact, π/2 and √2
   too), and an end with no value goes in as a one-sided limit (evaluated that way too).
   Guards: bookround.test.ts.
+- **K25 log₂ turned into ln/ln the moment it was typed.** The base was kept as ln a/ln b, and shown that
+  way, so log rules (log₂ a + log₂ b) and undoing it (2 to both sides) had nothing to grab. Now ln a/ln b
+  with b a whole number is drawn and printed as log_b(a), its logs combine, f i takes b to both sides,
+  and b^(log_b a), log_b(b^E), log₂ 8 simplify. Guards: bookround.test.ts, e2e byhand.
+- **K26 The solve-for chooser couldn't take y′.** "Press the variable" only took one key. Now y waits for
+  a prime when y′ is there (y then '). Every C item that doesn't apply says why (its own error), and
+  u-sub aimed at the wrong piece names the one that works. Guards: e2e byhand.
+- **K27 sin³x had no way to split off one sin.** Tab d ("one factor out") writes aⁿ as a·aⁿ⁻¹, so
+  the odd-power technique (sin²x = 1 − cos²x, then u = cos x) is all general moves. Guard: bookround.

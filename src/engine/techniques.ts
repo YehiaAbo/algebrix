@@ -1,7 +1,7 @@
 // Bigger tools built from the small moves: apply a function to both sides, peel
 // the outer function off a side, move anything across "=", isolate a variable
 // in several steps, substitute one equation into another, split |X| = B.
-import { Node, Eq, find, children, withChildren, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf, call, DEFS, oneToOne } from './ast';
+import { Node, Eq, logBase, find, children, withChildren, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf, call, DEFS, oneToOne } from './ast';
 import { parseExpr } from './parse';
 import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd, termInfo, buildTerm } from './terms';
 import { simplify, newHints, nonneg as isNonneg } from './simplify';
@@ -190,6 +190,9 @@ export function inverseOf(side: Node): { f: Wrap; arg?: Node } | null {
     if (exp.k === 'frac' && exp.num.k === 'num' && exp.den.k === 'num' && Number.isInteger(exp.num.v) && Number.isInteger(exp.den.v) && exp.num.v !== 0) return { f: 'power', arg: frac(num(exp.den.v), num(exp.num.v)) };
   }
   if (side.k === 'sqrt') return { f: 'square' };
+  // log₂ A is undone by 2 to both sides
+  const lb = logBase(side);
+  if (lb) return { f: 'powb', arg: fresh(lb.base) };
   if (side.k === 'fn') {
     const m: Partial<Record<string, Wrap>> = { ln: 'exp', log: 'pow10', sin: 'asin', cos: 'acos', tan: 'atan', asin: 'sin', acos: 'cos', atan: 'tan' };
     if (m[side.name]) return { f: m[side.name]! };
@@ -326,25 +329,31 @@ export function leadPositive<T extends Node>(n: T): T {
 /** a sum with two or more logs of the letter: ln A + ln B − ln D = ln(AB/D), with A, B, D > 0 */
 export function combineLogs(n: Node, v?: string): { n: Node; label: string; conditions: string[] } | null {
   if (n.k !== 'add') return null;
-  const lnOf = (t: Node): { arg: Node; sign: 1 | -1; name: string } | null => {
+  // log₂ a (kept as ln a/ln 2) counts as a log of its own base
+  const lnOf = (t: Node): { arg: Node; sign: 1 | -1; name: string; base?: Node } | null => {
     const m = t.k === 'neg' ? t.arg : t, sign = t.k === 'neg' ? -1 : 1;
+    const lb = logBase(m);
+    if (lb) return !v || has(lb.arg, v) ? { arg: lb.arg, sign, name: `log_${t_(lb.base)}`, base: lb.base } : null;
     return m.k === 'fn' && (m.name === 'ln' || m.name === 'log') && (!v || has(m.arg, v)) ? { arg: m.arg, sign, name: m.name } : null;
   };
   const ls = n.terms.map(lnOf);
-  const found = ls.filter(Boolean) as { arg: Node; sign: 1 | -1; name: string }[];
+  const found = ls.filter(Boolean) as { arg: Node; sign: 1 | -1; name: string; base?: Node }[];
   if (found.length < 2 || new Set(found.map(f => f.name)).size > 1) return null;
   const top = found.filter(f => f.sign > 0).map(f => fresh(f.arg)), bottom = found.filter(f => f.sign < 0).map(f => fresh(f.arg));
   const prod = (fs: Node[]) => (fs.length === 1 ? fs[0] : mul(fs));
   const inner = bottom.length ? frac(top.length ? prod(top) : num(1), prod(bottom)) : prod(top);
-  const one = fn(found[0].name as 'ln', inner);
+  const one = found[0].base ? frac(fn('ln', inner), fn('ln', fresh(found[0].base))) : fn(found[0].name as 'ln', inner);
   const rest = n.terms.filter((_, i) => !ls[i]);
-  const name = found[0].name;
+  const name = found[0].base ? `log${toSub(t_(found[0].base))}` : found[0].name;
   return {
     n: rest.length ? add([one, ...rest]) : one,
     label: bottom.length ? `${name} a − ${name} b = ${name}(a/b)` : `${name} a + ${name} b = ${name}(ab)`,
     conditions: found.map(f => `${t(f.arg)} > 0`),
   };
 }
+
+const t_ = (n: Node) => toText(n);
+const toSub = (s: string) => s.replace(/[0-9]/g, d => '₀₁₂₃₄₅₆₇₈₉'[+d]);
 
 /* ---------- isolate a variable: a short chain of moves ---------- */
 /** Multiply both sides by the LCD of the number denominators, then expand. */

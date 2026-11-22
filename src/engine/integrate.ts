@@ -380,7 +380,10 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     if (isErr(move)) continue;
     return { move, side: def ? undefined : eq(sym(u), fresh(g)), u, g };
   }
-  return { move: { error: aimed ? `Its derivative isn't there, so u = that doesn't work. Aim at another inside piece.` : 'No inside function whose derivative is also there. Try by parts (C + b).' } };
+  // aimed at one that doesn't work: say which one would
+  const other = aimed ? uSub(e, null) : null;
+  const hint = other && !isErr(other.move) && other.g ? ` u = ${toText(other.g)} works: aim at it (or at nothing).` : ' Aim at another inside piece.';
+  return { move: { error: aimed ? `Its derivative isn't there, so u = ${toText(aimed)} doesn't work.${hint}` : 'No inside function whose derivative is also there. Try by parts (C + b).' } };
 }
 
 /** n with v in it only for show (it cancels): n at a whole-number v, else null */
@@ -511,7 +514,8 @@ export function trigSub(e: Eq, sel: string | null): { move: MoveResult; u?: stri
   // x = a sec θ covers x > a only (θ in [0, π/2)), so that is where it is checked
   const aV = evaluate(a, {});
   const check = def || !dg ? undefined : (env: Env) => (kind === 'sec' && !(env[v] > aV) ? [[NaN, NaN]] : [[evaluate(Q, { ...env, [th]: evaluate(g, env) }) * evaluate(dg, env), evaluate(f, env)]]) as [number, number][];
-  const move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'trig substitution', check });
+  // and says so: the answer it leads to holds there (√(x² − 1) = tan θ needs tan θ ≥ 0)
+  const move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'trig substitution', check, conditions: kind === 'sec' && !def ? [`${v} > ${toText(a)}`] : [] });
   return isErr(move) ? { move } : { move, u: th, g };
 }
 

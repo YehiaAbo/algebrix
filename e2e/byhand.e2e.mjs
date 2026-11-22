@@ -345,6 +345,29 @@ export const tests = {
     assert((await note()).includes('no real value'), `√(−4) is refused: ${await note()}`);
   },
 
+  async 'log₂ by hand: shown as log₂, Tab l makes one log, f i takes 2 to both sides'(h) {
+    const { load, key, hold, until, aim } = h;
+    await load('log_2(x) + log_2(x - 2) = 3');
+    await until(s => s.eq === 'log_2(x) + log_2(x − 2) = 3', 'typed log₂ stays log₂');
+    await dig(h, 'log_2(x) + log_2(x − 2)');
+    await hold('Tab', 'l');
+    await until(s => s.eq === 'log_2(x(x − 2)) = 3', 'one log');
+    await hold('f', 'i');
+    await until(s => s.eq === 'x(x − 2) = 2^3', '2 to both sides undoes log₂');
+    await key('s');
+    await until(s => s.eq === 'x(x − 2) = 8', '2³ is 8');
+  },
+
+  async 'solve for y′: y then a prime picks it in the chooser'(h) {
+    const { load, key, hold, until, p } = h;
+    await load('x^2 + x y + y^2 = 7');
+    for (let i = 0; i < 5; i++) await hold('c', 'd');
+    await until(s => s.eq === '2x + y + xy′ + 2yy′ = 0', 'differentiated both sides, a rule at a time');
+    await p.keyboard.down('Tab'); await p.waitForTimeout(120); await p.keyboard.press('i'); await p.keyboard.up('Tab');
+    await key('y'); await key("'");
+    await until(s => s.eq.startsWith('y′'), 'solving for y′, not y');
+  },
+
   async 'a defined function is used, not redefined: f(a) = 10 solves, s works out f(3), the definition moves freely'(h) {
     const { load, key, type, until, aim } = h;
     await load('f(x) = x^2 + 1');

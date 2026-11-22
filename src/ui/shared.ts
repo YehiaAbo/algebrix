@@ -46,10 +46,10 @@ export const LABEL_CHARS = 'asdfghjklqwertyuiopzxcvbnm';
 export const DOMAIN_TEXT: Record<Domain, string> = { real: 'real number', positive: 'positive', nonneg: 'zero or more', integer: 'whole number' };
 
 /** group: its section in the C hub. ask: it needs something typed first (a limit's target, bounds) */
-export interface Tech { key: string; label: string; ok: boolean; run: () => void; group?: string; lead?: boolean; shortcut?: boolean; ask?: { prompt: string; hint: string; run: (text: string) => void } }
+export interface Tech { key: string; label: string; ok: boolean; why?: string; run: () => void; group?: string; lead?: boolean; shortcut?: boolean; ask?: { prompt: string; hint: string; run: (text: string) => void } }
 /** calc: the calculus hub (C) rather than the algebra hub (Tab); there, tab is the section shown and
  *  asking the technique waiting for typed input */
-export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; calc?: boolean; tab?: number; asking?: Tech }
+export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; pending?: string; calc?: boolean; tab?: number; asking?: Tech }
 
 /** words that are on their way while you type them: their first letters shouldn't show as a·b */
 const WORDS = ['int', 'integral', 'iint', 'iiint', 'lim', 'sum', 'prod', 'sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'abs', 'exp', 'ln', 'log', 'pi', 'grad', 'div', 'curl', 'inf',

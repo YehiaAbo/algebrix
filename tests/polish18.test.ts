@@ -21,8 +21,8 @@ const form = (s: string, name: string) => formsFor(P(s), null).find(f => f.name 
 
 describe('typing', () => {
   it('reads log2(x) and log10 x as bases, as in code', () => {
-    expect(toText(P('log2(x)=3'))).toBe('ln(x)/ln(2) = 3');
-    expect(toText(P('log2x = 3'))).toBe('ln(x)/ln(2) = 3');
+    expect(toText(P('log2(x)=3'))).toBe('log_2(x) = 3');
+    expect(toText(P('log2x = 3'))).toBe('log_2(x) = 3');
     expect(toText(P('log10(x)=2'))).toBe('log(x) = 2');
     expect(toText(P('log 2 = x'))).toBe('log(2) = x');
     expect(toText(P('log(2)x = 1'))).toBe('log(2)x = 1');

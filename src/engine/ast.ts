@@ -80,6 +80,13 @@ export const isDiff = (name: string) => /^d[a-zA-Zα-ω]$/.test(name);
 /** d²y: the top of a second derivative d²y/dx² */
 export const isDiff2 = (name: string) => /^d²[a-zA-Zα-ω]$/.test(name);
 /** d²y/dx²: the second derivative as a fraction, d²y over (dx)² */
+/** ln(a)/ln(b) with b a whole number above 1: how log_b(a) is kept, and shown as log_b(a) */
+export function logBase(n: Node): { arg: Node; base: Node } | null {
+  if (n.k !== 'frac' || n.num.k !== 'fn' || n.num.name !== 'ln' || n.den.k !== 'fn' || n.den.name !== 'ln') return null;
+  const b = n.den.arg;
+  return b.k === 'num' && Number.isInteger(b.v) && b.v > 1 ? { arg: n.num.arg, base: b } : null;
+}
+
 export const isLeibniz2 = (n: Node): boolean =>
   n.k === 'frac' && n.num.k === 'sym' && isDiff2(n.num.name) && n.den.k === 'pow' && n.den.base.k === 'sym' && isDiff(n.den.base.name) && n.den.exp.k === 'num' && n.den.exp.v === 2;
 /** names that read as function calls when followed by "(" */

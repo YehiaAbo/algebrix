@@ -8,6 +8,7 @@
 //   type <text>          types into whatever has focus
 //   key <K> [K …]        presses keys in order (Enter, Tab, ArrowLeft, Control+a, x, …)
 //   hold <K> <K2>        holds K (Tab, c, f) while pressing K2
+//   down <K> / up <K>    holds K down (then menu shows what it offers) / lets it go
 //   click <piece>        clicks the drawn piece whose text is <piece>, then ↑ until it is aimed;
 //                        <piece> @2 takes the second one drawn with that text
 //   drag <a> | <b>       box-selects with the mouse from piece a to piece b
@@ -67,6 +68,8 @@ for (const line of lines) {
   try {
     if (cmd === 'type') await p.keyboard.type(arg, { delay: 15 });
     else if (cmd === 'key') for (const k of rest) { await p.keyboard.press(k); await p.waitForTimeout(80); }
+    else if (cmd === 'down') { await p.keyboard.down(rest[0]); await p.waitForTimeout(150); }
+    else if (cmd === 'up') { await p.keyboard.up(rest[0]); await p.waitForTimeout(80); }
     else if (cmd === 'hold') { await p.keyboard.down(rest[0]); await p.waitForTimeout(80); await p.keyboard.press(rest[1]); await p.waitForTimeout(80); await p.keyboard.up(rest[0]); }
     else if (cmd === 'click' || cmd === 'drag') {
       const [a, b] = cmd === 'drag' ? arg.split(' | ') : [arg];

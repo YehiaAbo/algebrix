@@ -1,7 +1,7 @@
 // Math layout: turns a tree into positioned glyphs. Every glyph carries a stable
 // key derived from node ids, and the ids of all nodes that own it, so the stage
 // can animate glyphs between layouts and draw selection boxes.
-import { Node, FN_TEXT, isDiff, isDiff2, isLeibniz2 } from '../engine/ast';
+import { Node, FN_TEXT, isDiff, isDiff2, isLeibniz2, logBase } from '../engine/ast';
 import { isNeg, absOf, signKey } from '../engine/terms';
 
 export type GlyphKind = 'text' | 'sign' | 'eq' | 'bar' | 'paren' | 'rad' | 'int' | 'sum' | 'prod';
@@ -207,6 +207,18 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       return row([sign(true, s, `sg${signKey(n)}`, me), 0.04 * s, wrap ? parens(b, s, n.arg.id, me) : b]);
     }
     case 'frac': {
+      // ln(a)/ln(2) is log₂(a): drawn that way, its pieces still the ln on top and the ln below
+      const lb = logBase(n);
+      if (lb) {
+        const top = [...me, n.num.id], bot = [...me, n.den.id];
+        const name = text('log', s, `f${n.num.id}`, top, false, from && `f${from}`);
+        const ss = 0.64 * s, drop = 0.24 * s;
+        const b = L(lb.base, ss, bot, { base: c.base });
+        const sub: Box = { w: b.w, asc: 0, desc: drop + b.desc, gs: shift(b, 0, drop) };
+        const a = L(lb.arg, s, top, { base: c.base });
+        const simple = lb.arg.k === 'sym' || (lb.arg.k === 'num' && lb.arg.v >= 0);
+        return row([name, 0.02 * s, sub, simple ? 0.1 * s : 0.04 * s, simple ? a : parens(a, s, n.num.id, top, n.num.from)]);
+      }
       const ss = fracSize(s, c);
       return stack(L(n.num, ss, me, c), L(n.den, ss, me, c), s, n.id, me, from);
     }

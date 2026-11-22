@@ -135,6 +135,8 @@ function rule(n: Node, h: Hints): Node | null {
         return mulOf([...logs.map(l => l.arg), pow(base, rest.length === 1 ? rest[0] : { ...exp, terms: rest }, n.id)]);
       }
       if (base.k === 'num' && base.v === 10 && exp.k === 'fn' && exp.name === 'log') return exp.arg;
+      // 2^(log₂ a) = a (log₂ a kept as ln a/ln 2)
+      if (base.k === 'num' && exp.k === 'frac' && exp.num.k === 'fn' && exp.num.name === 'ln' && exp.den.k === 'fn' && exp.den.name === 'ln' && exp.den.arg.k === 'num' && exp.den.arg.v === base.v) return exp.num.arg;
       if (base.k === 'sqrt' && exp.k === 'num' && exp.v === 2) { h.absorbs.set(exp.id, base.arg.id); return base.arg; }
       if (base.k === 'fn' && base.name === 'abs' && exp.k === 'num' && exp.v % 2 === 0) return pow(base.arg, exp, n.id);
       // (b^n)^(1/n) = b for odd n, |b| for even n
@@ -393,6 +395,13 @@ function divideContent(n: Node, g: number): Node {
 
 function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
   if (a.k === 'num' && a.v === 0 && !(d.k === 'num' && d.v === 0)) return a;
+  // log_b(b^E) = E, and log₂ 8 = 3 (log_b kept as ln/ln b)
+  if (a.k === 'fn' && a.name === 'ln' && d.k === 'fn' && d.name === 'ln' && d.arg.k === 'num' && d.arg.v > 1) {
+    const b = d.arg.v, A = a.arg;
+    if (A.k === 'pow' && A.base.k === 'num' && A.base.v === b) return A.exp;
+    if (A.k === 'num' && A.v > 0) { const k = Math.round(Math.log(A.v) / Math.log(b)); if (Math.abs(k) <= 64 && b ** k === A.v) return num(k); }
+    if (A.k === 'frac' && A.num.k === 'num' && A.num.v === 1 && A.den.k === 'num') { const k = Math.round(Math.log(A.den.v) / Math.log(b)); if (k > 0 && k <= 64 && b ** k === A.den.v) return num(-k); }
+  }
   // x² dx over y²: the differential comes out, x²/y² dx (once nothing on top cancels with it)
   const isD = (f: Node) => f.k === 'sym' && isDiff(f.name);
   if (a.k === 'mul' && a.factors.some(isD) && !a.factors.every(isD) && !symbols(d).some(isDiff)) {
