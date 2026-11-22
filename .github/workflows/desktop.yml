@@ -1,0 +1,45 @@
+# Builds the desktop app (desktop/) for Mac and Windows on every push of the working branch.
+# The installers are this run's artifacts: Actions > "Desktop app" > the run > Artifacts.
+name: Desktop app
+on:
+  push:
+    branches: [main, claude/project-thread-e1mk3a]
+    paths: ['src/**', 'index.html', 'desktop/**', 'package*.json', 'vite.config.ts', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac
+            files: desktop/release/*.dmg
+            name: Algebrix-Mac
+          - os: windows-latest
+            target: --win
+            files: desktop/release/*.exe
+            name: Algebrix-Windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: node -e "require('fs').mkdirSync('desktop/app',{recursive:true});require('fs').copyFileSync('dist/index.html','desktop/app/index.html')"
+      - run: npm ci
+        working-directory: desktop
+      - run: npx electron-builder ${{ matrix.target }} --publish never
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
