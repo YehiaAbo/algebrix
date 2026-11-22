@@ -145,3 +145,12 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   starts typing it (the closing bracket can wait). Rule: put a feature where the user would look
   first (the f menu's box for anything typed into a function), and check discoverability with a
   screenshot of the menu as it first opens, before calling it done. Guard: e2e byhand.
+- **K20 Two pieces on screen shared one name, and the first was never cleared.** The stage keys
+  each glyph by its node; brackets were keyed by the node they wrap, so a call's own brackets and
+  the brackets a power or ln put around it, (g(x))², ln(I(t)), had the same key. The second
+  replaced the first in the stage's map, and the first stayed in the page forever (it piled up,
+  even across loading a new equation). Now repeated keys are numbered the same way every render,
+  and each render removes anything on screen that no layout owns. Separately, e "solved" I′(t) =
+  1/(t + 1) for t (multiplying out); an equation true for every value now says so instead.
+  Rule: the stage must hold exactly what the layout says, checked after every key in the stress run.
+  Guards: stress (strays after every move and undo), e2e byhand.

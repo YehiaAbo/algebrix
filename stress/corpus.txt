@@ -37,3 +37,6 @@ y = 3 - x
 y = f(x) + 2
 g(x) = 5 - f(x)
 y = 2 - sin(x)
+y = (g(x))^2
+y = sin(f(x))
+I(t) = C + ln|t + 1|

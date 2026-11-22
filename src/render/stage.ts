@@ -99,8 +99,14 @@ export class Stage {
       return hit.r;
     };
 
+    // two glyphs with one key (a call's brackets inside a power's, (g(x))²) would leave the first
+    // one's element behind forever: number the repeats, the same way every time
+    const seen = new Map<string, number>();
     for (const g0 of lay.glyphs) {
-      const g = { ...g0, x: g0.x + ox, y: g0.y + oy, base: g0.base === undefined ? undefined : g0.base + oy };
+      const n = seen.get(g0.key) ?? 0;
+      seen.set(g0.key, n + 1);
+      const key = n ? `${g0.key}#${n}` : g0.key;
+      const g = { ...g0, key, x: g0.x + ox, y: g0.y + oy, base: g0.base === undefined ? undefined : g0.base + oy };
       const old = prev.get(g.key);
       prev.delete(g.key);
       const oldText = old?.g.text;
@@ -138,6 +144,9 @@ export class Stage {
       }
     }
 
+    // nothing stays on screen that this layout doesn't have (or that isn't on its way out)
+    const live = new Set([...this.entries.values()].map(e => e.el as Element));
+    for (const el of [...this.root.children]) if (el.classList.contains('g') && !live.has(el) && !this.ghosts.has(el) && ![...prev.values()].some(e => e.el === el)) el.remove();
     // whatever is left disappeared
     for (const [k, e] of prev) {
       if (!tr || claimed.has(k)) { e.el.remove(); continue; }

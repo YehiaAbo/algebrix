@@ -311,6 +311,13 @@ export const tests = {
     await load('x^2 = 4');
     await key('f'); await key('n'); await type('k + 1'); await key('Enter');
     await until(s => s.eq === '(x^2)^(k + 1) = 4^(k + 1)', 'power n takes anything algebraic, not only numbers');
+    // brackets around a call (ln(I(t)), (g(x))²) used to stay on screen for good
+    await load('y = (g(x))^2');
+    for (const k of ['l', 'e', 'l']) { await key('f'); await key(k); await p.waitForTimeout(500); await key('u'); }
+    await key('f'); await key('l');
+    await p.waitForTimeout(900);
+    const strays = await p.evaluate(() => { const st = window.algebrix.stage, live = new Set([...st.entries.values()].map(e => e.el)); return [...st.root.querySelectorAll(':scope > .g')].filter(g => !live.has(g) && !st.ghosts.has(g)).length; });
+    assert(strays === 0, `nothing left on screen that belongs to nothing (${strays})`);
   },
 
   async 'a defined function is used, not redefined: f(a) = 10 solves, s works out f(3), the definition moves freely'(h) {

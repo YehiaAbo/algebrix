@@ -31,7 +31,10 @@ await p.evaluate(() => {
 
 const st = () => p.evaluate(() => {
   const a = window.algebrix, h = document.querySelector('#hints');
-  return { eq: window.toText(a.eq), mode: a.mode, sel: a.sel, slots: a.slots.length, hints: h ? h.textContent : '', bar: h ? h.textContent : '' };
+  // pieces on screen that no layout owns (K20): left behind, they never go away
+  const st = a.stage, live = new Set([...st.entries.values()].map(e => e.el));
+  const strays = [...st.root.querySelectorAll(':scope > .g')].filter(g => !live.has(g) && !st.ghosts.has(g)).length;
+  return { eq: window.toText(a.eq), mode: a.mode, sel: a.sel, slots: a.slots.length, hints: h ? h.textContent : '', bar: h ? h.textContent : '', strays };
 });
 const settle = (ms = 60) => p.waitForTimeout(ms);
 const press = async k => { await p.evaluate(() => { window.__block = []; }); await p.keyboard.press(k); await settle(); return p.evaluate(() => window.__block.slice()); };
@@ -75,6 +78,7 @@ for (const src of CORPUS) {
       await press('u'); await settle(80);
       const undone = await st();
       if (undone.eq !== before.eq) fail(src, `u after ${k} gave "${undone.eq}", not "${before.eq}"`);
+      if (undone.strays) fail(src, `${k} then u left ${undone.strays} piece(s) on screen that belong to nothing`);
       await press('r'); await settle(80);
       const redone = await st();
       if (redone.eq !== after.eq) fail(src, `r after ${k} gave "${redone.eq}", not "${after.eq}"`);
