@@ -3,7 +3,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseEquation, parseExpr, setRedefining } from '../src/engine/parse';
 import { Eq, Node, walk, LETS, DEFS, relOf } from '../src/engine/ast';
-import { isErr, checked } from '../src/engine/moves';
+import { isErr, checked, setDomains } from '../src/engine/moves';
+import { unfold, inverseFunction } from '../src/engine/goals';
 import { toText } from '../src/engine/print';
 import { nameIt, putValue, tryValue, integrateBoth } from '../src/engine/general';
 import { intStep } from '../src/engine/integrate';
@@ -231,5 +232,31 @@ describe('the f menu takes anything algebraic, not only numbers (K17)', () => {
       const k = checked(P('x = 3'), r);
       expect(isErr(k) ? k.error : '').toBe('');
     }
+  });
+});
+
+describe('functions of several letters, and inverses on a limited domain (K18)', () => {
+  it('f(x, y): defines, evaluates, s works out f(1, 2), unfold swaps letters cleanly, slopes go through it', () => {
+    const d = parseEquation('f(x, y) = x^2 + 3y');
+    expect(d.rel).toBe('def');
+    DEFS.set('f', { param: 'x,y', body: d.rhs });
+    const t = tidy(parseEquation('z = f(1, 2)'));
+    expect(t && T(t.eq)).toBe('z = 7');
+    const u = unfold(parseEquation('z = f(y, x)'), null);
+    expect(isErr(u) ? u.error : T(u.eq)).toBe('z = y^2 + 3x');
+    const w = unfold(parseEquation('z = f(3)'), null);
+    expect(isErr(w) && w.error).toContain('takes 2 inputs');
+    expect(T(parseEquation('v = (1, 2)'))).toBe('v = ⟨1, 2⟩');
+  });
+  it('x² has an inverse once x ≥ 0, and still none when it turns around inside the domain', () => {
+    setDomains({ x: 'nonneg' });
+    try {
+      const a = inverseFunction(parseEquation('f(x) = x^2 + 1'));
+      expect('error' in a ? a.error : T(a)).toBe('f⁻¹(x) = sqrt(x − 1)');
+      const b = inverseFunction(parseEquation('f(x) = (x - 1)^2 + 3'));
+      expect('error' in b && b.error).toContain('turns around');
+    } finally { setDomains({}); }
+    const c = inverseFunction(parseEquation('f(x) = x^2'));
+    expect('error' in c && c.error).toContain('Limit its domain');
   });
 });

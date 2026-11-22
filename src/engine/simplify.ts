@@ -59,7 +59,9 @@ function callRule(name: string, arg: Node, id: string, h: Hints): Node | null {
   const look = (m: Node) => { if (['deriv', 'lim', 'int', 'at', 'sum', 'grad', 'call'].includes(m.k)) calc = true; children(m).forEach(look); };
   look(d.body);
   if (calc) return null;
-  const put = (m: Node): Node => (m.k === 'sym' && m.name === d.param ? cloneFresh(arg) : withChildren(m, children(m).map(put)));
+  const ps = d.param.split(','), as = arg.k === 'vec' && ps.length > 1 ? arg.items : [arg];
+  if (as.length !== ps.length) return null;
+  const put = (m: Node): Node => (m.k === 'sym' && ps.includes(m.name) ? cloneFresh(as[ps.indexOf(m.name)]) : withChildren(m, children(m).map(put)));
   const r = simplify(put(cloneFresh(d.body)), h);
   if (hasSymbols(r)) return null;
   h.absorbs.set(arg.id, id);

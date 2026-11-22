@@ -53,7 +53,7 @@ export function toText(n: Node, ascii = false): string {
     }
     case 'pow': return `${p(n.base, (n.base.k !== 'num' && n.base.k !== 'sym' && (n.base.k !== 'fn' || /\|$/.test(toText(n.base, ascii)) && n.base.name !== 'abs') || isNeg(n.base)) && !/^(?:[a-zA-Zα-ωπ]|\d+)$/.test(toText(n.base, ascii)))}^${p(n.exp, !(n.exp.k === 'num' && n.exp.v >= 0 || n.exp.k === 'sym'))}`;
     case 'sqrt': return `sqrt(${toText(n.arg, ascii)})`;
-    case 'call': return `${n.name}(${toText(n.arg, ascii)})`;
+    case 'call': return `${n.name}(${n.arg.k === 'vec' ? n.arg.items.map(i => toText(i, ascii)).join(', ') : toText(n.arg, ascii)})`;
     case 'deriv': return n.partial ? `∂/∂${n.v}(${toText(n.arg, ascii)})` : `d/d${n.v}(${toText(n.arg, ascii)})`;
     case 'vec': return `⟨${n.items.map(i => toText(i, ascii)).join(', ')}⟩`;
     case 'grad': return `∇${n.op === 'div' ? '·' : n.op === 'curl' ? '×' : ''}${p(n.arg, !(n.arg.k === 'sym' || n.arg.k === 'call' || (!!n.op && n.arg.k === 'vec')))}`;

@@ -181,6 +181,7 @@ export function addInverse(this: App, F?: string) {
   const d = F ? DEFS.get(F) : null;
   if (F && !d) { this.refuse(`${F} isn't defined.`); return; }
   if (F && DEFS.has(`${F}⁻¹`)) { this.refuse(`${F}⁻¹ is already written out.`); return; }
+  if (d && d.param.includes(',')) { this.refuse(`${F} takes ${d.param.split(',').length} inputs, so it has no inverse function.`); return; }
   const inv = inverseFunction(d ? eq(call(F!, sym(d.param)), cloneFresh(d.body), 'def') : this.eq);
   if ('error' in inv) { this.refuse(inv.error); return; }
   if (this.slots.length >= 9) { this.refuse('Nine equations is the limit for now.'); return; }
@@ -203,7 +204,8 @@ export function syncDefs(this: App) {
     // one on the way to the current step
     const slot = this.slots[i];
     const e = [...slot.steps.slice(0, slot.at + 1).map(st => st.eq)].reverse().find(q => q.rel === 'def');
-    if (e && e.lhs.k === 'call' && e.lhs.arg.k === 'sym') DEFS.set(e.lhs.name, { param: e.lhs.arg.name, body: e.rhs });
+    const ps = e && e.lhs.k === 'call' ? (e.lhs.arg.k === 'vec' ? e.lhs.arg.items : [e.lhs.arg]) : [];
+    if (e && e.lhs.k === 'call' && ps.length && ps.every(a => a.k === 'sym')) DEFS.set(e.lhs.name, { param: ps.map(a => (a as { name: string }).name).join(','), body: e.rhs });
   }
   defsSig.v = [...DEFS].map(([F, d]) => `${F}(${d.param})=${key(d.body)}`).join(';');
 }

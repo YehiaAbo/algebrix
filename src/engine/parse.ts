@@ -287,7 +287,14 @@ class Parser {
     if (t.t === 'id') {
       if (t.v.startsWith('leib2:')) { const [, y, x] = t.v.split(':'); return frac(sym('d²' + y), pow(sym('d' + x), num(2))); }
       if (t.v.startsWith('leib:')) { const [, y, x] = t.v.split(':'); return frac(sym('d' + y), sym('d' + x)); }
-      if (isFnName(t.v.replace(/[′″‴]+$/, '')) && this.isOp('(')) { this.i++; const a = this.expr(); this.eat(')'); return call(t.v, a); }
+      if (isFnName(t.v.replace(/[′″‴]+$/, '')) && this.isOp('(')) {
+        // f(x, y): several inputs
+        this.i++;
+        const as = [this.expr()];
+        while (this.isOp(',')) { this.i++; as.push(this.expr()); }
+        this.eat(')');
+        return call(t.v, as.length > 1 ? vec(as) : as[0]);
+      }
       return sym(t.v);
     }
     if (t.t === 'cmd') {
@@ -534,8 +541,9 @@ function definesAnew(name: string, param: string, body: Node): boolean {
 /** An equation, an inequality, or (with `allowExpr`) a lone expression. */
 export function parseEquation(src: string, allowExpr = false): Eq {
   // F(t) = … with t on the right defines F, whatever letter F is (I(t) = ∫₀¹ … dx), not F·t
-  const dm = /^\s*([A-Za-zα-ωΑ-Ω])\s*\(\s*([A-Za-zα-ω])\s*\)\s*:?=([^=<>≤≥]*)$/.exec(src);
-  if (dm && !DEFINING && dm[1] !== dm[2] && dm[1] !== 'e' && new RegExp(`(^|[^A-Za-z])${dm[2]}([^A-Za-z]|$)`).test(dm[3])) {
+  const dm = /^\s*([A-Za-zα-ωΑ-Ω])\s*\(\s*([A-Za-zα-ω](?:\s*,\s*[A-Za-zα-ω])*)\s*\)\s*:?=([^=<>≤≥]*)$/.exec(src);
+  const dps = dm ? dm[2].split(',').map(x => x.trim()) : [];
+  if (dm && !DEFINING && !dps.includes(dm[1]) && dm[1] !== 'e' && dps.some(x => new RegExp(`(^|[^A-Za-z])${x}([^A-Za-z]|$)`).test(dm[3]))) {
     DEFINING = dm[1];
     try { return parseEquation(src.replace(/:=/, '='), allowExpr); } finally { DEFINING = null; }
   }
@@ -568,6 +576,8 @@ export function parseEquation(src: string, allowExpr = false): Eq {
   // f(x) = … defines f, when f is new. Once f means something, f(a) = 10 or f(x) = 7 is an
   // equation about it (to solve), not a second definition
   // I′(t) = … is about the slope of I, not a new function: a primed name never defines
-  if (rel === '=' && lhs.k === 'call' && lhs.arg.k === 'sym' && !/[′″‴]$/.test(lhs.name) && definesAnew(lhs.name, lhs.arg.name, rhs)) return eq(lhs, rhs, 'def');
+  const ps = lhs.k === 'call' ? (lhs.arg.k === 'vec' ? lhs.arg.items : [lhs.arg]) : [];
+  const letters = ps.every(a => a.k === 'sym') && new Set(ps.map(a => (a as { name: string }).name)).size === ps.length;
+  if (rel === '=' && lhs.k === 'call' && ps.length && letters && !/[′″‴]$/.test(lhs.name) && definesAnew(lhs.name, ps.map(a => (a as { name: string }).name).join(','), rhs)) return eq(lhs, rhs, 'def');
   return eq(lhs, rhs, rel);
 }

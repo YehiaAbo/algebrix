@@ -147,7 +147,8 @@ function rule(u: Node, c: Ctx): { d: Node; label: string } | { error: string } {
     }
     case 'sqrt': return { d: frac(inner(u.arg, c), mul([num(2), fresh(u)])), label: 'chain rule (√)' };
     case 'fn': return { d: times(outer(u.name, u.arg), inner(u.arg, c)), label: u.name === 'abs' ? 'derivative of |u|' : `chain rule (${FN_NAME[u.name] ?? u.name})` };
-    case 'call': return { d: times(call(primed(u.name), fresh(u.arg)), inner(u.arg, c)), label: u.arg.k === 'sym' && u.arg.name === c.v ? `${u.name}′` : `chain rule (${u.name})` };
+    case 'call': if (u.arg.k === 'vec') return { error: `Unfold ${u.name} first (Tab u): it takes several inputs.` };
+      return { d: times(call(primed(u.name), fresh(u.arg)), inner(u.arg, c)), label: u.arg.k === 'sym' && u.arg.name === c.v ? `${u.name}′` : `chain rule (${u.name})` };
     case 'int': {
       // an antiderivative's slope is what was integrated (the fundamental theorem)
       if (!(u.lo && u.hi) && u.v === c.v) return { d: fresh(u.arg), label: 'fundamental theorem' };

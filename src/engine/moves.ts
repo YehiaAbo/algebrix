@@ -4,6 +4,7 @@ import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
   isDiff, linkedTo, deriv, partial, pow, sqrt, fn, children, withChildren, EVAL,
+  LIMITS,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -484,7 +485,8 @@ function verifyAt(before: Eq, r: MoveOk): string | null {
 export type Domain = 'real' | 'positive' | 'nonneg' | 'integer';
 let DOMAINS: Record<string, Domain> = {};
 /** the app sets this so sign questions ("is x positive?") use what you declared */
-export function setDomains(d: Record<string, Domain>) { DOMAINS = d; }
+export function setDomains(d: Record<string, Domain>) { DOMAINS = d; LIMITS.nonneg = new Set(Object.keys(d).filter(v => d[v] === 'positive' || d[v] === 'nonneg')); }
+export const domainOf = (name: string): Domain => DOMAINS[name] ?? 'real';
 export function sampleIn(name: string, i: number): number {
   const d = DOMAINS[name] ?? 'real';
   // every character counts, so y, y′ and y″ get values of their own

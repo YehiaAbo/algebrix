@@ -339,7 +339,9 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       return { w, asc: top + 0.03 * s, desc: a.desc + 0.06 * s, gs: [rad, ...shift(a, lead, 0)] };
     }
     case 'call': {
-      const a = L(n.arg, s, me, c);
+      // f(x, y): the inputs with commas, no ⟨ ⟩ (the vector is only how they are held)
+      const v = n.arg;
+      const a = v.k === 'vec' ? row(v.items.flatMap((it, i) => i ? [text(',', s, `vc${v.id}.${i}`, me, false), 0.22 * s, L(it, s, me, c)] : [L(it, s, me, c)])) : L(n.arg, s, me, c);
       const name = text(n.name, s, `f${n.id}`, me, true, from && `f${from}`);
       return row([name, 0.04 * s, parens(a, s, n.id, me, from)]);
     }

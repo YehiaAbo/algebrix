@@ -86,6 +86,11 @@ export const isLeibniz2 = (n: Node): boolean =>
 export const FUNC_NAMES = ['f', 'g', 'h'];
 /** the functions defined so far (name → parameter and body); the app keeps this in sync with your definitions */
 export const DEFS = new Map<string, { param: string; body: Node }>();
+/** a definition's letters (f(x, y) = … keeps them as "x,y") and a call's inputs, in order */
+export const paramsOf = (d: { param: string }) => d.param.split(',');
+export const argsOf = (n: Node): Node[] => (n.k === 'call' && n.arg.k === 'vec' ? n.arg.items : n.k === 'call' ? [n.arg] : []);
+/** f(x) or f(x, y) as written in its definition */
+export const defCall = (F: string, d: { param: string }): Node => { const ps = paramsOf(d); return call(F, ps.length > 1 ? vec(ps.map(p => sym(p))) : sym(ps[0])); };
 /** what DEFS says, as text: anything cached by an equation's key that evaluates it must add this,
  *  since y = I(5) is worth something else (or nothing) when I changes. Set wherever DEFS is filled */
 export const defsSig = { v: '' };
@@ -103,9 +108,11 @@ function someFunction(name: string, a: number): number {
 function inverseAt(F: string, a: number): number {
   if (!Number.isFinite(a)) return NaN;
   const d = DEFS.get(F)!;
+  if (d.param.includes(',')) return NaN;
   const f = (y: number) => evaluate(d.body, { [d.param]: y }) - a;
   let found = NaN;
-  for (const [lo, hi, steps] of [[-10, 10, 200], [-1000, 1000, 400]] as const) {
+  const from = LIMITS.nonneg.has(d.param) ? 0 : 1;
+  for (const [lo, hi, steps] of [[-10 * from, 10, 200], [-1000 * from, 1000, 400]] as const) {
     let x0: number = lo, f0 = f(x0);
     for (let i = 1; i <= steps && Number.isNaN(found); i++) {
       const x1 = lo + ((hi - lo) * i) / steps, f1 = f(x1);
@@ -127,13 +134,17 @@ function inverseAt(F: string, a: number): number {
  *  a sweep (cached until the definitions change). Only such a function has an inverse that cancels it */
 const ONE: Map<string, boolean> = new Map();
 let oneSig = '';
+/** where a letter may be (x ≥ 0 limits a function to there): set with the domains */
+export const LIMITS = { nonneg: new Set<string>() };
 export function oneToOne(F: string): boolean {
-  if (oneSig !== defsSig.v) { ONE.clear(); oneSig = defsSig.v; }
-  if (!DEFS.has(F)) return false;
+  const sig = defsSig.v + [...LIMITS.nonneg].join();
+  if (oneSig !== sig) { ONE.clear(); oneSig = sig; }
+  if (!DEFS.has(F) || DEFS.get(F)!.param.includes(',')) return false;
   const hit = ONE.get(F);
   if (hit !== undefined) return hit;
   const d = DEFS.get(F)!;
-  const ys = Array.from({ length: 161 }, (_, i) => evaluate(d.body, { [d.param]: -10 + i / 8 })).filter(Number.isFinite);
+  const from = LIMITS.nonneg.has(d.param) ? 0 : -10;
+  const ys = Array.from({ length: 161 }, (_, i) => evaluate(d.body, { [d.param]: from + (i * (10 - from)) / 160 })).filter(Number.isFinite);
   const dirs = new Set(ys.slice(1).map((y, i) => Math.sign(y - ys[i])));
   const ok = ys.length > 8 && dirs.size === 1 && !dirs.has(0);
   ONE.set(F, ok);
@@ -329,7 +340,9 @@ export function evaluate(n: Node, env: Env): number {
       if (!d) return EVAL.anyFn ? someFunction(n.name, evaluate(n.arg, env)) : NaN;
       if (callDepth > 40) return NaN;
       callDepth++;
-      try { return evaluate(d.body, { ...env, [d.param]: evaluate(n.arg, env) }); } finally { callDepth--; }
+      const ps = paramsOf(d), as = argsOf(n);
+      if (ps.length !== as.length) { callDepth--; return NaN; }
+      try { return evaluate(d.body, { ...env, ...Object.fromEntries(ps.map((p, i) => [p, evaluate(as[i], env)])) }); } finally { callDepth--; }
     }
     case 'deriv': { const d = CALC.derive(n); return d ? evaluate(d, env) : NaN; }
     case 'lim': return CALC.limit(n, env);

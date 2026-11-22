@@ -1,6 +1,6 @@
 // The function palette (f): apply a function to both sides, with a live preview.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { Node, Eq, findPath, find, DEFS, eq, call, sym, cloneFresh, evaluate, symbols } from '../engine/ast';
+import { Node, Eq, findPath, find, DEFS, eq, cloneFresh, evaluate, symbols, defCall, paramsOf, call, vec, sym, children, withChildren } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
 import { peel, wrapBoth, inverseOf, yourCall, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
@@ -19,7 +19,7 @@ const TYPED: WrapItem = { key: '=', f: 'square', label: 'any function', show: 'F
 /** the menu's tabs: the functions you defined first (I(t) = …, keys 1–9: put a value in, or
  *  Enter on nothing for that function of both sides), then the usual ones */
 export function palTabs(this: App): { name: string; items: WrapItem[] }[] {
-  const yours = [...DEFS.entries()].slice(0, 9).map(([F, d], j) => ({ key: String(j + 1), f: 'square' as const, label: `${F}(${d.param}) = ${brief(d.body)}`, show: `${F}( )`, tpl: F, ask: `${F}(□)` }));
+  const yours = [...DEFS.entries()].slice(0, 9).map(([F, d], j) => ({ key: String(j + 1), f: 'square' as const, label: `${F}(${d.param.replace(/,/g, ', ')}) = ${brief(d.body)}`, show: `${F}( )`, tpl: F, ask: `${F}(□)` }));
   return yours.length ? [{ name: 'Yours', items: yours }, ...FN_TABS] : FN_TABS;
 }
 
@@ -250,7 +250,18 @@ export function valueAsked(this: App): { F: string; text: string } | null {
 function valueInto(F: string, text: string): Eq | { error: string } {
   const d = DEFS.get(F);
   if (!d) return { error: `${F} isn't defined yet. Type ${F}(x) = … as an equation first (n), then put values in here.` };
-  return putValue(eq(call(F, sym(d.param)), cloneFresh(d.body), 'def'), d.param, text);
+  const ps = paramsOf(d);
+  // f(x, y): values in order (1, 2), or named (y = 2, x = 1)
+  const parts = text.split(',').map(t => t.trim());
+  if (ps.length > 1 && !parts.some(t => /^[A-Za-zα-ω]\s*=/.test(t)) && parts.length !== ps.length) return { error: `${F} takes ${ps.length} inputs: type ${ps.length} values with commas, like ${ps.map((_, i) => i + 1).join(', ')}.` };
+  if (ps.length === 1) return putValue(eq(defCall(F, d), cloneFresh(d.body), 'def'), ps[0], text);
+  // several: all at once (f(y, x) swaps them, rather than putting one into the other)
+  const vals = new Map<string, Node>();
+  try {
+    parts.forEach((t, i) => { const m = /^([A-Za-zα-ω])\s*=\s*(.+)$/.exec(t); vals.set(m ? m[1] : ps[i], parseExpr(m ? m[2] : t)); });
+  } catch (err) { return { error: (err as Error).message }; }
+  const put = (m: Node): Node => (m.k === 'sym' && vals.has(m.name) ? cloneFresh(vals.get(m.name)!) : withChildren(m, children(m).map(put)));
+  return eq(call(F, vec(ps.map(p => (vals.has(p) ? cloneFresh(vals.get(p)!) : sym(p))))), put(cloneFresh(d.body)));
 }
 
 /** " = 10" when the value works out to a number */

@@ -4,7 +4,7 @@
 // surface stay the same at every step: visual proof that no move broke anything.
 // Desmos-style handling: drag to pan (or turn, in 3D), scroll to zoom at the cursor,
 // double-click to reset, hover a curve or a point to read its coordinates.
-import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num, key, defsSig } from '../engine/ast';
+import { Eq, Node, Int, Lim, evaluate, symbols, relOf, isIneq, holds, walk, num, key, defsSig, oneToOne } from '../engine/ast';
 import { toText } from '../engine/print';
 import { asPrime } from '../engine/leibniz';
 import { supHtml, escapeHtml, onResize } from './shared';
@@ -400,6 +400,19 @@ export class Graph {
     if (single !== 'r') this.curve(lerp(m?.l, l), N, Y, A);
     if (single !== 'l') this.curve(lerp(m?.r, r), N, Y, single ? A : B);
     if (m && m.t < 1) return;
+    // a one-to-one function of yours: its inverse alongside, as the mirror image in y = x
+    const F = rel === 'def' && eq.lhs.k === 'call' ? eq.lhs.name.replace(/⁻¹$/, '') : '';
+    if (F && oneToOne(F)) {
+      const partner = eq.lhs.k === 'call' && eq.lhs.name.endsWith('⁻¹') ? F : `${F}⁻¹`;
+      c.save(); c.setLineDash([5, 5]); c.strokeStyle = css('--faint'); c.lineWidth = 1;
+      const lo = Math.max(ux(0), this.toUnits(0, this.H)[1]), hi = Math.min(ux(W), this.toUnits(0, 0)[1]);
+      c.beginPath(); c.moveTo(X(lo), Y(lo)); c.lineTo(X(hi), Y(hi)); c.stroke(); c.restore();
+      c.save(); c.strokeStyle = B; c.lineWidth = 2; c.globalAlpha = 0.7 * this.fade; c.beginPath();
+      let pen = false;
+      r.forEach((y, i) => { if (!Number.isFinite(y) || Math.abs(y) > 1e6) { pen = false; return; } if (pen) c.lineTo(X(y), Y(xs[i])); else c.moveTo(X(y), Y(xs[i])); pen = true; });
+      c.stroke(); c.restore();
+      this.caption += ` Its inverse <b>${partner}</b> is the mirror image in y = x (dashed).`;
+    }
     if (single) roots.length = 0;
     const pts = roots.map(x0 => ({ x: x0, y: evaluate(eq.lhs, { [v]: x0 }) })).filter(p => Number.isFinite(p.y));
     // one curve: its points of interest in grey, like Desmos (zeros, the y-intercept, peaks and dips)

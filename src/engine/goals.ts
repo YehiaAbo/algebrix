@@ -1,6 +1,6 @@
 // What a piece of work is for: an identity to prove, a function to unfold or invert.
-import { Node, Eq, eq, sym, call, cloneFresh, find, key, walk, evaluate, symbols, replace, Env, children, withChildren } from './ast';
-import { MoveResult, checked, sampleIn, solvedFor } from './moves';
+import { Node, Eq, eq, sym, neg, call, cloneFresh, find, key, walk, evaluate, symbols, replace, Env, children, withChildren, paramsOf, argsOf } from './ast';
+import { MoveResult, checked, sampleIn, solvedFor, domainOf } from './moves';
 import { isolate } from './techniques';
 import { newHints } from './simplify';
 import { toText } from './print';
@@ -42,7 +42,11 @@ export function unfold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
   if (!c || c.k !== 'call') return { error: 'Nothing to unfold. Define a function first, like f(x) = x^2, then use f(3) or f(x + 1).' };
   const d = defs.get(c.name);
   if (!d) return { error: `${c.name} isn't defined yet. Add an equation like ${c.name}(x) = …` };
-  const body = substituteSym(cloneFresh(d.body), d.param, c.arg);
+  const ps = paramsOf(d), as = argsOf(c);
+  if (ps.length !== as.length) return { error: `${c.name} takes ${ps.length} input${ps.length > 1 ? 's' : ''}: ${c.name}(${ps.join(', ')}).` };
+  // all at once, so f(y, x) swaps the letters rather than putting one into the other
+  const put = (m: Node): Node => (m.k === 'sym' && ps.includes(m.name) ? cloneFresh(as[ps.indexOf(m.name)]) : withChildren(m, children(m).map(put)));
+  const body = put(cloneFresh(d.body));
   return checked(e, { eq: replace(e, c.id, body), label: `unfold ${c.name}`, hints: newHints(), factor: () => 1, select: body.id, rule: 'unfold' });
 }
 
@@ -73,7 +77,7 @@ export function fold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
   if (!P || P.k === 'eq') return { error: 'Aim at the piece to fold into a function you defined.' };
   for (const [F, d] of defs) {
     const got: { a?: Node } = {};
-    if (P.k === 'call' || !match(d.body, d.param, P, got) || !got.a) continue;
+    if (P.k === 'call' || d.param.includes(',') || !match(d.body, d.param, P, got) || !got.a) continue;
     const c = call(F, cloneFresh(got.a));
     return checked(e, { eq: replace(e, P.id, c), label: `fold into ${F}(${toText(got.a)})`, hints: newHints(), factor: () => 1, select: c.id, rule: 'fold' });
   }
@@ -87,7 +91,34 @@ export function inverseFunction(d: Eq): Eq | { error: string } {
   const out = symbols(d.rhs).includes('y') ? 'w' : 'y';
   const steps = isolate(eq(sym(out), cloneFresh(d.rhs)), p);
   if (!Array.isArray(steps)) return steps;
-  const last = steps.length ? steps[steps.length - 1].eq : null;
+  let last = steps.length ? steps[steps.length - 1].eq : null;
+  // |A| = R (x² gives |x| = √y): two branches, A = R and A = −R. Only a limited domain picks one
+  if (last && solvedFor(last) !== p) {
+    const bar = [last.lhs, last.rhs].find(s => s.k === 'fn' && s.name === 'abs' && symbols(s).includes(p)) as Extract<Node, { k: 'fn' }> | undefined;
+    if (bar) {
+      const R = bar === last.lhs ? last.rhs : last.lhs, dom = domainOf(p);
+      const name = d.lhs.k === 'call' ? d.lhs.name : 'f';
+      if (dom !== 'positive' && dom !== 'nonneg') return { error: `${name} isn't one-to-one (two values of ${p} give the same value), so it has no inverse as it stands. Limit its domain first: click ${p} in the letters list until it says ≥ 0 or > 0, then ask again.` };
+      for (const sign of [1, -1]) {
+        const start = eq(cloneFresh(bar.arg), sign > 0 ? cloneFresh(R) : neg(cloneFresh(R)));
+        const branch = solvedFor(start) === p ? [] : isolate(start, p);
+        const end = !Array.isArray(branch) ? null : branch.length ? branch[branch.length - 1].eq : start;
+        if (!end || solvedFor(end) !== p) continue;
+        const x = end.lhs.k === 'sym' && end.lhs.name === p ? end.rhs : end.lhs;
+        // the branch whose answers lie in the domain and give back y
+        let ok = 0, bad = 0;
+        // (it has to give back every input of the domain, not only some)
+        for (let i = 0; i < 24; i++) {
+          const pv = 0.05 + i * 0.4, yv = evaluate(d.rhs, { [p]: pv });
+          const xv = evaluate(x, { [out]: yv });
+          if (!Number.isFinite(yv)) continue;
+          if (Math.abs(xv - pv) < 1e-7 * (1 + pv)) ok++; else bad++;
+        }
+        if (ok >= 6 && !bad) { last = eq(sym(p), x); steps.length = 0; break; }
+      }
+      if (solvedFor(last) !== p) return { error: `${name} still isn't one-to-one where ${p} ${dom === 'positive' ? '> 0' : '≥ 0'} (it turns around inside it), so it has no single inverse there.` };
+    }
+  }
   if (!last || solvedFor(last) !== p) return { error: `${toText(d.lhs)} can't be solved for ${p} here, so I can't build its inverse.` };
   const expr = last.lhs.k === 'sym' && last.lhs.name === p ? last.rhs : last.lhs;
   if (steps.some(s => (s.conditions ?? []).some(c => c.includes('add solutions')))) return { error: `${d.lhs.k === 'call' ? d.lhs.name : 'f'} isn't one-to-one everywhere, so it has no single inverse. Limit its domain first.` };

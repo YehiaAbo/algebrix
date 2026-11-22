@@ -288,6 +288,18 @@ export const tests = {
     await load('x^(1/2) = 3');
     await key('f'); await key('q');
     await until(s => s.eq.startsWith('(x^(1/2))^2'), 'q squares (1–9 are for your functions)');
+    await load('f(x, y) = x^2 + 3y');
+    await key('f'); await key('1'); await type('1, 2');
+    await until(() => true, '');
+    const two = await p.evaluate(() => document.querySelector('#pal-note').textContent);
+    assert(two.includes('= 7'), `f(x, y) takes two values in order: ${two}`);
+    await key('Enter');
+    await until(s => s.eq.startsWith('f(1, 2) = '), 'f(1, 2) as its own equation');
+    await load('g(x) = 2x + 3');
+    await until(() => true, '');
+    for (let i = 0; i < 20 && !(await p.evaluate(() => document.getElementById('graph-note').textContent)).includes('mirror'); i++) await p.waitForTimeout(100);
+    const cap = await p.evaluate(() => document.getElementById('graph-note').textContent);
+    assert(cap.includes('g⁻¹') && cap.includes('mirror'), `the graph draws g⁻¹ as the mirror image: ${cap}`);
     await load('x^2 = 4');
     await key('f'); await key('n'); await type('k + 1'); await key('Enter');
     await until(s => s.eq === '(x^2)^(k + 1) = 4^(k + 1)', 'power n takes anything algebraic, not only numbers');

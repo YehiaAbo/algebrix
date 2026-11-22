@@ -131,3 +131,11 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   a > 0, a ≠ 1, and that it can add solutions). Rule: when the user says a thing doesn't work,
   try every place that thing is entered before saying it's fixed, with letters and expressions,
   not only numbers. Guard: tests/functions.test.ts (K17), e2e byhand.
+- **K18 A function meant one letter, and an inverse meant the whole real line.** A definition held a
+  single letter, so f(x, y) = … couldn't be typed (f(1, 2) didn't parse), and a function that
+  isn't one-to-one everywhere (x², 4 − x²) got "can't be solved for x" with no way forward. Now a
+  definition keeps all its letters (f(x, y), values in order or by name, simultaneous unfolding,
+  slopes through the definition), and an inverse looks at the letter's domain: with x ≥ 0 it takes
+  the branch that gives every input back (x² + 1 → √(x − 1)), and says plainly when the function
+  still turns around inside it. The graph draws a one-to-one function's inverse as its mirror
+  image in y = x. Guard: tests/functions.test.ts (K18), e2e byhand.

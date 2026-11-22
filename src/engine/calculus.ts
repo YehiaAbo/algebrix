@@ -65,6 +65,14 @@ export function derivative(n: Node, v: string, dep: string[] = []): Node | null 
       return mul([outer[n.name], a]);
     }
     case 'call': {
+      // f(x, y): through its definition (each input's slope counts)
+      if (n.arg.k === 'vec') {
+        const f = DEFS.get(n.name), ps = f ? f.param.split(',') : [];
+        if (!f || ps.length !== n.arg.items.length) return null;
+        const items = n.arg.items;
+        const put = (m: Node): Node => (m.k === 'sym' && ps.includes(m.name) ? items[ps.indexOf(m.name)] : withChildren(m, children(m).map(put)));
+        return d(put(f.body));
+      }
       const a = d(n.arg);
       return a && mul([call(primed(n.name), n.arg), a]);
     }
@@ -122,7 +130,7 @@ function primeDef(name: string): { param: string; body: Node } | undefined {
   if (!name.endsWith('′')) return undefined;
   const base = name.slice(0, -1);
   const f = DEFS.get(base) ?? primeDef(base);
-  if (!f) return undefined;
+  if (!f || f.param.includes(',')) return undefined;
   const body = derivative(f.body, f.param);
   return body ? { param: f.param, body } : undefined;
 }
