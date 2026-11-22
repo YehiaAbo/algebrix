@@ -1,6 +1,7 @@
 // Drawing the work tree: a strip across the top of the board (every equation's current step on one
 // line, the middle of long lines folded) and a big view you can pan and zoom. Steps glide to their
 // new places; a new step is born from its arrow (the arrow draws, then the step unfurls from its tip).
+import { SMOOTH } from '../render/stage';
 import { layout as mathLayout } from '../render/layout';
 import { Stage } from '../render/stage';
 import { Arrow, Edge, Item, Layout, LayoutOpts, layoutTree, TNode, Tree } from './tree';
@@ -381,7 +382,7 @@ export class TreeBig {
       if (it) this.centre(it.x, it.y);
     }
     this.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(180), easing: 'ease-out' });
-    this.host.animate([{ transform: 'scale(.97)' }, { transform: 'none' }], { duration: ms(260), easing: 'cubic-bezier(.2,.8,.16,1)' });
+    this.host.animate([{ transform: 'scale(.97)' }, { transform: 'none' }], { duration: ms(260), easing: SMOOTH });
   }
 
   close() {

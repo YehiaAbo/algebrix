@@ -24,7 +24,7 @@
   --shadow: rgba(10, 20, 40, 0.16);
   --ui-font: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --math-font: "STIX Two Text", "STIX Two Math", "Cambria Math", "Times New Roman", serif;
-  --ease: cubic-bezier(.2, .8, .16, 1);
+  --ease: cubic-bezier(.3, .6, .2, 1);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -170,7 +170,7 @@ svg.g.int path, svg.g.sum path, svg.g.prod path { fill: currentColor; stroke: no
   position: absolute; pointer-events: none; opacity: 0;
   background: var(--sel-fill);
   box-shadow: 0 0 0 1.5px var(--sel);
-  transition: left calc(.16s * var(--pace, 1)) var(--ease), top calc(.16s * var(--pace, 1)) var(--ease), width calc(.16s * var(--pace, 1)) var(--ease), height calc(.16s * var(--pace, 1)) var(--ease), opacity .12s, box-shadow .2s, background .2s;
+  transition: transform calc(.2s * var(--pace, 1)) var(--ease), width calc(.2s * var(--pace, 1)) var(--ease), height calc(.2s * var(--pace, 1)) var(--ease), opacity .12s, box-shadow .2s, background .2s;
 }
 .sel.on { opacity: 1; }
 .sel.refused { box-shadow: 0 0 0 2px var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }

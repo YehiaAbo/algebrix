@@ -1,6 +1,7 @@
 // Playthrough tutorials: a coach card that asks for one action at a time and moves on
 // as soon as you've done it. Several short tours, picked from a menu (g). Your own
 // equations are put aside and come back at the end.
+import { SMOOTH } from '../render/stage';
 import type { App, Slot } from './app';
 import { find, relOf } from '../engine/ast';
 import { isProved } from '../engine/goals';
@@ -489,7 +490,7 @@ export class Tour {
     this.card.querySelector('.tour-text')!.innerHTML = s.say;
     this.card.querySelector('.tour-count')!.textContent = `${this.tour.name} · ${i + 1} / ${this.tour.steps.length}`;
     (this.card.querySelector('.tour-bar i') as HTMLElement).style.width = `${(i / this.tour.steps.length) * 100}%`;
-    this.card.animate([{ opacity: 0, transform: 'translate(-50%, 6px)' }, { opacity: 1, transform: 'translate(-50%, 0)' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    this.card.animate([{ opacity: 0, transform: 'translate(-50%, 6px)' }, { opacity: 1, transform: 'translate(-50%, 0)' }], { duration: 220, easing: SMOOTH });
   }
 
   /** called by the app after anything changes */

@@ -82,3 +82,9 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   next frame. And a move that lands on an earlier step went back to it without carrying the aim,
   so the 4th m in a row moved the whole side. Guard: stress presses m four times; the frame
   meter (`) measures where the app actually runs.
+- **K12 Motion faster than the frames could show it.** On a 144 Hz screen the app felt like 30 fps:
+  the shared ease cubic-bezier(.2,.8,.16,1) over 260 ms did a third of each trip in the first 3
+  frames and up to 11% per frame, which the eye reads as a skip. Several places also carried
+  their own copy of it, and the aim box moved by left/top (layout, main thread). Now one glide
+  (SMOOTH, and CSS --ease) everywhere, at most about 6% per frame at 144 Hz, a little longer for
+  long trips; the aim moves by transform. Rule: a new animation uses SMOOTH, never its own curve.

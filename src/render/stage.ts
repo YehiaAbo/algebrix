@@ -16,7 +16,11 @@ export interface Transition {
 
 interface Entry { el: HTMLElement | SVGSVGElement; g: Glyph }
 
-export const SMOOTH = 'cubic-bezier(.2,.8,.16,1)';
+/** the one glide every motion in the app shares (glyphs, the aim, bubbles; CSS --ease is the same).
+ *  It starts at once but at a speed the eye can follow: at 144 Hz no frame jumps more than about
+ *  6% of the way, where the old curve jumped 11% and did a third of the trip in the first 3 frames,
+ *  which reads as a skip, like a low frame rate */
+export const SMOOTH = 'cubic-bezier(.3,.6,.2,1)';
 export let EASE = SMOOTH;
 /** a look can make glyphs move differently (a pixel look steps like a sprite) */
 export const setEase = (e: string) => { EASE = e; };
@@ -69,7 +73,7 @@ export class Stage {
     this.layout = lay; this.ox = ox; this.oy = oy;
 
     const focusOwned = (g: Glyph) => !!tr?.focus && g.owners.includes(tr.focus);
-    const dur = Math.round((tr?.quick ? 200 : 260) * pace);
+    const dur = Math.round((tr?.quick ? 230 : 300) * pace);
 
     // Pieces that vanish can be "reused" by new pieces showing the same symbol, so a
     // rewrite like factoring reads as symbols rearranging instead of fading in and out.
@@ -184,6 +188,8 @@ export class Stage {
     let sx = to.w ? from.w / to.w : 1, sy = to.h ? from.h / to.h : 1;
     if (Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) sx = sy = 1;
     if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01 && !fadeIn) return;
+    // a long trip gets a little longer, so nothing crosses the screen faster than it can be seen
+    dur += Math.min(140, 0.25 * Math.hypot(dx, dy)) * pace;
     const start = `translate(${dx}px,${dy}px) scale(${sx},${sy})`;
     const frames: Keyframe[] = [{ transform: start, opacity: fadeIn ? 0 : 1 }];
     if (arc) {
@@ -191,7 +197,7 @@ export class Stage {
       frames.push({ transform: `translate(${dx / 2}px,${dy / 2 - lift}px) scale(${(sx + 1) / 2},${(sy + 1) / 2})`, offset: 0.5 });
     }
     frames.push({ transform: 'none', opacity: 1 });
-    play(el, frames, { duration: arc ? dur + 60 : dur, easing: arc && EASE === SMOOTH ? 'cubic-bezier(.3,.6,.2,1)' : EASE });
+    play(el, frames, { duration: arc ? dur + 60 : dur, easing: EASE });
   }
 
   private crossfade(oldEl: HTMLElement, from: Rect, to: Rect, dur: number) {

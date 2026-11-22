@@ -272,7 +272,9 @@ export class Graph {
     if (!this.eq || key(this.eq) !== key(eq)) this.stopJobs();
     this.eq = eq;
     this.others = others;
-    const morph = animate && this.last ? { ...this.last, t: 0 } : null;
+    // a curve in the plane that keeps the same points: nothing to morph, so no frames spent on it
+    const still = sameSet && !fresh && symbols(eq).length >= 2;
+    const morph = animate && !still && this.last ? { ...this.last, t: 0 } : null;
     // nothing new to animate: draw, and let a fade or morph already under way finish
     if (!morph && !fresh) return this.render();
     cancelAnimationFrame(this.raf);

@@ -1,5 +1,6 @@
 // Saving and loading: the workspace on disk, fresh loads, reset.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
+import { SMOOTH } from '../render/stage';
 import { bumpIds } from '../engine/ast';
 import { setDomains } from '../engine/moves';
 import { sound } from './sound';
@@ -61,7 +62,7 @@ export function openWork(this: App, id: string) {
   this.save();
   if (!this.load(id)) return;
   sound.commit();
-  $('stage').animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: ms(260), easing: 'cubic-bezier(.2,.8,.2,1)' });
+  $('stage').animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: ms(260), easing: SMOOTH });
   this.say(`Opened ${works.get(id)?.name ?? 'workspace'}.`);
 }
 

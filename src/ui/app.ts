@@ -9,7 +9,7 @@ import { substitute } from '../engine/calculus';
 import { simplify, newHints } from '../engine/simplify';
 import { moveAny, WrapItem, simplifySpot, Spot } from '../engine/techniques';
 import { layout, Rect } from '../render/layout';
-import { Stage, Transition } from '../render/stage';
+import { Stage, Transition, SMOOTH } from '../render/stage';
 import { Graph } from './graph';
 import { Tour, toured } from './tour';
 import { group, ungroup } from '../engine/select';
@@ -210,7 +210,8 @@ export class App {
     if (!r || this.mode === 'write') { el.classList.remove('on'); return; }
     const S = this.stage.layout ? this.stage.layout.glyphs[0]?.s ?? 60 : 60;
     const p = Math.max(5, S * 0.1);
-    Object.assign(el.style, { left: `${r.x - p}px`, top: `${r.y - p * 0.6}px`, width: `${r.w + 2 * p}px`, height: `${r.h + p * 1.2}px`, borderRadius: `${Math.max(6, S * 0.12)}px` });
+    // placed by transform, which the compositor glides on its own; only a size change needs layout
+    Object.assign(el.style, { left: '0px', top: '0px', transform: `translate(${r.x - p}px, ${r.y - p * 0.6}px)`, width: `${r.w + 2 * p}px`, height: `${r.h + p * 1.2}px`, borderRadius: `${Math.max(6, S * 0.12)}px` });
     el.classList.add('on');
     // a run of several terms (Ctrl + arrows, or the mouse box) reads as one piece with a softer fill
     el.classList.toggle('run', !!this.grouped && id === this.grouped.id);
@@ -482,7 +483,7 @@ export class App {
     const id = this.sel && this.sel !== 'eq' && this.stage.box(this.sel) ? this.sel : null;
     const resist: Keyframe[] = [{ transform: 'none' }, { transform: 'translateX(-5px) scaleX(.97)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(-2px)' }, { transform: 'none' }];
     for (const el of this.stage.elements(id)) el.animate(resist, { duration: 300, easing: 'cubic-bezier(.3,.7,.3,1)', composite: 'add' });
-    if (id) $('sel').animate(resist, { duration: 300, easing: 'cubic-bezier(.3,.7,.3,1)' });
+    if (id) $('sel').animate(resist, { duration: 300, easing: 'cubic-bezier(.3,.7,.3,1)', composite: 'add' });
     this.tour?.check('refuse');
   }
 
@@ -519,7 +520,7 @@ export class App {
 
   entrance() {
     const els = [...$('stage').querySelectorAll('.g')];
-    els.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: i * 14, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
+    els.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: i * 14, easing: SMOOTH, fill: 'backwards' }));
   }
 
   apply(r: MoveResult, pitch = 1, opts: { quietLabel?: boolean } = {}) {
@@ -697,14 +698,14 @@ export class App {
         // (an svg glyph, like ∫ or a bracket, has no offsetLeft)
         const r = el.getBoundingClientRect(), gx = r.left - host.left, gy = r.top - host.top;
         const sx = from.left - host.left + (gx - to.x) * k, sy = from.top - host.top + (gy - to.y) * k;
-        el.animate([{ transform: `translate(${sx - gx}px, ${sy - gy}px) scale(${k})`, opacity: 0.6 }, { transform: 'none', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });
+        el.animate([{ transform: `translate(${sx - gx}px, ${sy - gy}px) scale(${k})`, opacity: 0.6 }, { transform: 'none', opacity: 1 }], { duration: ms(340), easing: SMOOTH });
       });
     } else this.entrance();
     // and the equation you left shrinks into its step in the tree
     const card = this.slots[old] ? this.tree.elOf(old, visibleAt(this.slots[old]))?.querySelector<HTMLElement>('.mini') : null;
     if (card && eqBox) {
       const c = card.getBoundingClientRect(), k = eqBox.w / c.width;
-      card.animate([{ transform: `translate(${host.left + eqBox.x - c.left}px, ${host.top + eqBox.y - c.top}px) scale(${k})`, transformOrigin: '0 0', opacity: 0.3 }, { transform: 'none', transformOrigin: '0 0', opacity: 1 }], { duration: ms(340), easing: 'cubic-bezier(.2,.8,.16,1)' });
+      card.animate([{ transform: `translate(${host.left + eqBox.x - c.left}px, ${host.top + eqBox.y - c.top}px) scale(${k})`, transformOrigin: '0 0', opacity: 0.3 }, { transform: 'none', transformOrigin: '0 0', opacity: 1 }], { duration: ms(340), easing: SMOOTH });
     }
     this.save();
   }
@@ -1033,7 +1034,7 @@ export class App {
     b.style.top = `${r.y - 14}px`;
     $('stage').append(b);
     const life = bad ? 2600 : 1100;
-    b.animate([{ opacity: 0, transform: 'translate(-50%, -80%) scale(.92)' }, { opacity: 1, transform: 'translate(-50%, -100%)' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
+    b.animate([{ opacity: 0, transform: 'translate(-50%, -80%) scale(.92)' }, { opacity: 1, transform: 'translate(-50%, -100%)' }], { duration: 160, easing: SMOOTH, fill: 'both' });
     // kept inside the stage, measured next frame: reading its width now would lay out the whole
     // page in the middle of the key press, before the rest of the press has changed it
     requestAnimationFrame(() => {
