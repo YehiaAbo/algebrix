@@ -10,8 +10,9 @@ import { newHints, simplify } from './simplify';
 import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries, trigRewrite, trigSub } from './integrate';
 import { toText } from './print';
 import { timesOne } from './general';
-import { distributeNode, expandAll } from './rewrite';
-import { rationalizeTop } from './polytools';
+import { distributeNode, expandAll, combineFractions } from './rewrite';
+import { rationalizeTop, partialFractions } from './polytools';
+import { knownSum } from './sums';
 
 const one = () => 1;
 const fresh = cloneFresh;
@@ -304,6 +305,26 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
   return o ? { error: o } : r;
 }
 
+/** Σ of a fraction of polynomials, its inside in partial fractions (so it can telescope) */
+function splitSummand(e: Eq, t: Node): MoveOk | null {
+  if (t.k !== 'sum' || t.arg.k !== 'frac') return null;
+  const p = partialFractions(t.arg);
+  if (!p || key(p) === key(t.arg)) return null;
+  const r = checked(e, { eq: replace(e, t.arg.id, p), label: 'partial fractions', hints: newHints(), factor: one, select: null, rule: 'partial fractions' });
+  return isErr(r) ? null : r;
+}
+
+/** a limit of a sum with fractions in it, written as one fraction */
+function oneFractionLim(e: Eq, id: string): MoveOk | null {
+  const L = find(e, id);
+  if (!L || L.k !== 'lim' || L.arg.k !== 'add' || !L.arg.terms.some(x => x.k === 'frac' || (x.k === 'neg' && x.arg.k === 'frac'))) return null;
+  const h = newHints();
+  const c = combineFractions(L.arg, h);
+  if (!c || key(c) === key(L.arg)) return null;
+  const r = checked(e, { eq: replace(e, L.arg.id, c), label: 'one fraction', hints: h, factor: one, select: null, rule: 'one fraction' });
+  return isErr(r) ? null : r;
+}
+
 /** C + c in a limit: times the conjugate over itself, √A − B → (A − B²)/(√A + B), for ∞ − ∞ */
 export function conjugateLim(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
@@ -525,7 +546,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
   const active = { ...subs };
   let cur = e;
   // by parts on a side that is one integral: if that integral comes back (eˣ sin x), solve for it
-  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node } | null = null, parts = 0, trigs = 0, tsubs = 0;
+  let origin: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node; ends: string } | null = null, parts = 0, trigs = 0, tsubs = 0;
   for (let i = 0; i < 60; i++) {
     const t = nextCalc(cur);
     let r: MoveResult;
@@ -545,6 +566,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
       r = plugIn(cur, t.id);
       if (isErr(r) && /∞ − ∞/.test(r.error)) { const h = conjugateLim(cur, t.id); if (!isErr(h)) r = h; }
       if (isErr(r) && /∞\/∞/.test(r.error)) { const h = divideHighest(cur, t.id); if (!isErr(h)) r = h; }
+      // 1/x − 1/sin x: a difference of fractions blowing up goes into one fraction first
+      if (isErr(r)) { const h = oneFractionLim(cur, t.id); if (h) r = h; }
       if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }
       if (isErr(r)) { const h = expLog(cur, t.id); if (!isErr(h)) r = h; }
       if (isErr(r)) { const h = asQuotient(cur, t.id); if (!isErr(h)) r = h; }
@@ -552,6 +575,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     else if (t.k === 'sum') {
       r = typeof finiteTerms(t) === 'string' ? geometric(cur, t.id) : writeOut(cur, t.id);
       if (isErr(r) && /^Not geometric/.test(r.error)) { const q = pSeries(cur, t.id); if (!isErr(q) || q.error !== 'Not a p-series.') r = q; }
+      // a known sum (telescoping), else a fraction of polynomials split first: Σ 1/(n(n + 1)) = Σ (1/n − 1/(n + 1))
+      if (isErr(r)) { const k = knownSum(cur, t.id); if (!isErr(k)) r = k; else { const pf = splitSummand(cur, t); if (pf) r = pf; } }
     }
     else if (t.k === 'grad') r = gradStep(cur, t.id);
     else if (t.k === 'mul') r = dotStep(cur, t.id);
@@ -574,10 +599,13 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
             if (++parts > 4) return { steps, stuck: 'By parts keeps going without the integral getting simpler. Try another u (aim at it, then C + b).' };
             // the side is m·I + b (I alone, or (∫ …)/2 after a substitution): remembered to solve for I later
             const side = findPath(cur.lhs, t.id) ? 'lhs' : findPath(cur.rhs, t.id) ? 'rhs' : null;
-            if (!origin && side && t.k === 'int' && !t.lo) {
+            if (!origin && side && t.k === 'int') {
               const S = cur[side], A = replace(S, t.id, num(0)), B = replace(S, t.id, num(1));
               const ms = [0.37, 0.91, 1.53].map(x => evaluate(B, { [t.v]: x }) - evaluate(A, { [t.v]: x }));
-              if (ms.every(m => Number.isFinite(m) && Math.abs(m - ms[0]) < 1e-9 * (1 + Math.abs(m))) && Math.abs(ms[0]) > 1e-12) origin = { side, f: t.arg, v: t.v, m: ms[0], b: simplify(A, newHints()) };
+              // and b holds no other integral (else solving for I just goes round them)
+              let other = false;
+              walk(A, n => { if (n.k === 'int') other = true; });
+              if (!other && ms.every(m => Number.isFinite(m) && Math.abs(m - ms[0]) < 1e-9 * (1 + Math.abs(m))) && Math.abs(ms[0]) > 1e-12) origin = { side, f: t.arg, v: t.v, m: ms[0], b: simplify(A, newHints()), ends: t.lo && t.hi ? key(t.lo) + '|' + key(t.hi) : '' };
             }
             r = b;
           } else { const x = expandInside(cur, t); if (x) r = x; }
@@ -600,9 +628,11 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
 
 /** ∫ eˣ sin x by parts twice gives eˣ sin x − eˣ cos x − ∫ eˣ sin x: the integral I came back.
  *  The side was I all along, so I = A + kI, and I = A/(1 − k) */
-function cameBack(e: Eq, o: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node }, t: Node): MoveResult | null {
+function cameBack(e: Eq, o: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node; ends: string }, t: Node): MoveResult | null {
   const { side, f, v, m, b } = o;
-  if (t.k !== 'int' || t.lo || t.v !== v || !findPath(e[side], t.id)) return null;
+  // the same integral: indefinite, or between the same ends (∫₀^∞ e⁻ˣ sin x dx comes back too)
+  if (t.k !== 'int' || t.v !== v || !findPath(e[side], t.id)) return null;
+  if ((t.lo && t.hi ? key(t.lo) + '|' + key(t.hi) : '') !== o.ends) return null;
   const xs = [0.37, 0.91, 1.53];
   const ratios = xs.map(x => evaluate(t.arg, { [v]: x }) / evaluate(f, { [v]: x }));
   if (!ratios.every(r => Number.isFinite(r) && Math.abs(r - ratios[0]) < 1e-9 * (1 + Math.abs(r)))) return null;
@@ -615,7 +645,8 @@ function cameBack(e: Eq, o: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number
   const h = newHints();
   const rn = (x: number) => ratNode(x) ?? num(x);
   const I = simplify(m === 1 ? frac(add([A, neg(cloneFresh(b))]), rn(1 - k)) : add([mul([rn(m), frac(add([A, neg(cloneFresh(b))]), rn(m - k))]), cloneFresh(b)]), h);
-  const next = side === 'lhs' ? eq(plus(I, sym('C')), e.rhs, e.rel) : eq(e.lhs, plus(I, sym('C')), e.rel);
+  const withC = o.ends ? I : plus(I, sym('C'));
+  const next = side === 'lhs' ? eq(withC, e.rhs, e.rel) : eq(e.lhs, withC, e.rel);
   const kr = Math.round((k / m) * 1e9) / 1e9, kn = ratNode(Math.abs(kr)), mt = !kn ? `${+Math.abs(kr).toPrecision(4)}I` : kn.k === 'num' ? `${kn.v === 1 ? '' : kn.v}I` : kn.k === 'frac' && kn.num.k === 'num' && kn.den.k === 'num' ? `${kn.num.v === 1 ? '' : kn.num.v}I/${kn.den.v}` : 'kI';
   const r = checked(e, { eq: next, label: `the integral came back: I = … ${kr > 0 ? '+' : '−'} ${mt}, so solve for I`, hints: h, factor: one, select: null, rule: 'solve for the integral' });
   return isErr(r) ? null : r;

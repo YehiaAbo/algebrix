@@ -1,10 +1,11 @@
 # Bank report
 
-314 of 314 solved by the engine (2026-11-22T11:20 UTC).
+344 of 344 solved by the engine (2026-11-22T11:35 UTC).
 
 | file | solved |
 |---|---|
 | classic.txt | 142/142 |
+| hard1.txt | 30/30 |
 | openstax-algebra.txt | 36/36 |
 | openstax-calc1.txt | 83/83 |
 | openstax-calc2.txt | 47/47 |
@@ -22,23 +23,23 @@
 | roots | 1/1 |
 | exponential | 7/7 |
 | log base | 2/2 |
-| u-sub | 17/17 |
+| u-sub | 19/19 |
 | arctan | 2/2 |
 | linear inside | 1/1 |
 | split | 1/1 |
 | arcsin | 1/1 |
-| by parts | 34/34 |
-| by parts twice | 3/3 |
-| comes back | 4/4 |
+| by parts | 36/36 |
+| by parts twice | 5/5 |
+| comes back | 5/5 |
 | identity | 2/2 |
-| odd power | 5/5 |
+| odd power | 7/7 |
 | even power | 1/1 |
 | even powers | 1/1 |
 | trick | 1/1 |
 | product to sum | 2/2 |
-| trig sub | 8/8 |
+| trig sub | 10/10 |
 | u-sub or trig sub | 1/1 |
-| partial fractions | 7/7 |
+| partial fractions | 8/8 |
 | repeated factor | 1/1 |
 | long division | 2/2 |
 | quadratic factor | 3/3 |
@@ -50,13 +51,13 @@
 | standard | 2/2 |
 | lhopital | 13/13 |
 | highest power | 1/1 |
-| lhopital twice | 1/1 |
+| lhopital twice | 2/2 |
 | factor | 2/2 |
 | conjugate | 3/3 |
 | e | 1/1 |
-| 0 times inf | 1/1 |
+| 0 times inf | 2/2 |
 | exponent | 1/1 |
-| lhopital thrice | 1/1 |
+| lhopital thrice | 3/3 |
 | growth | 1/1 |
 | quadratic form | 7/7 |
 | quadratic in 3^x | 1/1 |
@@ -74,9 +75,18 @@
 | half angle | 2/2 |
 | odd power bottom | 2/2 |
 | exponential rational | 2/2 |
-| improper | 2/2 |
+| improper | 5/5 |
 | u-sub leftover | 2/2 |
-| rationalizing | 1/1 |
+| rationalizing | 2/2 |
+| 1^inf | 2/2 |
+| 0^0 | 1/1 |
+| inf minus inf | 1/1 |
+| inf^0 | 1/1 |
+| u-sub then parts | 1/1 |
+| improper end | 1/1 |
+| completed square | 3/3 |
+| telescoping | 2/2 |
+| geometric | 1/1 |
 | linear | 4/4 |
 | complete the square | 1/1 |
 | quadratic formula | 2/2 |

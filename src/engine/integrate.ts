@@ -380,7 +380,7 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     if (n.k === 'fn' || n.k === 'sqrt') consider(n.arg);
     if (n.k === 'pow') { consider(n.base); consider(n.exp); }
     if (n.k === 'frac') consider(n.den);
-    if (n.k === 'fn' && (n.name === 'ln' || n.name === 'sin' || n.name === 'cos')) consider(n);
+    if (n.k === 'fn' && ['ln', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan'].includes(n.name)) consider(n);
     // eˣ in ∫ eˣ/(1 + e^(2x)): u = eˣ, and e^(2x) is u² (tried after the insides)
     if (n.k === 'pow' && !dependsOn(n.base, v) && dependsOn(n, v) && !exps.some(c => key(c) === key(n))) exps.push(n);
     // √u in ∫ √u/(1 + u) du: w = √u (u = w²) clears the root, tried last too
@@ -404,7 +404,10 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     const next = def ? int(u, Q, bound(T.lo!), bound(T.hi!)) : int(u, Q);
     const label = `u-substitution: ${u} = ${toText(g)}`;
     const check = def ? undefined : (env: Env) => [[evaluate(Q, { ...env, [u]: evaluate(g, env) }) * evaluate(dg, env), evaluate(f, env)]] as [number, number][];
-    const move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'u-substitution', check });
+    let move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'u-substitution', check });
+    // a slow improper one (∫ₑ^∞ dx/(x ln²x)) the numbers can't add up: the ends are g(a), g(b) by
+    // construction, so the inside matching, f(x) = Q(g(x))·g′(x) across the range, is the whole check
+    if (isErr(move) && def) move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'u-substitution', check: env => insideMatches(f, Q, g, dg, v, u, T, env) });
     if (isErr(move)) continue;
     return { move, side: def ? undefined : eq(sym(u), fresh(g)), u, g };
   }
@@ -424,6 +427,14 @@ function endOf(g: Node, v: string, b: Node): Node {
   if (x === Infinity) return sym('∞');
   if (x === -Infinity) return neg(sym('∞'));
   return knownNumber(x) ?? t;
+}
+
+/** f(x) against Q(g(x))·g′(x) at points inside the range of a definite integral */
+function insideMatches(f: Node, Q: Node, g: Node, dg: Node, v: string, u: string, T: Int, env: Env): [number, number][] {
+  const lo = evaluate(T.lo!, env), hi = evaluate(T.hi!, env);
+  const xs = Number.isFinite(lo) && Number.isFinite(hi) ? [0.23, 0.51, 0.77].map(t => lo + (hi - lo) * t)
+    : Number.isFinite(lo) ? [0.4, 1.7, 6.1].map(t => lo + t * (1 + Math.abs(lo))) : Number.isFinite(hi) ? [0.4, 1.7, 6.1].map(t => hi - t * (1 + Math.abs(hi))) : [-1.3, 0.4, 2.2];
+  return xs.map(x => { const at = { ...env, [v]: x }; return [evaluate(Q, { ...at, [u]: evaluate(g, at) }) * evaluate(dg, at), evaluate(f, at)]; });
 }
 
 /** n with v in it only for show (it cancels): n at a whole-number v, else null */
@@ -693,7 +704,9 @@ export function byParts(e: Eq, sel: string | null): MoveResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
   const v = T.v;
-  const fs = T.arg.k === 'mul' ? T.arg.factors : [T.arg];
+  // x/cos²x is x·(1/cos²x): a fraction with the letter top and bottom is a product too
+  const A = T.arg;
+  const fs = A.k === 'mul' ? A.factors : A.k === 'frac' && dependsOn(A.num, v) && dependsOn(A.den, v) && !(A.num.k === 'num') ? [...(A.num.k === 'mul' ? A.num.factors : [A.num]), frac(num(1), fresh(A.den))] : [A];
   // a lone factor only when it is a log or inverse trig (∫ ln x dx: u = ln x, dv = dx)
   const lone = fs.length === 1 && fs[0].k === 'pow' && !dependsOn(fs[0].exp, v) ? fs[0].base : fs[0];
   // or a function of ln v (sin(ln x)): its slope times v is the same kind again, so it comes back

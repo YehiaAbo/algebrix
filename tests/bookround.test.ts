@@ -204,3 +204,24 @@ describe('u-substitution leftovers, roots as powers, odd powers over the other (
     expect(S('-u/(-3u^(3/2))')).toBe('1/(3 sqrt(u))');
   });
 });
+
+describe('the harder set (K41)', () => {
+  it('limits: ∞ − ∞ of fractions goes into one fraction; 1^∞ and 0^0 forms', () => {
+    expect(value('y = lim x->0 (1/x - 1/sin(x))')).toBeCloseTo(0, 9);
+    expect(value('y = lim x->0 (1 + 2x)^(1/x)')).toBeCloseTo(Math.E ** 2, 7);
+    expect(value('y = lim x->0 (tan(x) - x)/x^3')).toBeCloseTo(1 / 3, 9);
+  });
+  it('definite integrals: one that comes back, u = ln x to ∞, x/cos²x by parts, sin⁻¹ as u', () => {
+    expect(value('y = int_0^inf e^(-x) sin(x) dx')).toBeCloseTo(0.5, 9);
+    expect(value('y = int_e^inf 1/(x ln(x)^2) dx')).toBeCloseTo(1, 9);
+    expect(value('y = int_0^(pi/4) x/cos(x)^2 dx')).toBeCloseTo(Math.PI / 4 + Math.log(Math.cos(Math.PI / 4)), 9);
+    expect(value('y = int_0^(1/2) asin(x)/sqrt(1 - x^2) dx')).toBeCloseTo((Math.PI / 6) ** 2 / 2, 9);
+  });
+  it('Σ of a fraction of polynomials telescopes after partial fractions', () => {
+    expect(value('y = sum_{n=1}^∞ 1/(n(n + 1))')).toBeCloseTo(1, 9);
+    expect(value('y = sum_{n=1}^∞ 1/((2n - 1)(2n + 1))')).toBeCloseTo(0.5, 9);
+  });
+  it('s cancels X − (X) whole', () => {
+    expect(toText(simplify(parseExpr('x^2 + 1 - (x^2 + 1)'), newHints()))).toBe('0');
+  });
+});

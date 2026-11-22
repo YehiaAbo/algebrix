@@ -361,6 +361,17 @@ function addRule(ts: Node[], id: string, h: Hints): Node | null {
   if (ts.some(t => t.k === 'add')) {
     return { k: 'add', id, terms: ts.flatMap(t => (t.k === 'add' ? t.terms : [t])) };
   }
+  // X − (X): a bracket taken away whose every term is also there cancels whole (nothing else opens up)
+  for (let i = 0; i < ts.length; i++) {
+    const t = ts[i];
+    if (t.k !== 'neg' || t.arg.k !== 'add') continue;
+    const rest = ts.filter((_, j) => j !== i), used = new Set<number>();
+    const all = t.arg.terms.every(b => { const j = rest.findIndex((r, k) => !used.has(k) && key(r) === key(b)); if (j < 0) return false; used.add(j); return true; });
+    if (!all) continue;
+    rest.forEach((r, k) => used.has(k) && h.absorbs.set(r.id, t.id));
+    const left = rest.filter((_, k) => !used.has(k));
+    return left.length === 0 ? num(0) : left.length === 1 ? left[0] : add(left, id);
+  }
   const infos = ts.map(termInfo);
   const groups = new Map<string, number[]>();
   infos.forEach((inf, i) => {

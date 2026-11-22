@@ -219,3 +219,9 @@ every core key on stress/corpus.txt; add an equation there for each new class.
 - **K40 u-substitution left x behind when it was a line in u** (y³ with u = 1 − y³, x⁴ = (u − 1)²), never
   tried w = √u, and s left √u·u and u/u^(3/2) as they were. All four now go; odd sin over cos powers
   (sin⁵/cos⁶) keep one sin back too. Bank 314/314. Guard: bookround.
+- **K41 A harder set (playtest/problems/hard1.txt, 30 problems) found seven gaps:** ∞ − ∞ of fractions
+  in a limit (now one fraction, then L'Hôpital); a definite integral that comes back (now solved for,
+  unless the rest still holds another integral, which just went round); u = ln x to ∞ (the numbers
+  can't add up so slow a tail: the inside matching across the range is the check, the ends being
+  g(a), g(b)); Σ of a fraction of polynomials (partial fractions, then it telescopes); x/cos²x had no
+  by parts (a fraction is a product too); sin⁻¹ x was never tried as u; s left X − (X). 30/30.
