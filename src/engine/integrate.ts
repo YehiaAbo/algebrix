@@ -271,6 +271,7 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
   if (q) { next = wrap(q.F); label = q.label; if (q.conditions) return finish(e, T, next, label, { conditions: q.conditions }); }
   else if (u.k === 'add') { next = plus(...u.terms.map(piece)); label = 'sum rule'; }
   else if (u.k === 'neg') { next = times(num(-1), piece(u.arg)); label = 'constant multiple'; }
+  else if (u.k === 'frac' && u.num.k === 'neg') { next = times(num(-1), piece(frac(fresh(u.num.arg), fresh(u.den)))); label = 'constant multiple'; }
   else if (u.k === 'mul' && u.factors.some(f => !dependsOn(f, v))) {
     const consts = u.factors.filter(f => !dependsOn(f, v)), vars = u.factors.filter(f => dependsOn(f, v));
     next = times(...consts.map(fresh), piece(vars.length === 1 ? vars[0] : mul(vars)));
@@ -382,6 +383,8 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     if (n.k === 'fn' && (n.name === 'ln' || n.name === 'sin' || n.name === 'cos')) consider(n);
     // eˣ in ∫ eˣ/(1 + e^(2x)): u = eˣ, and e^(2x) is u² (tried after the insides)
     if (n.k === 'pow' && !dependsOn(n.base, v) && dependsOn(n, v) && !exps.some(c => key(c) === key(n))) exps.push(n);
+    // √u in ∫ √u/(1 + u) du: w = √u (u = w²) clears the root, tried last too
+    if (n.k === 'sqrt' && dependsOn(n, v) && !exps.some(c => key(c) === key(n))) exps.push(n);
   });
   cands.sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length);
   cands.push(...exps.filter(x => !cands.some(c => key(c) === key(x))));
@@ -443,7 +446,9 @@ function powersOf(n: Node, g: Node, v: string, u: string): Node {
   const gv = xs.map(x => evaluate(g, { [v]: x }));
   if (!gv.every(y => Number.isFinite(y) && Math.abs(Math.abs(y) - 1) > 1e-6)) return n;
   const go = (m: Node): Node => {
-    if ((m.k === 'pow' || m.k === 'sqrt') && dependsOn(m, v)) {
+    // the letter itself only when g is a root or power of it (u = w² with w = √u)
+    const ofLetter = (g.k === 'sqrt' && g.arg.k === 'sym' && g.arg.name === v) || (g.k === 'pow' && g.base.k === 'sym' && g.base.name === v);
+    if ((m.k === 'pow' || m.k === 'sqrt' || (ofLetter && m.k === 'sym' && m.name === v)) && dependsOn(m, v)) {
       const mv = xs.map(x => evaluate(m, { [v]: x }));
       // negative ones too: e^(−t) is 1/u with u = eᵗ
       for (const k of [1, 2, 3, 4, -1, -2, -3, -4]) {
@@ -454,6 +459,16 @@ function powersOf(n: Node, g: Node, v: string, u: string): Node {
           const p = k === 1 ? sym(u) : k === -1 ? frac(num(1), sym(u)) : k < 0 ? frac(num(1), pow(sym(u), ratNode(-k)!)) : pow(sym(u), ratNode(k)!);
           return isNum(c, 1) ? p : mul([c, p]);
         }
+      }
+      // or a line in g, or a power of one: y³ with u = 1 − y³ is 1 − u, x⁴ with u = x² + 1 is (u − 1)²
+      for (const k of [1, 2, 3]) {
+        const rv = mv.map(y => (k === 2 ? Math.sqrt(y) : Math.cbrt(y) ** (k === 1 ? 3 : 1)));
+        const b1 = (rv[1] - rv[0]) / (gv[1] - gv[0]), a1 = rv[0] - b1 * gv[0];
+        if (!(Number.isFinite(b1) && Math.abs(b1) > 1e-12 && Math.abs(a1 + b1 * gv[2] - rv[2]) < 1e-9 * (1 + Math.abs(rv[2])))) continue;
+        const A = ratNode(Math.round(a1 * 1e9) / 1e9), B = ratNode(Math.round(b1 * 1e9) / 1e9);
+        if (!A || !B) continue;
+        const line = tidy(add([A, isNum(B, 1) ? sym(u) : mul([B, sym(u)])]));
+        return k === 1 ? line : pow(line, num(k));
       }
       // not a power of g as a whole: its pieces may be ((eᵗ − e⁻ᵗ)² has e⁻ᵗ inside)
       return withKids(m, go);
@@ -582,16 +597,22 @@ export function trigRewrite(e: Eq, sel: string | null): MoveResult {
   }
   const fs = f.k === 'mul' ? f.factors : [f];
   const powOfTrig = (n: Node, name: 'sin' | 'cos') => (n.k === 'fn' && n.name === name ? { L: n.arg, n: 1 } : n.k === 'pow' && n.base.k === 'fn' && n.base.name === name && n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v > 0 ? { L: n.base.arg, n: n.exp.v } : null);
+  // sin⁵x/cos⁶x is sin⁵x·cos⁻⁶x: the bottom's powers of the other one count too
+  const ups = f.k === 'frac' ? [...(f.num.k === 'mul' ? f.num.factors : [f.num]), ...(f.den.k === 'mul' ? f.den.factors : [f.den]).map(d => { const q = (['sin', 'cos'] as const).map(nm => powOfTrig(d, nm)).find(Boolean); return q ? pow((d.k === 'pow' ? d.base : d), num(-q.n)) : frac(num(1), d); })] : fs;
+  const anyPow = (n: Node, name: 'sin' | 'cos') => powOfTrig(n, name) ?? (n.k === 'pow' && n.base.k === 'fn' && n.base.name === name && n.exp.k === 'num' && Number.isInteger(n.exp.v) ? { L: n.base.arg, n: n.exp.v } : null);
   for (const [name, other] of [['sin', 'cos'], ['cos', 'sin']] as const) {
+    const fs = ups;
     const i = fs.findIndex(x => { const p = powOfTrig(x, name); return !!p && p.n >= 3 && p.n % 2 === 1; });
     if (i < 0) continue;
     const p = powOfTrig(fs[i], name)!;
-    // the rest must be powers of the other one (same inside) or constants
-    if (!fs.every((x, j) => j === i || !dependsOn(x, v) || (powOfTrig(x, other) && key(powOfTrig(x, other)!.L) === key(p.L)))) continue;
+    // the rest must be powers of the other one (same inside, on top or below) or constants
+    if (!fs.every((x, j) => j === i || !dependsOn(x, v) || (anyPow(x, other) && key(anyPow(x, other)!.L) === key(p.L)))) continue;
     const k = (p.n - 1) / 2;
     const sq = add([num(1), neg(pow(fn(other, fresh(p.L)), num(2)))]);
     const kept = [...fs.slice(0, i).map(fresh), k === 1 ? sq : pow(sq, num(k)), ...fs.slice(i + 1).map(fresh), fn(name, fresh(p.L))];
-    return done(mul(kept), `${name}${k === 1 ? '²' : ''}${k > 1 ? `^${2 * k}` : ''} = ${k > 1 ? '(' : ''}1 − ${other}²${k > 1 ? `)^${k}` : ''}, keeping one ${name} back`, 'trig identity');
+    const below = kept.filter(x => x.k === 'pow' && x.exp.k === 'num' && x.exp.v < 0) as Extract<Node, { k: 'pow' }>[];
+    const shaped = below.length ? frac(mul(kept.filter(x => !below.includes(x as Extract<Node, { k: 'pow' }>))), mul(below.map(x => pow(x.base, num(-(x.exp as Extract<Node, { k: 'num' }>).v))))) : mul(kept);
+    return done(shaped, `${name}${k === 1 ? '²' : ''}${k > 1 ? `^${2 * k}` : ''} = ${k > 1 ? '(' : ''}1 − ${other}²${k > 1 ? `)^${k}` : ''}, keeping one ${name} back`, 'trig identity');
   }
   // an odd power on the bottom (sin² x/cos³ x): × cos/cos makes it even, cos⁴ = (1 − sin²)², and u = sin x is ready
   // sec³ x is (1/cos x)³: read as 1/cos³ x

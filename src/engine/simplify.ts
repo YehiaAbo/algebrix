@@ -319,6 +319,17 @@ function mulRule(fs: Node[], id: string, h: Hints): Node | null {
     const merged = pow(a.base, add([a.exp, b.k === 'pow' ? b.exp : num(1)]), a.id);
     return mulOf(fs.flatMap((f, k) => (k === i ? [merged] : k === j ? [] : [f])), id);
   }
+  // √u·u → u^(3/2), √u·u² → u^(5/2): a root is the ½ power when its inside is there too
+  for (let i = 0; i < fs.length; i++) {
+    const a = fs[i];
+    if (a.k !== 'sqrt') continue;
+    const j = fs.findIndex((b, k) => k !== i && b.k !== 'num' && (key(b) === key(a.arg) || (b.k === 'pow' && key(b.base) === key(a.arg) && !hasSymbols(b.exp))));
+    if (j < 0) continue;
+    const b = fs[j];
+    h.absorbs.set(a.id, b.id);
+    const merged = pow(cloneFresh(a.arg), add([b.k === 'pow' ? b.exp : num(1), frac(num(1), num(2))]), b.id);
+    return mulOf(fs.flatMap((f, k) => (k === j ? [merged] : k === i ? [] : [f])), id);
+  }
   // x·x → x², x·x² → x³
   const baseOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' ? f.base : f);
   const expOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' ? f.exp.v : 1);
@@ -412,6 +423,8 @@ function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
   if (a.k === 'neg') { const r = fracRule(a.arg, d, id, h); if (r) return negate(r); }
   // a / b^(−k) = a·b^k
   if (d.k === 'pow' && d.exp.k === 'num' && d.exp.v < 0) return mulOf([a, pow(d.base, num(-d.exp.v, d.exp.id), d.id)].filter(f => !(f.k === 'num' && f.v === 1)), id);
+  // a minus number in front underneath goes on top: x/(−3y) = −x/(3y)
+  if (d.k === 'mul' && d.factors[0].k === 'num' && d.factors[0].v < 0) return frac(negate(a), negate(d), id);
   if (d.k === 'num') {
     if (d.v === 1) return a;
     if (d.v === -1) return negate(a);
@@ -442,16 +455,18 @@ function fracRule(a: Node, d: Node, id: string, h: Hints): Node | null {
     h.absorbs.set(nf[j].id, r.id);
     nf[j] = r; df.splice(i, 1); cancelled = true;
   }
-  // powers of the same thing: x³/x² = x, x/x³ = 1/x²
-  const baseOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? f.base : f);
-  const expOf = (f: Node) => (f.k === 'pow' && f.exp.k === 'num' && Number.isInteger(f.exp.v) && f.exp.v > 0 ? f.exp.v : 1);
+  // powers of the same thing: x³/x² = x, x/x³ = 1/x², and fractional ones: u/u^(3/2) = 1/u^(1/2)
+  const ratExp = (e: Node): number | null => (e.k === 'num' && e.v > 0 && Number.isInteger(e.v) ? e.v : e.k === 'frac' && e.num.k === 'num' && e.den.k === 'num' && Number.isInteger(e.num.v) && Number.isInteger(e.den.v) && e.num.v > 0 && e.den.v > 0 ? e.num.v / e.den.v : null);
+  const baseOf = (f: Node) => (f.k === 'pow' && ratExp(f.exp) !== null ? f.base : f.k === 'sqrt' ? f.arg : f);
+  const expOf = (f: Node) => (f.k === 'pow' && ratExp(f.exp) !== null ? ratExp(f.exp)! : f.k === 'sqrt' ? 1 / 2 : 1);
+  const expNode = (k: number): Node => { for (let q = 1; q <= 12; q++) { const p = Math.round(k * q); if (Math.abs(p / q - k) < 1e-12) return q === 1 ? num(p) : frac(num(p), num(q)); } return num(k); };
   for (let i = df.length - 1; i >= 0; i--) {
     if (df[i].k === 'num') continue;
     const b = key(baseOf(df[i]));
     const j = nf.findIndex(f => f.k !== 'num' && key(baseOf(f)) === b);
     if (j < 0) continue;
-    const r = expOf(nf[j]) - expOf(df[i]), base = baseOf(nf[j]);
-    const p = (k: number, like: Node) => (k === 1 ? base : pow(base, num(k), like.id));
+    const r = Math.round((expOf(nf[j]) - expOf(df[i])) * 1e12) / 1e12, base = baseOf(nf[j]);
+    const p = (k: number, like: Node) => (k === 1 ? base : k === 1 / 2 ? sqrt(base, like.id) : pow(base, expNode(k), like.id));
     h.absorbs.set((r >= 0 ? df[i] : nf[j]).id, (r >= 0 ? nf[j] : df[i]).id);
     if (r > 0) { nf[j] = p(r, nf[j]); df.splice(i, 1); }
     else if (r < 0) { df[i] = p(-r, df[i]); nf.splice(j, 1); }

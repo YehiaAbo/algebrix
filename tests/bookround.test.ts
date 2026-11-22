@@ -183,3 +183,24 @@ describe('a substitution on an improper integral moves the ∞ end too (K39)', (
     expect(value('y = int_1^inf 1/(x^2 + 1)^(3/2) dx')).toBeCloseTo(1 - Math.SQRT2 / 2, 9);
   });
 });
+
+import { simplify, newHints } from '../src/engine/simplify';
+
+describe('u-substitution leftovers, roots as powers, odd powers over the other (K40)', () => {
+  const slope = (src: string, f: (x: number) => number, v = 'x') => {
+    const F = last(src).rhs, h = 1e-5;
+    for (const x of [0.3, 0.5, 0.8]) expect(Math.abs((evaluate(F, { [v]: x + h, C: 0 }) - evaluate(F, { [v]: x - h, C: 0 })) / (2 * h) - f(x)), src).toBeLessThan(1e-4);
+  };
+  it('y³ with u = 1 − y³ is 1 − u; x⁴ with u = 1 + x² is (u − 1)²; √x/(1 + x) takes w = √x', () => {
+    slope('z = int y^5/(1 - y^3)^(3/2) dy', y => y ** 5 / (1 - y ** 3) ** 1.5, 'y');
+    slope('y = int x^5/sqrt(1 + x^2) dx', x => x ** 5 / Math.sqrt(1 + x * x));
+    slope('y = int sqrt(x)/(1 + x) dx', x => Math.sqrt(x) / (1 + x));
+    slope('y = int sin(x)^5/cos(x)^6 dx', x => Math.sin(x) ** 5 / Math.cos(x) ** 6);
+  });
+  it('s writes √u·u as u^(3/2) and cancels u/u^(3/2)', () => {
+    const S = (s: string) => toText(simplify(parseExpr(s), newHints()));
+    expect(S('sqrt(u) u')).toBe('u^(3/2)');
+    expect(S('u/u^(3/2)')).toBe('1/sqrt(u)');
+    expect(S('-u/(-3u^(3/2))')).toBe('1/(3 sqrt(u))');
+  });
+});

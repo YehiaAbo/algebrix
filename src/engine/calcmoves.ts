@@ -638,13 +638,17 @@ function expOver(e: Eq, t: Node): MoveOk | null {
   return T2 && !isErr(uSub(r.eq, (T2 as Node).id).move) ? r : null;
 }
 
-/** ∫ (1 − u²)²u² du: only sums, products and whole powers of the letter and numbers */
+/** ∫ (1 − u²)²u² du, ∫ (u − 1)√u du: only sums, products and whole powers, and any power (or root)
+ *  of the letter alone */
 function polyInside(t: Node): boolean {
   if (t.k !== 'int') return false;
   let ok = true;
+  const bare = (b: Node) => b.k === 'sym' && b.name === t.v;
   walk(t.arg, n => {
-    if (n.k === 'pow' && !(n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v >= 0)) ok = false;
-    else if (!['num', 'sym', 'add', 'mul', 'neg', 'pow'].includes(n.k)) ok = false;
+    if (n.k === 'pow' && !(n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v >= 0) && !(bare(n.base) && !dependsOn(n.exp, t.v))) ok = false;
+    else if (n.k === 'sqrt' && !bare(n.arg)) ok = false;
+    else if (!['num', 'sym', 'add', 'mul', 'neg', 'pow', 'sqrt', 'frac'].includes(n.k)) ok = false;
+    else if (n.k === 'frac' && (n.den.k === 'mul' ? n.den.factors : [n.den]).some(d => dependsOn(d, t.v) && !(bare(d) || (d.k === 'sqrt' && bare(d.arg)) || (d.k === 'pow' && bare(d.base) && !dependsOn(d.exp, t.v))))) ok = false;
   });
   return ok;
 }
@@ -653,7 +657,9 @@ function polyInside(t: Node): boolean {
 function expandInside(e: Eq, t: Node, all = false): MoveOk | null {
   if (t.k !== 'int' || hasCalc(t.arg)) return null;
   const h = newHints();
-  const a = all ? expandAll(t.arg, h) : distributeNode(t.arg, h);
+  let a = all ? expandAll(t.arg, h) : distributeNode(t.arg, h);
+  // a sum over one thing: each term over it ((u² − 2u + 1)/(2√u))
+  if (a && a.k === 'frac' && a.num.k === 'add') { const d = a.den; a = add(a.num.terms.map(x => frac(x, cloneFresh(d)))); }
   if (!a || a.k !== 'add') return null;
   const r = checked(e, { eq: replace(e, t.arg.id, simplify(a, h)) as Eq, label: 'multiply out the inside', hints: h, factor: one, select: null });
   return isErr(r) ? null : r;

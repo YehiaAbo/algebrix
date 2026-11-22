@@ -1,20 +1,17 @@
 # Bank report
 
-307 of 310 solved by the engine (2026-11-22T11:15 UTC).
+314 of 314 solved by the engine (2026-11-22T11:20 UTC).
 
 | file | solved |
 |---|---|
-| classic.txt | 136/138 |
-| openstax-calc1.txt | 82/83 |
+| classic.txt | 142/142 |
 | openstax-algebra.txt | 36/36 |
+| openstax-calc1.txt | 83/83 |
 | openstax-calc2.txt | 47/47 |
 | sample.txt | 6/6 |
 
 | tag | solved |
 |---|---|
-| 0 times inf | 0/1 |
-| trig sub | 7/8 |
-| substitution | 10/11 |
 | product | 5/5 |
 | chain | 11/11 |
 | quotient | 3/3 |
@@ -34,11 +31,12 @@
 | by parts twice | 3/3 |
 | comes back | 4/4 |
 | identity | 2/2 |
-| odd power | 4/4 |
+| odd power | 5/5 |
 | even power | 1/1 |
 | even powers | 1/1 |
 | trick | 1/1 |
 | product to sum | 2/2 |
+| trig sub | 8/8 |
 | u-sub or trig sub | 1/1 |
 | partial fractions | 7/7 |
 | repeated factor | 1/1 |
@@ -56,6 +54,7 @@
 | factor | 2/2 |
 | conjugate | 3/3 |
 | e | 1/1 |
+| 0 times inf | 1/1 |
 | exponent | 1/1 |
 | lhopital thrice | 1/1 |
 | growth | 1/1 |
@@ -76,6 +75,8 @@
 | odd power bottom | 2/2 |
 | exponential rational | 2/2 |
 | improper | 2/2 |
+| u-sub leftover | 2/2 |
+| rationalizing | 1/1 |
 | linear | 4/4 |
 | complete the square | 1/1 |
 | quadratic formula | 2/2 |
@@ -90,6 +91,7 @@
 | exp and log derivatives | 7/7 |
 | antiderivatives | 3/3 |
 | FTC | 10/10 |
+| substitution | 11/11 |
 | exp and log integrals | 15/15 |
 | trig integrals | 10/10 |
 | trig substitution | 9/9 |
@@ -102,6 +104,4 @@
 
 ## Failures
 
-- **K-S5** (classic.txt:70, antideriv) `int sqrt(x^2 - 1)/x dx`: gave sqrt(1 − 1/(x^2))x − cos⁻¹(1/x) + C: its slope is not the integrand
-- **K-L8** (classic.txt:105, value) `lim x->0+ x ln x`: gave −0 = 0, numbers say NaN
-- **C1-5.5#283** (openstax-calc1.txt:66, antideriv) `int (y^5)/((1 - y^3 )^(3 / 2)) dy`: e stops: No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions). (at ∫ y^5/((1 − y^3)^(3/2)) dy)
+None.

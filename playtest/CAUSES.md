@@ -216,3 +216,6 @@ every core key on stress/corpus.txt; add an equation there for each new class.
 - **K39 A substitution on an improper integral failed:** the new end stayed cos⁻¹(1/∞), and tan θ near
   its pole read as undefined, so the numbers couldn't check the step. Ends at ∞ now land on the number
   they head to (π/2), and quadrature skips undefined points within 10⁻⁷ of an end. Guard: bookround.
+- **K40 u-substitution left x behind when it was a line in u** (y³ with u = 1 − y³, x⁴ = (u − 1)²), never
+  tried w = √u, and s left √u·u and u/u^(3/2) as they were. All four now go; odd sin over cos powers
+  (sin⁵/cos⁶) keep one sin back too. Bank 314/314. Guard: bookround.
