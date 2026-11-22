@@ -1,0 +1,409 @@
+<title>Algebrix Layouts</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+/* Layout: one frame (top bar, stage, graph, key line). Three layouts slide between each other:
+   Work (stage full, graph peek), Split (side by side), Graph (graph full, equations listed left). */
+:root {
+  --accent: #d97757;
+  /* light: white paper, near-black ink, hairlines (the Desmos lesson, not its look) */
+  --paper: #ffffff; --chrome: #fafafa; --ink: #16181c; --muted: #5d6168; --faint: #9a9ea6;
+  --line: #e4e5e8; --grid-minor: rgba(22, 24, 28, .055); --grid-major: rgba(22, 24, 28, .14); --axis: #3b3e44;
+  --sel: var(--accent); --sel-fill: color-mix(in oklab, var(--accent) 11%, transparent);
+  --key-bg: #ffffff; --key-edge: #d4d6da; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.08);
+  --curve-b: #2d6fd6;
+  --ui: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --math: "STIX Two Text", "Cambria Math", "Times New Roman", serif;
+  --ease: cubic-bezier(.3, .6, .2, 1);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1f1e1d; --chrome: #262624; --ink: #f2f0e8; --muted: #b1aea3; --faint: #7f7c73;
+    --line: #3a3935; --grid-minor: rgba(242, 240, 232, .04); --grid-major: rgba(242, 240, 232, .1); --axis: #b9b6ac;
+    --sel: color-mix(in oklab, var(--accent) 82%, white); --sel-fill: color-mix(in oklab, var(--accent) 18%, transparent);
+    --key-bg: #30302e; --key-edge: #4a4944; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.45);
+    --curve-b: #8fb2f5; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1f1e1d; --chrome: #262624; --ink: #f2f0e8; --muted: #b1aea3; --faint: #7f7c73;
+  --line: #3a3935; --grid-minor: rgba(242, 240, 232, .04); --grid-major: rgba(242, 240, 232, .1); --axis: #b9b6ac;
+  --sel: color-mix(in oklab, var(--accent) 82%, white); --sel-fill: color-mix(in oklab, var(--accent) 18%, transparent);
+  --key-bg: #30302e; --key-edge: #4a4944; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.45);
+  --curve-b: #8fb2f5; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 var(--ui); overflow: hidden; }
+button { font: inherit; color: inherit; }
+kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px;
+  background: var(--key-bg); box-shadow: 0 0 0 1px var(--key-edge) inset, 0 1px 0 var(--key-edge); font: 600 11px/1 var(--ui); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+
+/* top bar: one thin line. name, the tree strip, the layout switch, settings */
+.top { display: flex; align-items: center; gap: 14px; height: 52px; border-bottom: 1px solid var(--line);
+  padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -.01em; }
+.brand i { font: italic 20px/1 var(--math); color: var(--sel); }
+.work { border: 0; background: none; color: var(--muted); padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.work:hover { background: var(--sel-fill); color: var(--ink); }
+.strip { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.step { flex: none; font: 15px/1 var(--math); color: var(--muted); padding: 5px 8px; border-radius: 6px; white-space: nowrap; cursor: pointer; border: 0; background: none; }
+.step:hover { color: var(--ink); }
+.step.now { color: var(--ink); box-shadow: 0 0 0 1.5px var(--sel) inset; }
+.arrow { flex: none; color: var(--faint); font-size: 11px; }
+.seg { display: flex; padding: 2px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line) inset; }
+.seg button { border: 0; background: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 500; font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--sel-fill); color: var(--ink); box-shadow: 0 0 0 1px color-mix(in oklab, var(--sel) 45%, transparent) inset; }
+.icon { width: 32px; height: 32px; display: grid; place-items: center; border: 0; background: none; border-radius: 8px; cursor: pointer; color: var(--muted); }
+.icon:hover { background: var(--sel-fill); color: var(--ink); }
+.icon svg { width: 18px; height: 18px; }
+
+/* the body: list | stage | graph. Widths slide between layouts */
+.body { position: relative; display: flex; min-height: 0; overflow: hidden; }
+.list, .stage, .graph { min-width: 0; transition: flex-basis .42s var(--ease), opacity .3s var(--ease); }
+.list { flex: 0 0 0%; overflow: hidden; border-right: 1px solid transparent; }
+.stage { flex: 1 1 100%; position: relative; display: grid; place-items: center; }
+.graph { flex: 0 0 0%; position: relative; overflow: hidden; }
+.graph canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+[data-layout="split"] .stage { flex-basis: 52%; }
+[data-layout="split"] .graph { flex-basis: 48%; }
+[data-layout="graph"] .list { flex-basis: 340px; border-right-color: var(--line); }
+[data-layout="graph"] .stage { flex: 0 0 0%; opacity: 0; }
+[data-layout="graph"] .graph { flex: 1 1 100%; }
+.divider { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -4px; cursor: col-resize; z-index: 3; display: none; }
+.divider::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.divider:hover::after { background: var(--sel); }
+[data-layout="split"] .divider { display: block; }
+
+/* the stage: the equation, with chips for letters and conditions only when there is something to say */
+.eqwrap { display: grid; justify-items: center; gap: 22px; padding: 24px; }
+.eq { font: 64px/1.1 var(--math); white-space: nowrap; letter-spacing: .01em; }
+.eq i { font-style: italic; }
+.eq sup { font-size: .58em; vertical-align: .9em; line-height: 0; }
+.aim { border-radius: 8px; padding: 0 4px; margin: 0 -4px; background: var(--sel-fill); box-shadow: 0 0 0 2px var(--sel); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; box-shadow: 0 0 0 1px var(--line) inset; color: var(--muted); font-size: 12.5px; }
+.chip b { font: italic 400 16px/1 var(--math); color: var(--ink); }
+.say { color: var(--muted); font-size: 13px; text-align: center; max-width: 52ch; }
+
+/* graph peek: Work layout keeps a live card in the corner */
+.peek { position: absolute; right: 18px; bottom: 18px; width: 248px; height: 164px; border-radius: 12px; overflow: hidden;
+  background: var(--paper); box-shadow: 0 0 0 1px var(--line), var(--shadow); cursor: pointer; border: 0; padding: 0;
+  transition: opacity .3s var(--ease), transform .42s var(--ease); }
+.peek canvas { width: 100%; height: 100%; display: block; }
+.peek span { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); display: flex; gap: 5px; align-items: center; background: color-mix(in oklab, var(--paper) 85%, transparent); padding: 2px 4px; border-radius: 5px; }
+[data-layout="split"] .peek, [data-layout="graph"] .peek { opacity: 0; transform: translate(20px, 20px) scale(.9); pointer-events: none; }
+
+/* Graph layout: the equations as a list, Desmos-style rows */
+.rows { width: 340px; }
+.row { display: grid; grid-template-columns: 26px 1fr; border-bottom: 1px solid var(--line); min-height: 64px; }
+.row .n { display: grid; place-items: start center; padding-top: 8px; font-size: 10.5px; color: var(--faint); background: var(--chrome); border-right: 1px solid var(--line); }
+.row .n i { display: block; width: 14px; height: 14px; border-radius: 50%; margin-top: 6px; }
+.row .m { padding: 12px 14px; display: grid; gap: 6px; }
+.row .m .tex { font: 20px/1.2 var(--math); }
+.row .m .tex sup { font-size: .6em; vertical-align: .8em; line-height: 0; }
+.row .m small { color: var(--muted); font-size: 12px; }
+.row.cur .n { box-shadow: 3px 0 0 var(--sel) inset; }
+.row.add .m { color: var(--faint); font-size: 13px; align-content: center; }
+
+.gnote { position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: var(--muted); background: color-mix(in oklab, var(--paper) 88%, transparent); padding: 4px 8px; border-radius: 6px; box-shadow: 0 0 0 1px var(--line); }
+.gnote b { font: italic 400 15px var(--math); color: var(--ink); }
+
+/* key line: one line, it changes with what you are doing */
+.keys { display: flex; align-items: center; gap: 16px; height: 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+  padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.keys .what { color: var(--ink); font: 16px var(--math); margin-right: 4px; }
+.keys span { display: inline-flex; gap: 6px; align-items: center; }
+.keys .sp { flex: 1; }
+
+/* settings sheet */
+.sheet { position: fixed; top: 60px; right: max(12px, env(safe-area-inset-right, 0px)); width: min(360px, calc(100% - 24px)); z-index: 20; background: var(--paper);
+  border-radius: 14px; box-shadow: 0 0 0 1px var(--line), var(--shadow); padding: 16px; display: grid; gap: 16px;
+  transform-origin: top right; transition: opacity .2s var(--ease), transform .28s var(--ease); }
+.sheet.closed { opacity: 0; transform: scale(.96) translateY(-6px); pointer-events: none; }
+.sheet h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.sheet h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.swatches { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+.sw { aspect-ratio: 1; max-width: 100%; border-radius: 50%; border: 0; cursor: pointer; background: var(--c); box-shadow: 0 0 0 1px rgba(0,0,0,.08) inset; position: relative; }
+.sw[aria-pressed="true"]::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ink); }
+.sw.custom { background: conic-gradient(#e5484d, #f5a524, #46a758, #3e63dd, #8e4ec6, #e5484d); overflow: hidden; }
+.sw.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.opts { display: flex; gap: 6px; flex-wrap: wrap; }
+.opt { border: 0; padding: 6px 11px; border-radius: 7px; cursor: pointer; box-shadow: 0 0 0 1px var(--line) inset; background: none; color: var(--muted); font-size: 13px; }
+.opt[aria-pressed="true"] { color: var(--ink); background: var(--sel-fill); box-shadow: 0 0 0 1px var(--sel) inset; }
+.links { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.links button { text-align: left; border: 0; background: var(--chrome); padding: 8px 10px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+
+/* the brief for the reviewer: small, out of the way */
+.brief { position: fixed; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 54px; z-index: 15; width: min(330px, calc(100% - 24px)); background: var(--paper); border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--line), var(--shadow); padding: 12px 14px; font-size: 12.5px; color: var(--muted); display: grid; gap: 6px; }
+.brief strong { color: var(--ink); font-size: 13px; }
+.brief ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; }
+.brief button { justify-self: start; border: 0; background: none; color: var(--sel); cursor: pointer; padding: 0; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .strip, .work { display: none; }
+  .top { gap: 8px; }
+  .seg button { padding: 5px 8px; }
+  .eq { font-size: 42px; }
+  [data-layout="graph"] .list { display: none; }
+  [data-layout="split"] .body { flex-direction: column; }
+  [data-layout="split"] .stage, [data-layout="split"] .graph { flex-basis: 50%; }
+  [data-layout="split"] .divider { display: none; }
+  .peek { width: 160px; height: 110px; right: 12px; bottom: 12px; }
+  .brief { bottom: 54px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition-duration: 0s !important; } }
+</style>
+
+<div class="app" id="app" data-layout="work">
+  <header class="top">
+    <div class="brand"><i>a</i>algebrix</div>
+    <button class="work" id="work" type="button">Work 1</button>
+    <nav class="strip" aria-label="Steps">
+      <button class="step" type="button"><i>x</i>² + <i>x</i> = 6</button><span class="arrow">→</span>
+      <button class="step" type="button"><i>x</i>² + <i>x</i> − 6 = 0</button><span class="arrow">→</span>
+      <button class="step now" type="button">(<i>x</i> + 3)(<i>x</i> − 2) = 0</button>
+    </nav>
+    <div class="seg" role="group" aria-label="Layout">
+      <button type="button" data-l="work" aria-pressed="true">Work</button>
+      <button type="button" data-l="split" aria-pressed="false">Split</button>
+      <button type="button" data-l="graph" aria-pressed="false">Graph</button>
+    </div>
+    <button class="icon" id="themeBtn" type="button" aria-label="Light or dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
+    <button class="icon" id="setBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+  </header>
+
+  <main class="body" id="body">
+    <aside class="list" aria-label="Equations">
+      <div class="rows">
+        <div class="row cur"><div class="n">1<i style="background:var(--sel)"></i></div><div class="m"><div class="tex">(<i>x</i> + 3)(<i>x</i> − 2) = 0</div><small>sides cross at <i>x</i> = −3, 2</small></div></div>
+        <div class="row"><div class="n">2<i style="background:var(--curve-b)"></i></div><div class="m"><div class="tex"><i>y</i> = 6</div><small>the right side, as a line</small></div></div>
+        <div class="row add"><div class="n">3</div><div class="m">n adds an equation</div></div>
+      </div>
+    </aside>
+    <section class="stage" aria-label="Work">
+      <div class="eqwrap">
+        <div class="eq"><span class="aim">(<i>x</i> + 3)</span>(<i>x</i> − 2) = 0</div>
+        <div class="chips"><span class="chip"><b>x</b> real number</span><span class="chip">two cases next: one factor is 0</span></div>
+      </div>
+      <button class="peek" id="peek" type="button" aria-label="Open the graph beside the work"><canvas id="peekc"></canvas><span><kbd>g</kbd> graph</span></button>
+    </section>
+    <div class="divider" id="divider" role="separator" aria-label="Drag to resize"></div>
+    <section class="graph" aria-label="Graph"><canvas id="graphc"></canvas><div class="gnote">sides cross at <b>x</b> = −3, 2</div></section>
+  </main>
+
+  <footer class="keys" id="keys">
+    <span class="what">(x + 3) aimed</span>
+    <span><kbd>←</kbd><kbd>→</kbd> walk</span>
+    <span><kbd>=</kbd><kbd>−</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span>
+    <span><kbd>Tab</kbd> algebra</span>
+    <span><kbd>e</kbd> solve</span>
+    <span class="sp"></span>
+    <span><kbd>g</kbd> <span id="gnext">split</span></span>
+    <span><kbd>,</kbd> settings</span>
+  </footer>
+</div>
+
+<div class="sheet closed" id="sheet" role="dialog" aria-label="Settings">
+  <h2>Settings</h2>
+  <div>
+    <h3>Accent</h3>
+    <div class="swatches" id="swatches"></div>
+    <p class="note" style="margin-top:8px">Aim, tree and your first curve all take it. In dark mode it is lifted a little so it stays readable.</p>
+  </div>
+  <div>
+    <h3>Theme</h3>
+    <div class="opts" id="themes">
+      <button class="opt" type="button" data-t="system" aria-pressed="true">System</button>
+      <button class="opt" type="button" data-t="light" aria-pressed="false">Light</button>
+      <button class="opt" type="button" data-t="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <div>
+    <h3>Also here now</h3>
+    <div class="links">
+      <button type="button">Manual <kbd>?</kbd></button>
+      <button type="button">Tours</button>
+      <button type="button">Sound pack</button>
+      <button type="button">Speed</button>
+    </div>
+  </div>
+</div>
+
+<div class="brief" id="brief">
+  <strong>Mockup: not the real app yet</strong>
+  <ul>
+    <li><kbd>g</kbd> or the switch: Work, Split, Graph</li>
+    <li><kbd>t</kbd> light or dark, <kbd>,</kbd> settings with the accent picker</li>
+    <li>Click the small graph to open it beside the work</li>
+    <li>In Split, drag the line between them</li>
+  </ul>
+  <button type="button" id="hideBrief">Hide</button>
+</div>
+
+<script>
+(() => {
+  const app = document.getElementById('app');
+  const root = document.documentElement;
+  const order = ['work', 'split', 'graph'];
+  const names = { work: 'work', split: 'split', graph: 'graph' };
+  let splitAt = 52;
+
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+  // layouts
+  function setLayout(l) {
+    app.dataset.layout = l;
+    document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.l === l)));
+    document.getElementById('gnext').textContent = names[order[(order.indexOf(l) + 1) % 3]];
+    const stage = document.querySelector('.stage'), graph = document.querySelector('.graph');
+    if (l === 'split') { stage.style.flexBasis = splitAt + '%'; graph.style.flexBasis = (100 - splitAt) + '%'; }
+    else { stage.style.flexBasis = ''; graph.style.flexBasis = ''; }
+    placeDivider();
+    animateDraw();
+  }
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => setLayout(b.dataset.l)));
+  document.getElementById('peek').addEventListener('click', () => setLayout('split'));
+
+  // the divider in Split
+  const divider = document.getElementById('divider'), body = document.getElementById('body');
+  function placeDivider() { divider.style.left = splitAt + '%'; }
+  divider.addEventListener('pointerdown', e => {
+    divider.setPointerCapture(e.pointerId);
+    const stage = document.querySelector('.stage'), graph = document.querySelector('.graph');
+    stage.style.transition = graph.style.transition = 'none';
+    const move = ev => {
+      const r = body.getBoundingClientRect();
+      splitAt = Math.min(75, Math.max(30, (ev.clientX - r.left) / r.width * 100));
+      stage.style.flexBasis = splitAt + '%'; graph.style.flexBasis = (100 - splitAt) + '%'; placeDivider(); draw();
+    };
+    const up = () => { divider.removeEventListener('pointermove', move); stage.style.transition = graph.style.transition = ''; };
+    divider.addEventListener('pointermove', move);
+    divider.addEventListener('pointerup', up, { once: true });
+  });
+
+  // theme
+  function setTheme(t) {
+    if (t === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
+    document.querySelectorAll('#themes .opt').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.t === t)));
+    store.set('mock.theme', t);
+    requestAnimationFrame(draw);
+  }
+  const isDark = () => getComputedStyle(root).colorScheme.includes('dark');
+  document.getElementById('themeBtn').addEventListener('click', () => setTheme(isDark() ? 'light' : 'dark'));
+  document.querySelectorAll('#themes .opt').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.t)));
+
+  // accent
+  const presets = [['Ember', '#d97757'], ['Blue', '#2d6fd6'], ['Violet', '#7c5cff'], ['Teal', '#14958a'], ['Green', '#3f9a4a'], ['Amber', '#c98a12'], ['Red', '#d6453d'], ['Pink', '#d4508f']];
+  const sw = document.getElementById('swatches');
+  function setAccent(c) {
+    root.style.setProperty('--accent', c);
+    // the second curve keeps clear of the accent's hue: blue, unless the accent is already blue-ish
+    const h = hue(c);
+    const blueish = h > 190 && h < 270;
+    document.body.style.setProperty('--curve-b', blueish ? (isDark() ? '#f0a46b' : '#d9821a') : '');
+    sw.querySelectorAll('.sw').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === c)));
+    store.set('mock.accent', c);
+    requestAnimationFrame(draw);
+  }
+  presets.forEach(([n, c]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'sw'; b.style.setProperty('--c', c); b.dataset.c = c; b.title = n; b.setAttribute('aria-label', n);
+    b.addEventListener('click', () => setAccent(c));
+    sw.appendChild(b);
+  });
+  const cust = document.createElement('label');
+  cust.className = 'sw custom'; cust.title = 'Your own';
+  cust.innerHTML = '<input type="color" id="customColor" aria-label="Your own colour" value="#d97757">';
+  sw.appendChild(cust);
+  cust.querySelector('input').addEventListener('input', e => setAccent(e.target.value));
+  function hue(hex) {
+    const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (!d) return 0;
+    let h = mx === r ? (g - b) / d % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return (h * 60 + 360) % 360;
+  }
+
+  // settings sheet
+  const sheet = document.getElementById('sheet');
+  const toggleSheet = open => sheet.classList.toggle('closed', open === undefined ? !sheet.classList.contains('closed') : !open);
+  document.getElementById('setBtn').addEventListener('click', e => { e.stopPropagation(); toggleSheet(); });
+  document.addEventListener('click', e => { if (!sheet.contains(e.target) && e.target.id !== 'setBtn') toggleSheet(false); });
+
+  document.getElementById('hideBrief').addEventListener('click', () => { document.getElementById('brief').hidden = true; });
+
+  // keys
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'g') setLayout(order[(order.indexOf(app.dataset.layout) + 1) % 3]);
+    else if (e.key === 't') setTheme(isDark() ? 'light' : 'dark');
+    else if (e.key === ',') toggleSheet();
+    else if (e.key === 'Escape') toggleSheet(false);
+  });
+
+  // the graph: y = x² + x and y = 6, Desmos-clean grid
+  const css = n => getComputedStyle(document.body).getPropertyValue(n).trim();
+  function plot(cv, opts) {
+    const r = cv.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = r.width, H = r.height;
+    const unit = opts.unit, ox = W / 2 + opts.cx * unit, oy = H / 2 + opts.cy * unit;
+    const X = x => ox + x * unit, Y = y => oy - y * unit;
+    c.fillStyle = css('--paper'); c.fillRect(0, 0, W, H);
+    const x0 = Math.floor(-ox / unit), x1 = Math.ceil((W - ox) / unit), y0 = Math.floor(-(H - oy) / unit), y1 = Math.ceil(oy / unit);
+    const step = opts.step;
+    c.lineWidth = 1;
+    for (let i = x0; i <= x1; i++) { c.strokeStyle = i % (step * 5) === 0 ? css('--grid-major') : css('--grid-minor'); if (i % step) continue; c.beginPath(); c.moveTo(Math.round(X(i)) + .5, 0); c.lineTo(Math.round(X(i)) + .5, H); c.stroke(); }
+    for (let j = y0; j <= y1; j++) { c.strokeStyle = j % (step * 5) === 0 ? css('--grid-major') : css('--grid-minor'); if (j % step) continue; c.beginPath(); c.moveTo(0, Math.round(Y(j)) + .5); c.lineTo(W, Math.round(Y(j)) + .5); c.stroke(); }
+    c.strokeStyle = css('--axis'); c.lineWidth = 1.25;
+    c.beginPath(); c.moveTo(0, Math.round(Y(0)) + .5); c.lineTo(W, Math.round(Y(0)) + .5); c.moveTo(Math.round(X(0)) + .5, 0); c.lineTo(Math.round(X(0)) + .5, H); c.stroke();
+    // y = 6
+    c.lineWidth = opts.lw; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = css('--curve-b'); c.beginPath(); c.moveTo(0, Y(6)); c.lineTo(W, Y(6)); c.stroke();
+    // y = x² + x
+    c.strokeStyle = css('--sel'); c.beginPath();
+    let first = true;
+    for (let px = 0; px <= W; px += 1) { const x = (px - ox) / unit, y = x * x + x; const py = Y(y); if (py < -50 || py > H + 50) { first = true; continue; } first ? c.moveTo(px, py) : c.lineTo(px, py); first = false; }
+    c.stroke();
+    for (const x of [-3, 2]) { c.beginPath(); c.arc(X(x), Y(6), opts.dot, 0, 7); c.fillStyle = css('--paper'); c.fill(); c.lineWidth = 2; c.strokeStyle = css('--ink'); c.stroke(); }
+    if (opts.labels) {
+      c.font = '11px ' + css('--ui'); c.lineWidth = 3; c.strokeStyle = css('--paper'); c.fillStyle = css('--muted'); c.lineJoin = 'round';
+      const txt = (t, x, y) => { c.strokeText(t, x, y); c.fillText(t, x, y); };
+      c.textAlign = 'center'; c.textBaseline = 'top';
+      for (let i = x0; i <= x1; i++) if (i && i % opts.label === 0 && X(i) > 14 && X(i) < W - 14) txt(String(i).replace('-', '−'), X(i), Y(0) + 5);
+      c.textAlign = 'right'; c.textBaseline = 'middle';
+      for (let j = y0; j <= y1; j++) if (j && j % opts.label === 0 && Y(j) > 10 && Y(j) < H - 10) txt(String(j).replace('-', '−'), X(0) - 6, Y(j));
+    }
+  }
+  function draw() {
+    const g = document.getElementById('graphc'), p = document.getElementById('peekc');
+    const gw = g.getBoundingClientRect().width;
+    plot(g, { unit: Math.max(22, Math.min(46, gw / 22)), cx: 0, cy: 3.2, step: 1, label: 2, labels: true, lw: 2.5, dot: 4.5 });
+    plot(p, { unit: 13, cx: 0.5, cy: 2.6, step: 1, label: 5, labels: false, lw: 2, dot: 3 });
+  }
+  // redraw every frame while a layout slides
+  let until = 0;
+  function animateDraw() { until = performance.now() + 520; const f = t => { draw(); if (t < until) requestAnimationFrame(f); }; requestAnimationFrame(f); }
+  new ResizeObserver(() => draw()).observe(document.getElementById('graphc'));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => requestAnimationFrame(draw));
+
+  const saved = store.get('mock.theme');
+  if (saved) setTheme(saved);
+  else document.querySelectorAll('#themes .opt').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.t === (root.getAttribute('data-theme') || 'system'))));
+  setAccent(store.get('mock.accent') || '#d97757');
+  setLayout('work');
+  document.fonts && document.fonts.ready.then(draw);
+})();
+</script>
