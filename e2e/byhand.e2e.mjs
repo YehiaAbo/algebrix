@@ -259,8 +259,35 @@ export const tests = {
     await load('g(t) = 2t + 1');
     await key('n'); await type('x + 1 = 5'); await key('Enter');
     await until(s => s.slots === 2, 'a second equation');
-    await key('f', '1');
-    await until(s => s.eq === 'g(x + 1) = g(5)', 'your g, first in the menu, on key 1');
+    await key('f', '1'); await key('Enter');
+    await until(s => s.eq === 'g(x + 1) = g(5)', 'your g, first in the menu, on key 1: Enter on nothing puts it on both sides');
+  },
+
+  async 'your functions in the f menu: put a value in, i undoes one, - writes out its inverse, f⁻¹ cancels f'(h) {
+    const { load, key, type, until, p, assert } = h;
+    await load('f(x) = 2x + 3');
+    await key('f'); await key('1'); await type('4');
+    await until(() => true, '');
+    const note = await p.evaluate(() => document.querySelector('#pal-note').textContent);
+    assert(note.includes('= 11'), `the value shows while typing: ${note}`);
+    await key('Enter');
+    await until(s => s.slots === 2 && s.eq.startsWith('f(4) = '), 'f(4) is an equation of its own');
+    await key('s');
+    await until(s => s.eq === 'f(4) = 11', 's works it out and keeps f(4)');
+    await key('n'); await type('f(x - 1) = 9'); await key('Enter');
+    await key('f'); await key('i');
+    await until(s => s.eq === 'x − 1 = f⁻¹(9)', 'i undoes f: f⁻¹ both sides');
+    await key('s');
+    await until(s => s.eq === 'x − 1 = 3', 's works out f⁻¹(9) before its formula is written');
+    await key('f'); await key('-');
+    await until(s => s.eq === 'f⁻¹(x) = (x − 3)/2', '- writes out the inverse');
+    await key('n'); await type('y = f^-1(f(x)) + f(f^-1(2))'); await key('Enter');
+    await key('s'); await until(s => s.eq === 'y = x + f(f⁻¹(2))', 'one press, one spot: f⁻¹(f(x)) is x');
+    await key('s');
+    await until(s => s.eq === 'y = x + 2', 'f⁻¹ and f cancel');
+    await load('x^(1/2) = 3');
+    await key('f'); await key('q');
+    await until(s => s.eq.startsWith('(x^(1/2))^2'), 'q squares (1–9 are for your functions)');
   },
 
   async 'a defined function is used, not redefined: f(a) = 10 solves, s works out f(3), the definition moves freely'(h) {

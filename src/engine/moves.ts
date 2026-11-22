@@ -379,7 +379,7 @@ function addEquation(e: Eq, op: string, coefText: string, j: number, others: Eq[
   if (op !== '+' && op !== '-') return { error: 'Equations can be added or subtracted, like “-2#2”.' };
   const o = others[j - 1];
   if (!o) return { error: `There is no equation ${j}.` };
-  if (relOf(o) !== '=') return { error: `Equation ${j} isn’t an equation (it’s ${relOf(o) === 'expr' ? 'an expression' : 'an inequality or a definition'}), so it can’t be added to both sides.` };
+  if (relOf(o) !== '=' && relOf(o) !== 'def') return { error: `Equation ${j} isn’t an equation (it’s ${relOf(o) === 'expr' ? 'an expression' : 'an inequality'}), so it can’t be added to both sides.` };
   let k: Node;
   try { k = coefText.trim() ? parseExpr(coefText) : num(1); } catch (err) { return { error: (err as Error).message }; }
   if (hasSymbols(k)) return { error: 'Use a plain number to multiply the other equation by.' };

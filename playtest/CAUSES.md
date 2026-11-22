@@ -98,3 +98,27 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   size by width/height on the main thread, snapping edges to whole pixels, so walking with the
   arrows looked less smooth than the screen's rate. It is now nine pieces that only move by
   transform (aimBox in shared.ts). Rule: anything that moves every key press moves by transform.
+- **K15 Fixes landed in one move instead of where the gap was.** K13 taught only d/dt both sides
+  to give an ∫ with no bounds a value, so the very next move (∫ both sides dt on I′(t) = …) hit
+  the same wall. Two more gates stood in the way: I′(t) = … typed or reloaded was read as a new
+  definition (a primed name defining itself), and several both-sides moves (∫ both sides, a
+  function of both sides, adding an equation in) refused anything marked a definition, though a
+  definition is an equation. Now the evaluator itself reads ∫ … dx as one fixed antiderivative
+  whenever the safety net checks (so every move gets it; the special case in d/dt is gone), a
+  primed name never defines, and every both-sides move takes a definition as the equation it is.
+  When an integral truly has no formula (eᵘ/u, sin u/u, e^(−u²), 1/ln u, sin u²) e says which
+  famous one it is instead of "no rule fits". Rule: when a fix is about what something *is* (has
+  a value, is an equation), put it where that is decided, not in the move that tripped on it.
+  Guard: tests/functions.test.ts (K15).
+- **K16 The f menu only knew one thing to do with a function: put it on both sides.** Your own
+  functions sat on 1–9 but only wrapped both sides, so there was no way to put a value in from
+  the menu; and the 1–9 handler refused before the families saw the key, so square (2), cube (3)
+  and flip (1) had silently stopped working, as had b to the (b, taken by naming). Inverses of your
+  functions didn't exist: f⁻¹ couldn't be typed (f^-1(x) read as a power), had no value, never
+  cancelled, and i (undo the outer layer) ignored calls. Now 1–9 put a value in (Enter on nothing
+  still wraps both sides), the families use letters (q, u, v, p), f⁻¹ parses wherever f is a
+  function, has a value from f itself before its formula exists (and s finds exact ones), cancels
+  f both ways for a one-to-one f, i and m undo your f (refusing, with the reason, when f isn't
+  one-to-one), and - writes out f⁻¹. s leaves f(4) alone in f(4) = 2·4 + 3 (it is the subject).
+  Rule: one key, one meaning in a menu; a menu row never swallows keys another row shows.
+  Guards: tests/functions.test.ts (K16), e2e byhand "your functions in the f menu".

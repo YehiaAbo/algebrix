@@ -204,6 +204,31 @@ function rational(u: Node): { p: Node; label: string } | null {
   return ld && key(ld) !== key(u) ? { p: ld, label: 'long division' } : null;
 }
 
+/** the well-known integrals with no elementary antiderivative, by name: eᵘ/u, sin u/u, e^(−u²),
+ *  1/ln u, sin(u²), with u any linear a·v + b (and a constant base for the power) */
+function noFormula(u: Node, v: string): string | null {
+  const linear = (n: Node) => { const d = derivative(n, v); return !!d && dependsOn(n, v) && !dependsOn(d, v); };
+  const expOf = (n: Node): Node | null => n.k === 'pow' && !dependsOn(n.base, v) ? n.exp : null;
+  const square = (n: Node) => n.k === 'pow' && n.exp.k === 'num' && n.exp.v === 2 && linear(n.base);
+  const lone = (n: Node) => (n.k === 'mul' ? n.factors.filter(f => dependsOn(f, v)) : [n]);
+  if (u.k === 'frac' && linear(u.den)) {
+    const top = lone(u.num);
+    if (top.length === 1) {
+      const t = top[0], x = expOf(t);
+      if (x && linear(x)) return 'the exponential integral, Ei';
+      if (t.k === 'fn' && (t.name === 'sin' || t.name === 'cos') && linear(t.arg)) return t.name === 'sin' ? 'the sine integral, Si' : 'the cosine integral, Ci';
+    }
+  }
+  if (u.k === 'frac' && !dependsOn(u.num, v) && u.den.k === 'fn' && u.den.name === 'ln' && linear(u.den.arg)) return 'the logarithmic integral, li';
+  const one = lone(u);
+  if (one.length === 1) {
+    const t = one[0], x = expOf(t);
+    if (x && (square(x) || (x.k === 'neg' && square(x.arg)) || (x.k === 'mul' && lone(x).length === 1 && square(lone(x)[0])))) return 'the error function, erf';
+    if (t.k === 'fn' && (t.name === 'sin' || t.name === 'cos') && square(t.arg)) return 'a Fresnel integral';
+  }
+  return null;
+}
+
 /** C + i: one integration rule on one integral */
 export function intStep(e: Eq, sel: string | null): MoveResult {
   const T = target(e, sel, 'int');
@@ -243,7 +268,11 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
     const top = u.num.k === 'num' && u.num.v === 1 ? up : mul([fresh(u.num), up]);
     return checked(e, { eq: replace(e, T.arg.id, top), label: '1/aᵘ = a⁻ᵘ', hints: newHints(), factor: one, select: null, rule: 'simplify' });
   }
-  else return { error: 'No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions).' };
+  else {
+    const known = noFormula(u, v);
+    if (known) return { error: `∫ ${toText(u)} d${v} has no formula in ordinary functions (it is ${known}), so no rule can finish it.${def ? '' : ' With bounds, it is still a number.'}` };
+    return { error: 'No rule fits as it stands. Name a piece (b) and sub it in, try by parts (C + b), or rewrite the inside first (Tab: expand, partial fractions).' };
+  }
   return finish(e, T, next, label);
 }
 

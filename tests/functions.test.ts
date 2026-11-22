@@ -2,11 +2,12 @@
 // that already means something is used (not redefined), and every box takes values as typed.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseEquation, setRedefining } from '../src/engine/parse';
-import { Eq, walk, LETS, DEFS, relOf } from '../src/engine/ast';
-import { isErr } from '../src/engine/moves';
+import { Eq, Node, walk, LETS, DEFS, relOf } from '../src/engine/ast';
+import { isErr, checked } from '../src/engine/moves';
 import { toText } from '../src/engine/print';
-import { nameIt, putValue, tryValue } from '../src/engine/general';
-import { simplifySpot, moveAny } from '../src/engine/techniques';
+import { nameIt, putValue, tryValue, integrateBoth } from '../src/engine/general';
+import { intStep } from '../src/engine/integrate';
+import { simplifySpot, moveAny, applyFn, fnTemplate, tidy, peel } from '../src/engine/techniques';
 import { bothSides, finishCalc } from '../src/engine/calcmoves';
 
 const T = (e: Eq) => toText(e);
@@ -165,5 +166,53 @@ describe('d/dt both sides of a function defined by an ∫ with no bounds', () =>
     expect(f.stuck).toBe(undefined);
     expect(f.steps.map(s => s.label)).toContain('Leibniz rule: d/dt under the ∫');
     expect(T(f.steps[f.steps.length - 1].eq)).toBe('I′(t) = x^(t + 1)/(t + 1) + C');
+  });
+});
+
+describe('a definition is an equation: every both-sides move takes it (K15)', () => {
+  it('I′(t) = … typed is about the slope of I, not a new definition', () => {
+    define('I(t) = int (x^t - 1)/ln x dx');
+    expect(parseEquation("I'(t) = x^(t+1)/(t+1) + C").rel).toBe(undefined);
+  });
+  it('∫ both sides dt after d/dt on I(t) = ∫ (x^t − 1)/ln x dx (no bounds), then the famous integral is named', () => {
+    const d = define('I(t) = int (x^t - 1)/ln x dx');
+    const b = bothSides(d, 't');
+    if (isErr(b)) throw new Error(b.error);
+    const f = finishCalc(b.eq);
+    const r = integrateBoth(f.steps[f.steps.length - 1].eq, 't');
+    if (isErr(r)) throw new Error(r.error);
+    expect(T(r.eq)).toBe('∫ I′(t) dt = ∫ (x^(t + 1)/(t + 1) + C) dt');
+    const stuck = intStep(parseEquation('y = int x^u/u du'), null);
+    expect(isErr(stuck) && stuck.error).toContain('exponential integral');
+  });
+  it('∫ both sides and a function of both sides on a definition itself', () => {
+    const d = define('f(x) = x^2 + 1');
+    expect(isErr(integrateBoth(d, 'x'))).toBe(false);
+    expect(isErr(applyFn(d, fnTemplate('ln') as Node))).toBe(false);
+  });
+  it('the definite Feynman path: I′(t) = 1/(t + 1) integrates to I(t) = ln|t + 1| + C', () => {
+    define('I(t) = int_0^1 (x^t - 1)/ln x dx');
+    const r = integrateBoth(parseEquation("I'(t) = 1/(t+1)"), 't');
+    if (isErr(r)) throw new Error(r.error);
+    let e = r.eq;
+    for (let i = 0; i < 2; i++) { const s = intStep(e, null); if (isErr(s)) throw new Error(s.error); e = s.eq; }
+    expect(T(e)).toBe('I(t) = ln|t + 1| + C');
+  });
+});
+
+describe('inverses of your functions (K16)', () => {
+  it('f⁻¹ parses, has a value before its formula, cancels f, and i undoes f', () => {
+    define('f(x) = 2x + 3');
+    define('g(x) = x^2');
+    expect(T(parseEquation('y = f^-1(x)'))).toBe('y = f⁻¹(x)');
+    expect(T(parseEquation('y = x^-1(x + 1)'))).toBe('y = x^(−1)(x + 1)');
+    const t = tidy(parseEquation('y = f^-1(f(x)) + f(f⁻¹(2)) + f^-1(4)'));
+    expect(t && T(t.eq)).toBe('y = x + 5/2');
+    const r = peel(parseEquation('f(x + 1) = 7'), null);
+    if (isErr(r)) throw new Error(r.error);
+    const c = checked(parseEquation('f(x + 1) = 7'), r);
+    expect(isErr(c) ? c.error : T(c.eq)).toBe('x + 1 = f⁻¹(7)');
+    const g = peel(parseEquation('g(x) = 9'), null);
+    expect(isErr(g) && g.error).toContain('one-to-one');
   });
 });

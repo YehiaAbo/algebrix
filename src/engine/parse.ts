@@ -6,7 +6,7 @@ import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel
 /** f, g, h, and any function you named (b, then I(t)) read as calls when a bracket follows */
 /** a letter this equation defines as a function (I in I(t) = …), while it is being read */
 let DEFINING: string | null = null;
-const isFnName = (name: string) => FUNC_NAMES.includes(name) || DEFS.has(name) || name === DEFINING;
+const isFnName = (name: string): boolean => FUNC_NAMES.includes(name) || DEFS.has(name) || name === DEFINING || (name.endsWith('⁻¹') && isFnName(name.slice(0, -2)));
 import { negate, gcd, isNeg } from './terms';
 
 type Tok = ({ t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string }) & { space?: boolean };
@@ -169,6 +169,9 @@ function tokenize(src: string): Tok[] {
       i += sub ? 1 + sub[0].length : 1;
       // primes: y′, f'(x), y''
       while (s[i] === "'" || s[i] === '′' || s[i] === '″') { name += s[i] === '″' ? '′′' : '′'; i++; }
+      // f⁻¹(x), f^-1(x): the inverse of a function (only of a function: x^-1(x + 1) is still a power)
+      const inv = isFnName(name) ? /^\^(?:\{-1\}|-1|\(-1\))(?=\s*\()/.exec(s.slice(i)) : null;
+      if (inv) { name += '⁻¹'; i += inv[0].length; }
       out.push({ t: 'id', v: name.replace(/′′/g, '″').replace(/″′/g, '‴') }); continue;
     }
     if ((c === '<' || c === '>') && s[i + 1] === '=') { out.push({ t: 'op', v: c === '<' ? '≤' : '≥' }); i += 2; continue; }
@@ -564,6 +567,7 @@ export function parseEquation(src: string, allowExpr = false): Eq {
   });
   // f(x) = … defines f, when f is new. Once f means something, f(a) = 10 or f(x) = 7 is an
   // equation about it (to solve), not a second definition
-  if (rel === '=' && lhs.k === 'call' && lhs.arg.k === 'sym' && definesAnew(lhs.name, lhs.arg.name, rhs)) return eq(lhs, rhs, 'def');
+  // I′(t) = … is about the slope of I, not a new function: a primed name never defines
+  if (rel === '=' && lhs.k === 'call' && lhs.arg.k === 'sym' && !/[′″‴]$/.test(lhs.name) && definesAnew(lhs.name, lhs.arg.name, rhs)) return eq(lhs, rhs, 'def');
   return eq(lhs, rhs, rel);
 }

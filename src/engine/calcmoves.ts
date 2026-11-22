@@ -2,7 +2,7 @@
 // limits (plug in, L'Hôpital), differentiating both sides, and the definition of the
 // derivative. Every step goes through the same numeric check as an algebra move: the kernel
 // in calculus.ts says what a derivative or limit is worth.
-import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad, DEFS } from './ast';
+import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
 import { dependsOn, derivative, limit2, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
 import { gcd } from './terms';
@@ -585,25 +585,8 @@ export function bothSides(e: Eq, v: string): MoveResult {
   if (!dF) return { error: 'There is no derivative rule for something in here yet.' };
   return checked(e, {
     eq: next, label: `d/d${v} both sides${others.length ? ` (${others.join(', ')} ${others.length > 1 ? 'depend' : 'depends'} on ${v})` : ''}`, hints: newHints(), factor: one, select: null, rule: 'differentiate both sides', implies: true,
-    check: env => [[evaluate(pinned(next), env), evaluate(pinned(dF), env)]],
+    check: env => [[evaluate(next, env), evaluate(dF, env)]],
   });
-}
-
-/** for a numeric check only: every ∫ … dx with no bounds as one particular antiderivative,
- *  ∫ from a fixed start to x, so both sides of a check can be worked out (the same start on both,
- *  so the constants agree) */
-export function pinned<T extends Node>(n: T): T {
-  const ks = children(n);
-  const m = (ks.length ? withChildren(n, ks.map(pinned)) : n) as Node;
-  // a function you defined as such an ∫: its body, pinned the same way
-  // (and I′, I″: the slopes of that body)
-  const base = m.k === 'call' ? m.name.replace(/′+$/, '') : '', d = DEFS.get(base);
-  if (m.k === 'call' && d && indefiniteVars(d.body).length) {
-    let body: Node = d.body;
-    for (let i = base.length; i < m.name.length; i++) body = deriv(d.param, body, []);
-    return pinned(substitute(body, d.param, m.arg)) as T;
-  }
-  return (m.k === 'int' && !(m.lo && m.hi) ? { ...m, lo: num(0.37), hi: sym(m.v) } : m) as T;
 }
 
 /* ---------- forms for the C hub ---------- */

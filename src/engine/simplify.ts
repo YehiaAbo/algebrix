@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff, DEFS, cloneFresh } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff, DEFS, cloneFresh, oneToOne } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -37,6 +37,21 @@ function pass(n: Node, h: Hints): Node {
 /** a function you defined, at a number, worked out when it comes out a number: f(3) = 10 with
  *  f(x) = x² + 1. Anything else (f(a), or I(0) with I(t) = ∫ …) stays for Tab u to unfold */
 function callRule(name: string, arg: Node, id: string, h: Hints): Node | null {
+  // f⁻¹(f(a)) = a and f(f⁻¹(a)) = a, for a function that has an inverse (one-to-one)
+  if (arg.k === 'call') {
+    const F = name.endsWith('⁻¹') ? name.slice(0, -2) : name;
+    const pair = name.endsWith('⁻¹') ? arg.name === F : arg.name === F + '⁻¹';
+    if (pair && oneToOne(F)) return arg.arg;
+  }
+  // f⁻¹(7) with no formula for f⁻¹ yet: the input f takes to 7, when it is a plain fraction
+  // (checked exactly: f at that fraction is 7)
+  if (name.endsWith('⁻¹') && !DEFS.has(name) && DEFS.has(name.slice(0, -2)) && !hasSymbols(arg) && oneToOne(name.slice(0, -2))) {
+    const want = evaluate(arg, {}), y = evaluate({ k: 'call', id, name, arg }, {}), d = DEFS.get(name.slice(0, -2))!;
+    for (let q = 1; q <= 12 && Number.isFinite(y); q++) {
+      const p = Math.round(y * q);
+      if (Math.abs(evaluate(d.body, { [d.param]: p / q }) - want) <= 1e-12 * (1 + Math.abs(want))) return q === 1 ? num(p, id) : p < 0 ? { k: 'neg', id, arg: frac(num(-p), num(q)) } as Node : frac(num(p), num(q), id);
+    }
+  }
   const d = DEFS.get(name);
   if (!d || hasSymbols(arg)) return null;
   // a definition with calculus in it (I(t) = ∫ …) is worked out by you, not by s

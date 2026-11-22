@@ -1,7 +1,7 @@
 // Bigger tools built from the small moves: apply a function to both sides, peel
 // the outer function off a side, move anything across "=", isolate a variable
 // in several steps, substitute one equation into another, split |X| = B.
-import { Node, Eq, find, children, withChildren, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf } from './ast';
+import { Node, Eq, find, children, withChildren, allIds, findPath, cloneFresh, num, sym, add, mul, frac, pow, sqrt, fn, eq, evaluate, Env, symbols, hasSymbols, walk, key, replace, relOf, call, DEFS, oneToOne } from './ast';
 import { parseExpr } from './parse';
 import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd, termInfo, buildTerm } from './terms';
 import { simplify, newHints, nonneg as isNonneg } from './simplify';
@@ -24,10 +24,10 @@ export interface WrapItem { key: string; f: Wrap; label: string; show: string; a
 /** The f menu: tabs of functions you can apply to both sides. `ask` items need a number typed in. */
 export const FN_TABS: { name: string; items: WrapItem[] }[] = [
   { name: 'Powers', items: [
-    { key: '2', f: 'square', label: 'square', show: '( )²' },
-    { key: '3', f: 'cube', label: 'cube', show: '( )³' },
+    { key: 'q', f: 'square', label: 'square', show: '( )²' },
+    { key: 'u', f: 'cube', label: 'cube', show: '( )³' },
     { key: 'n', f: 'power', label: 'power n', show: '( )ⁿ', ask: 'n' },
-    { key: '1', f: 'recip', label: 'flip', show: '1/( )' },
+    { key: 'v', f: 'recip', label: 'flip', show: '1/( )' },
   ] },
   { name: 'Roots', items: [
     { key: 'r', f: 'sqrt', label: 'square root', show: '√( )' },
@@ -37,7 +37,7 @@ export const FN_TABS: { name: string; items: WrapItem[] }[] = [
   { name: 'Exp and log', items: [
     { key: 'e', f: 'exp', label: 'e to the', show: 'e^( )' },
     { key: 'x', f: 'pow10', label: '10 to the', show: '10^( )' },
-    { key: 'b', f: 'powb', label: 'b to the', show: 'b^( )', ask: 'b' },
+    { key: 'p', f: 'powb', label: 'b to the', show: 'b^( )', ask: 'b' },
     { key: 'l', f: 'ln', label: 'natural log', show: 'ln( )' },
     { key: 'g', f: 'log', label: 'log base 10', show: 'log( )' },
     { key: 'h', f: 'logb', label: 'log base b', show: 'log_b( )', ask: 'b' },
@@ -127,7 +127,7 @@ export function fnTemplate(text: string): Node | { error: string } {
   if (!src) return { error: 'Type a function: a name like ln or I, or an expression with _ for each side, like e^_ or _^2 + 1.' };
   let F: Node;
   // a name on its own: that function of each side
-  const name = /^([A-Za-zα-ω]+)$/.exec(src);
+  const name = /^([A-Za-zα-ω]+(?:⁻¹|\^-1|\^\(-1\))?)$/.exec(src);
   try { F = name ? parseExpr(`${name[1]}(${HOLE})`) : parseExpr(src); } catch (err) { return { error: (err as Error).message }; }
   if (!symbols(F).includes(HOLE)) return { error: name ? `${name[1]} isn't a function here. Define it first (${name[1]}(t) = …), or write it with _ for each side.` : 'Write _ where each side goes, like e^_ or 1/(_ + 1).' };
   return F;
@@ -137,6 +137,7 @@ export function fnTemplate(text: string): Node | { error: string } {
  *  function that isn't (□², sin) is marked as one that can add solutions, and where F needs
  *  its input positive or ≥ 0 that is recorded for each side. */
 export function applyFn(e: Eq, F: Node): MoveResult {
+  if (relOf(e) === 'def') e = eq(e.lhs, e.rhs);
   if (relOf(e) !== '=') return { error: 'A function on both sides is for an equation (=).' };
   // the side itself goes into the first □ (it keeps its pieces, so they are carried in); copies into any others
   const put = (s: Node) => { let used = false; const go = (m: Node): Node => m.k === 'sym' && m.name === HOLE ? (used ? fresh(s) : (used = true, s)) : withChildren(m, children(m).map(go)); return go(fresh(F)); };
@@ -185,13 +186,35 @@ export function inverseOf(side: Node): { f: Wrap; arg?: Node } | null {
   return null;
 }
 
+/** a function you defined (or its inverse) as the outer layer: f(x + 1), f⁻¹(y) */
+export function yourCall(side: Node): string | null {
+  if (side.k !== 'call') return null;
+  const F = side.name.endsWith('⁻¹') ? side.name.slice(0, -2) : side.name;
+  return DEFS.has(F) ? F : null;
+}
+
+/** f(A) = B → A = f⁻¹(B), and f⁻¹(A) = B → A = f(B): undoing a function of yours. Only a
+ *  one-to-one f has an inverse that gives back every answer. */
+function peelCall(e: Eq, s: 'lhs' | 'rhs'): MoveResult {
+  const side = e[s] as Extract<Node, { k: 'call' }>, F = yourCall(side)!;
+  const B = s === 'lhs' ? e.rhs : e.lhs;
+  if (!oneToOne(F)) return { error: `${F} isn't one-to-one (two inputs give the same value), so undoing it would lose answers. Unfold it (Tab u) and solve that.` };
+  const back = side.name === F ? `${F}⁻¹` : F;
+  const R = call(back, B);
+  const A = side.arg;
+  return {
+    eq: s === 'lhs' ? eq(A, R) : eq(R, A), label: `${back} both sides`, hints: newHints(), factor: () => 1, select: null,
+    check: env => [[evaluate(call(side.name, R), env), evaluate(B, env)]],
+  };
+}
+
 /** Which side to peel: the aimed side, else the one holding the variables. */
 function sideFor(e: Eq, sel: string | null): 'lhs' | 'rhs' {
   if (sel && sel !== 'eq') {
     const p = findPath(e, sel);
     if (p) return p[1] === e.lhs ? 'lhs' : 'rhs';
   }
-  const l = inverseOf(e.lhs), r = inverseOf(e.rhs);
+  const l = inverseOf(e.lhs) || yourCall(e.lhs), r = inverseOf(e.rhs) || yourCall(e.rhs);
   if (l && !r) return 'lhs';
   if (r && !l) return 'rhs';
   return hasSymbols(e.lhs) || !hasSymbols(e.rhs) ? 'lhs' : 'rhs';
@@ -224,6 +247,7 @@ export function peel(e: Eq, sel: string | null): MoveResult {
   const side = e[s];
   if (side.k === 'fn' && side.name === 'abs') return { error: 'Absolute value has two cases. Hold e and press a to split it.' };
   if (side.k === 'fn' && (side.name === 'sin' || side.name === 'cos' || side.name === 'tan')) return peelTrig(e, s);
+  if (yourCall(side)) return peelCall(e, s);
   const inv = inverseOf(side);
   if (!inv) return { error: `Nothing to undo on ${t(side)}. This works on powers, roots, exponentials, logs and trig.` };
   const r = wrapBoth(e, inv.f, inv.arg);
@@ -245,21 +269,28 @@ function moveAnyRaw(e: Eq, sel: string | null): MoveResult {
   const path = findPath(e, sel);
   if (!path) return { error: 'Aim at a piece first.' };
   const node = path[path.length - 1], parent = path[path.length - 2], root = path[1];
-  if (node === root && inverseOf(node)) return peel(e, sel);
+  if (node === root && (inverseOf(node) || yourCall(node))) return peel(e, sel);
   const a = moveAcross(e, sel);
   if (!isErr(a)) return a;
   if (parent === root && root.k === 'mul') return divideBoth(e, sel);
   if (root.k === 'frac' && (node === root.den || parent === root.den)) return multiplyBoth(e, sel);
   if (parent === root && root.k === 'pow' && node === root.exp) return peel(e, root.id);
   if (parent === root && root.k === 'pow' && node === root.base && inverseOf(root)) return peel(e, root.id);
-  if (parent === root && (root.k === 'sqrt' || root.k === 'fn')) return peel(e, root.id);
+  if (parent === root && (root.k === 'sqrt' || root.k === 'fn' || yourCall(root))) return peel(e, root.id);
   return a;
 }
 
 /* ---------- tidy: simplify both sides, as its own (auto) step ---------- */
+/** f(4) = 2·4 + 3: the side f(4) is what the equation is about (a value put into f), so working
+ *  out the numbers leaves it as it is, instead of 11 = 11. (y = f(4) still works f(4) out.) */
+export function isSubject(e: Eq, n: Node): boolean {
+  const other = n === e.lhs ? e.rhs : n === e.rhs ? e.lhs : null;
+  return !!other && n.k === 'call' && !hasSymbols(n.arg) && !hasSymbols(other);
+}
+
 export function tidy(e: Eq): MoveOk | null {
   const h = newHints();
-  const next = eq(simplify(e.lhs, h), simplify(e.rhs, h));
+  const next = eq(isSubject(e, e.lhs) ? e.lhs : simplify(e.lhs, h), isSubject(e, e.rhs) ? e.rhs : simplify(e.rhs, h));
   if (key(next) === key(e)) return null;
   const r = checked(e, { eq: next, label: 'tidy', hints: h, factor: one, auto: true, select: null });
   return isErr(r) ? null : r;
@@ -886,7 +917,7 @@ export function simplifySpot(e: Eq): Spot | null {
   let hit: { n: Node; r: Node; h: ReturnType<typeof newHints> } | null = null;
   const visit = (n: Node) => {
     for (const c of children(n)) { visit(c); if (hit) return; }
-    if (hit || n.k === 'eq') return;
+    if (hit || n.k === 'eq' || isSubject(e, n)) return;
     const h = newHints();
     const r = simplify(n, h);
     // a change you couldn't see isn't worth a press

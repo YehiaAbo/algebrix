@@ -92,11 +92,54 @@ export const defsSig = { v: '' };
 /** while the safety net checks a move, f(x) with no definition is some function: one fixed,
  *  wiggly function per name, so what holds for every f holds for it (f(x) + 2 = 5 can move) */
 export const EVAL = { anyFn: false };
+const PIN: Node = { k: 'num', id: 'pin', v: 0.37 };
 function someFunction(name: string, a: number): number {
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 997;
   return Math.sin(0.9 * a + h) + 0.37 * a + 0.2 * Math.cos(2.3 * a - h / 7);
 }
+/** f⁻¹(a) for a function you defined: the y with f(y) = a, found numerically (a sweep for where
+ *  f(y) − a changes sign, then halving), so f⁻¹ has a value before (or without) its formula */
+function inverseAt(F: string, a: number): number {
+  if (!Number.isFinite(a)) return NaN;
+  const d = DEFS.get(F)!;
+  const f = (y: number) => evaluate(d.body, { [d.param]: y }) - a;
+  let found = NaN;
+  for (const [lo, hi, steps] of [[-10, 10, 200], [-1000, 1000, 400]] as const) {
+    let x0: number = lo, f0 = f(x0);
+    for (let i = 1; i <= steps && Number.isNaN(found); i++) {
+      const x1 = lo + ((hi - lo) * i) / steps, f1 = f(x1);
+      if (f0 === 0) found = x0;
+      else if (Number.isFinite(f0) && Number.isFinite(f1) && Math.sign(f0) !== Math.sign(f1)) {
+        let p = x0, q = x1, fp = f0;
+        for (let k = 0; k < 60; k++) { const m = (p + q) / 2, fm = f(m); if (!Number.isFinite(fm)) break; if (Math.sign(fm) === Math.sign(fp)) { p = m; fp = fm; } else q = m; }
+        // a jump across a pole changes sign too: only a real crossing counts
+        if (Math.abs(f((p + q) / 2)) < 1e-6 * (1 + Math.abs(a))) found = (p + q) / 2;
+      }
+      x0 = x1; f0 = f1;
+    }
+    if (!Number.isNaN(found)) return found;
+  }
+  return NaN;
+}
+
+/** one-to-one: a function you defined that only climbs or only falls where it has values, read off
+ *  a sweep (cached until the definitions change). Only such a function has an inverse that cancels it */
+const ONE: Map<string, boolean> = new Map();
+let oneSig = '';
+export function oneToOne(F: string): boolean {
+  if (oneSig !== defsSig.v) { ONE.clear(); oneSig = defsSig.v; }
+  if (!DEFS.has(F)) return false;
+  const hit = ONE.get(F);
+  if (hit !== undefined) return hit;
+  const d = DEFS.get(F)!;
+  const ys = Array.from({ length: 161 }, (_, i) => evaluate(d.body, { [d.param]: -10 + i / 8 })).filter(Number.isFinite);
+  const dirs = new Set(ys.slice(1).map((y, i) => Math.sign(y - ys[i])));
+  const ok = ys.length > 8 && dirs.size === 1 && !dirs.has(0);
+  ONE.set(F, ok);
+  return ok;
+}
+
 /** the letters you named (b): u → x², x → sin θ. A named letter is tied to the letters it was
  *  made from, so calculus treats it as changing with them (∫ cos u dx is not cos u · x) */
 export const LETS = new Map<string, Node>();
@@ -282,6 +325,7 @@ export function evaluate(n: Node, env: Env): number {
     }
     case 'call': {
       const d = DEFS.get(n.name) ?? CALC.primeDef(n.name);
+      if (!d && n.name.endsWith('⁻¹') && DEFS.has(n.name.slice(0, -2))) return inverseAt(n.name.slice(0, -2), evaluate(n.arg, env));
       if (!d) return EVAL.anyFn ? someFunction(n.name, evaluate(n.arg, env)) : NaN;
       if (callDepth > 40) return NaN;
       callDepth++;
@@ -289,7 +333,9 @@ export function evaluate(n: Node, env: Env): number {
     }
     case 'deriv': { const d = CALC.derive(n); return d ? evaluate(d, env) : NaN; }
     case 'lim': return CALC.limit(n, env);
-    case 'int': return n.lo && n.hi ? CALC.integral(n, env) : NaN;
+    // no bounds: while checking, one particular antiderivative (from a fixed start to the variable),
+    // the same everywhere, so ∫ … dx and a function defined by one (I(t) = ∫ … dx, and I′) have values
+    case 'int': return n.lo && n.hi ? CALC.integral(n, env) : EVAL.anyFn && n.v in env ? CALC.integral({ ...n, lo: PIN, hi: { k: 'sym', id: n.id + ':pin', name: n.v } }, env) : NaN;
     case 'at': {
       // an end at ±∞ is the limit there (−x e^(−x) at ∞ is 0)
       const end = (b: Node) => { const x = evaluate(b, env); return Number.isFinite(x) ? evaluate(n.arg, { ...env, [n.v]: x }) : Number.isNaN(x) ? NaN : CALC.limit({ k: 'lim', id: n.id + ':lim', v: n.v, to: b, arg: n.arg }, env); };

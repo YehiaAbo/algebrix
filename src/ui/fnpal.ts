@@ -1,10 +1,12 @@
 // The function palette (f): apply a function to both sides, with a live preview.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { Node, findPath, DEFS } from '../engine/ast';
+import { Node, Eq, findPath, find, DEFS, eq, call, sym, cloneFresh, evaluate, symbols } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
-import { peel, wrapBoth, inverseOf, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn } from '../engine/techniques';
+import { peel, wrapBoth, inverseOf, yourCall, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
-import { brief } from '../engine/general';
+import { brief, putValue } from '../engine/general';
+import { toText } from '../engine/print';
+import { here } from './tree';
 import { sound } from './sound';
 import { $, escapeHtml } from './shared';
 import type { App } from './app';
@@ -14,9 +16,10 @@ import type { App } from './app';
 /** = in the f menu: type any function of each side (a name, or an expression with _ for each side) */
 const TYPED: WrapItem = { key: '=', f: 'square', label: 'any function', show: 'F(□)', ask: 'F(□)', tpl: '' };
 
-/** the menu's tabs: the functions you defined first (I(t) = …, keys 1–9), then the usual ones */
+/** the menu's tabs: the functions you defined first (I(t) = …, keys 1–9: put a value in, or
+ *  Enter on nothing for that function of both sides), then the usual ones */
 export function palTabs(this: App): { name: string; items: WrapItem[] }[] {
-  const yours = [...DEFS.entries()].slice(0, 9).map(([F, d], j) => ({ key: String(j + 1), f: 'square' as const, label: `${F}(${d.param}) = ${brief(d.body)}`, show: `${F}( )`, tpl: F }));
+  const yours = [...DEFS.entries()].slice(0, 9).map(([F, d], j) => ({ key: String(j + 1), f: 'square' as const, label: `${F}(${d.param}) = ${brief(d.body)}`, show: `${F}( )`, tpl: F, ask: `${F}(□)` }));
   return yours.length ? [{ name: 'Yours', items: yours }, ...FN_TABS] : FN_TABS;
 }
 
@@ -44,7 +47,8 @@ export function renderPal(this: App) {
   const aimed = !!this.sel && this.sel !== 'eq';
   lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ' rec'}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button>`
     + `<button class="chip lead" data-k="="><kbd>=</kbd>type any function</button>`
-    + `<button class="chip lead${aimed ? '' : ' off'}" data-k="b"><kbd>b</kbd>${aimed ? 'make the aimed piece a function' : 'aim at a piece to make it a function'}</button>`;
+    + `<button class="chip lead${aimed ? '' : ' off'}" data-k="b"><kbd>b</kbd>${aimed ? 'make the aimed piece a function' : 'aim at a piece to make it a function'}</button>`
+    + (this.invTarget() ? `<button class="chip lead" data-k="-"><kbd>-</kbd>write out ${this.invTarget()}⁻¹</button>` : '');
   host.append(lead);
   const tabs = document.createElement('div');
   tabs.className = 'pal-tabs';
@@ -59,10 +63,12 @@ export function renderPal(this: App) {
   if (P.ask) {
     const ask = document.createElement('div');
     ask.className = 'pal-ask';
-    const typed = P.ask === TYPED;
-    ask.className = 'pal-ask' + (typed ? ' typed' : '');
+    const typed = P.ask === TYPED, mine = isYours(P.ask);
+    ask.className = 'pal-ask' + (typed ? ' typed' : mine ? ' yours' : '');
     ask.innerHTML = typed
-      ? `<span>each side →</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a function of each side" placeholder="e^_   _^2 + 1   ln   I"><span id="pal-note" class="op-note">a name, or _ for each side</span>`
+      ? `<span>each side →</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a function of each side" placeholder="e^_   _^2 + 1   ln   f⁻¹   f(3)"><span id="pal-note" class="op-note">a name, _ for each side, or f(3) for a value</span>`
+      : mine
+      ? `<span>${P.ask.tpl}(</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a value for ${P.ask.tpl}"><span>)</span><span id="pal-note" class="op-note">${YOURS_NOTE(P.ask.tpl!)}</span>`
       : `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">type a number, Enter applies</span>`;
     host.append(ask);
   }
@@ -122,6 +128,7 @@ export function palKey(this: App, e: KeyboardEvent) {
   if (k === 'i') return this.palInverse();
   if (k === '=') return this.choose(TYPED);
   if (k === 'b') { this.closePal(false); return this.openName(true); }
+  if (k === '-') { const F = this.invTarget(); if (!F) return this.refuse('No functions of yours yet. Type one (f(x) = …), then - writes out its inverse.'); this.closePal(false); return this.addInverse(F); }
   if (/^[1-9]$/.test(k)) { const yours = TABS[0].name === 'Yours' ? TABS[0].items[Number(k) - 1] : undefined; if (yours) return this.choose(yours); return this.refuse(DEFS.size ? `You have ${DEFS.size} function${DEFS.size > 1 ? 's' : ''}: 1–${DEFS.size}.` : 'No functions of yours yet. Type one (F(x) = …), or aim at a piece and press b.'); }
   if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
   const w = WRAPS.find(x => x.key === k);
@@ -147,8 +154,10 @@ export function choose(this: App, w: WrapItem) {
     this.pal.ask = w;
     this.pal.sticky = true;
     if (w !== TYPED) {
-      this.pal.tab = this.palTabs().findIndex(t => t.items.includes(w));
-      this.pal.i = this.palTabs()[this.pal.tab].items.indexOf(w);
+      // the Yours items are built fresh each time: find the item by what it is, not by identity
+      const same = (x: WrapItem) => x.key === w.key && x.tpl === w.tpl && x.f === w.f;
+      this.pal.tab = Math.max(0, this.palTabs().findIndex(t => t.items.some(same)));
+      this.pal.i = Math.max(0, this.palTabs()[this.pal.tab].items.findIndex(same));
       this.pal.moved = true;
     }
     this.setMode('fnask');
@@ -163,11 +172,22 @@ export function choose(this: App, w: WrapItem) {
 export function askArg(this: App): Node | { error: string } {
   const v = $<HTMLInputElement>('pal-input').value.trim();
   if (this.pal.ask === TYPED) return fnTemplate(v);
+  // yours with nothing typed: that function of both sides
+  if (isYours(this.pal.ask) && !v) return fnTemplate(this.pal.ask!.tpl!);
   if (!v) return { error: 'Type a number.' };
   try { return parseExpr(v); } catch (e) { return { error: (e as Error).message }; }
 }
 
 export function askPreview(this: App) {
+  const value = this.valueAsked();
+  if (value) {
+    const r = valueInto(value.F, value.text);
+    $('pal-note').textContent = 'error' in r ? r.error : `${toText(r)}${worth(r)}: Enter adds it`;
+    $('pal-note').classList.toggle('bad', 'error' in r);
+    if (this.peek) { this.peek = null; this.renderMain({ quick: true }); }
+    return;
+  }
+  if (isYours(this.pal.ask)) $('pal-note').textContent = YOURS_NOTE(this.pal.ask!.tpl!);
   const a = this.askArg();
   const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
   $('pal-note').textContent = isErr(r) ? (this.pal.ask === TYPED && !$<HTMLInputElement>('pal-input').value.trim() ? 'a name, or _ for each side' : r.error) : r.label + ': Enter applies';
@@ -181,6 +201,8 @@ export function askKey(this: App, e: KeyboardEvent) {
   if (e.key === 'Escape') { e.preventDefault(); this.pal.ask = null; this.setMode('fnpal'); this.peek = null; this.renderMain({ quick: true }); this.renderPal(); return; }
   if (e.key === 'Enter') {
     e.preventDefault();
+    const value = this.valueAsked();
+    if (value) { const r = valueInto(value.F, value.text); if ('error' in r) return this.refuse(r.error); this.closePal(false); return this.addValueOf(value.F, r, value.text); }
     const a = this.askArg();
     const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
     if (isErr(r)) { this.refuse(r.error); return; }
@@ -200,3 +222,56 @@ export function closePal(this: App, animateBack = false) {
 
 /** apply a move built outside applyMove (so not yet checked); leftovers are offered as a simplification */
 export function applyTidy(this: App, r: MoveResult, pitch = 1) { this.apply(isErr(r) ? r : checked(this.eq, r), pitch); }
+
+const isYours = (w: WrapItem | null) => !!w && w !== TYPED && !!w.tpl;
+const YOURS_NOTE = (F: string) => `a value puts it in (${F}(3) = …); Enter on nothing: ${F} of both sides`;
+
+/** the function the f menu's - writes out the inverse of: the one this equation defines, the aimed
+ *  one, else your first */
+export function invTarget(this: App): string | null {
+  const e = this.eq;
+  if (e.rel === 'def' && e.lhs.k === 'call' && !e.lhs.name.endsWith('⁻¹')) return e.lhs.name;
+  const aimed = this.sel && this.sel !== 'eq' ? find(e, this.sel) : null;
+  const F = aimed ? yourCall(aimed) : null;
+  if (F) return F;
+  return [...DEFS.keys()].find(n => !n.endsWith('⁻¹')) ?? null;
+}
+
+/** what was typed to put into one of yours: a value in its own box, or f(3) in the = box */
+export function valueAsked(this: App): { F: string; text: string } | null {
+  const w = this.pal.ask, v = $<HTMLInputElement>('pal-input').value.trim();
+  if (isYours(w) && v) return { F: w!.tpl!, text: v };
+  if (w !== TYPED) return null;
+  const m = /^([A-Za-zα-ω](?:⁻¹)?)\s*\((.+)\)$/.exec(v);
+  return m && DEFS.has(m[1]) && !m[2].includes('_') ? { F: m[1], text: m[2] } : null;
+}
+
+/** F(a) = its body at a: the definition with a value put in */
+function valueInto(F: string, text: string): Eq | { error: string } {
+  const d = DEFS.get(F);
+  if (!d) return { error: `${F} isn't defined.` };
+  return putValue(eq(call(F, sym(d.param)), cloneFresh(d.body), 'def'), d.param, text);
+}
+
+/** " = 10" when the value works out to a number */
+function worth(r: Eq): string {
+  const x = evaluate(r.rhs, {});
+  if (!Number.isFinite(x) || symbols(r.rhs).length) return '';
+  const shown = Math.round(x * 1e6) / 1e6;
+  return toText(r.rhs) === String(shown) ? '' : ` = ${shown}`;
+}
+
+/** the value as an equation of its own, coming off the definition in the tree */
+export function addValueOf(this: App, F: string, r: Eq, text: string) {
+  if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
+  const home = this.slots.find(sl => sl.steps.some(st => st.eq.rel === 'def' && st.eq.lhs.k === 'call' && st.eq.lhs.name === F)) ?? this.slot!;
+  this.slots.push({ steps: [{ eq: r, label: `${F} at ${text}`, conditions: [], rule: 'put in a value', dir: '⇒' }], at: 0, sel: null, from: here(home) });
+  this.cur = this.slots.length - 1;
+  sound.commit();
+  this.sel = null;
+  this.stage.clear();
+  this.renderAll(null);
+  this.entrance();
+  this.save();
+  this.say(`Equation ${this.cur + 1}: ${toText(r)}${worth(r)}. s works it out.`);
+}

@@ -457,6 +457,8 @@ export function valueVar(e: Eq, sel: string | null): string | null {
 
 /** C + i on an equation: ∫ … dv of both sides. One constant comes in when the last integral is done. */
 export function integrateBoth(e: Eq, v: string): MoveResult {
+  // a definition is an equation too (I(t) = …): what follows from it is an ordinary one
+  if (relOf(e) === 'def') e = eq(e.lhs, e.rhs);
   if (relOf(e) !== '=') return { error: 'Integrate both sides of an equation (=).' };
   // already in differentials (dy/y = x dx): each side carries its own d
   if (hasDifferentials(e)) return integrateDifferentials(e);

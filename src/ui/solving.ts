@@ -1,6 +1,6 @@
 // Solving: isolate a variable, split into cases, check answers, domains, inverses.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { symbols, relOf, isIneq, DEFS, defsSig, add, key, holds, Eq, Node, walk } from '../engine/ast';
+import { symbols, relOf, isIneq, DEFS, defsSig, add, key, holds, Eq, Node, walk, eq, call, sym, cloneFresh } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
 import { inverseFunction, unfold } from '../engine/goals';
 import { polyOf } from '../engine/rewrite';
@@ -175,12 +175,17 @@ export function cycleDomain(this: App, v: string) {
   this.say(`${v} is now ${DOMAIN_TEXT[next].replace('number', 'a number').replace('real a number', 'any real number')}. Sign questions and answers follow it.`);
 }
 
-/** e + b on a definition: a new equation with the inverse function */
-export function addInverse(this: App) {
-  const inv = inverseFunction(this.eq);
+/** Tab + b on a definition, or - in the f menu for any function of yours: a new equation with
+ *  its inverse written out (f⁻¹(x) = …), coming off the definition */
+export function addInverse(this: App, F?: string) {
+  const d = F ? DEFS.get(F) : null;
+  if (F && !d) { this.refuse(`${F} isn't defined.`); return; }
+  if (F && DEFS.has(`${F}⁻¹`)) { this.refuse(`${F}⁻¹ is already written out.`); return; }
+  const inv = inverseFunction(d ? eq(call(F!, sym(d.param)), cloneFresh(d.body), 'def') : this.eq);
   if ('error' in inv) { this.refuse(inv.error); return; }
   if (this.slots.length >= 9) { this.refuse('Nine equations is the limit for now.'); return; }
-  this.slots.push({ steps: [{ eq: inv, label: 'inverse', conditions: [] }], at: 0, sel: null, from: here(this.slot!) });
+  const home = (F && this.slots.find(sl => sl.steps.some(st => st.eq.rel === 'def' && st.eq.lhs.k === 'call' && st.eq.lhs.name === F))) || this.slot!;
+  this.slots.push({ steps: [{ eq: inv, label: 'inverse', conditions: [] }], at: 0, sel: null, from: here(home) });
   this.cur = this.slots.length - 1;
   sound.commit();
   this.stage.clear();
