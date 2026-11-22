@@ -68,3 +68,10 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   Feynman chain from a typed I(t) stopped at random. Now every check starts the stream afresh,
   and the tolerance grows with the size of the sides. Guard: tests/functions.test.ts "the safety
   net gives the same verdict".
+- **K10 A move's own result wasn't a valid place to press it again.** m moved x across as −x, but
+  the aim landed on the x inside the minus, which m refused ("x is inside −x"), so holding m
+  stopped after one or two crossings; and f(x) with no definition had no value, so the safety
+  net refused moving it at all. Now m on a piece inside a minus moves the whole −piece, and while
+  checking a move an undefined f is "some function" (one fixed function per name). Guards:
+  tests/moves.prop.test.ts (m, m, m ping-pongs over random equations; RUNS=… SEED=… for more),
+  and the stress suite now presses m three times on every term it moves.

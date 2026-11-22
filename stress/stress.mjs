@@ -79,6 +79,24 @@ for (const src of CORPUS) {
       const redone = await st();
       if (redone.eq !== after.eq) fail(src, `r after ${k} gave "${redone.eq}", not "${after.eq}"`);
       await press('u'); await settle(80);
+      // m twice more on a term: whatever it left aimed crosses back, and back again (holding m
+      // ping-pongs). A whole side moved makes a 0 and stays put; that one is not a ping-pong.
+      const zero = q => /^0 [=<>≤≥]|[=<>≤≥] 0$/.test(q);
+      if (k === 'm' && !(zero(after.eq) && !zero(before.eq))) {
+        checks++;
+        await p.evaluate(id => { const a = window.algebrix; a.select(id, true); a.renderHints(); }, before.sel); await settle(60);
+        await press('m'); await settle(80);
+        const one = await st();
+        await press('m'); await settle(80);
+        const back = await st();
+        await press('m'); await settle(80);
+        const again = await st();
+        if (one.eq === before.eq) fail(src, `m after undo did nothing on "${before.sel}" (aimed ${one.sel})`);
+        else if (back.eq === one.eq) fail(src, `m again after moving "${before.sel}" did nothing (aimed ${back.sel}): ${back.bar.slice(0, 120)}`);
+        else if (again.eq !== one.eq) fail(src, `m, m, m on "${before.sel}" gave "${again.eq}", not "${one.eq}" again`);
+        for (let i = 0; i < 8 && (await st()).eq !== before.eq; i++) { await press('u'); await settle(60); }
+        await p.evaluate(id => { const a = window.algebrix; a.select(id, true); a.renderHints(); }, before.sel); await settle(60);
+      }
       // back where we were, aimed again for the next walk step
     }
   }

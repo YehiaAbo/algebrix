@@ -3,7 +3,7 @@
 import {
   Node, Eq, Mul, find, findPath, replace, cloneFresh, num, add, mul, frac, eq,
   evaluate, Env, symbols, hasSymbols, allIds, key, Rel, relOf, flipRel, holds, walk, neg,
-  isDiff, linkedTo, deriv, partial, pow, sqrt, fn, children, withChildren,
+  isDiff, linkedTo, deriv, partial, pow, sqrt, fn, children, withChildren, EVAL,
 } from './ast';
 import { negate, isNeg, coefOf } from './terms';
 import { simplify, newHints, Hints } from './simplify';
@@ -77,6 +77,8 @@ export function moveAcross(e: Eq, sel: string | null): MoveResult {
   const at = locate(e, sel);
   if (!at) return { error: 'Pick a term to move across the =.' };
   const { node, parent, s, root } = at;
+  // aimed at f in −f: the term is −f, so it moves with its sign (m, m, m … keeps crossing)
+  if (node !== root && parent.k === 'neg') return moveAcross(e, parent.id);
   let moving: Node[];
   let mine: Node;
   if (node === root) {
@@ -419,6 +421,12 @@ function stacked(n: Node): boolean {
 }
 
 export function verify(before: Eq, r: MoveOk): string | null {
+  const was = EVAL.anyFn;
+  EVAL.anyFn = true;
+  try { return verifyAt(before, r); } finally { EVAL.anyFn = was; }
+}
+
+function verifyAt(before: Eq, r: MoveOk): string | null {
   // the same values every time: whether a move passes can't depend on what was checked before it
   seed = 12345;
   const ids = allIds(r.eq);

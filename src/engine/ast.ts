@@ -89,6 +89,14 @@ export const DEFS = new Map<string, { param: string; body: Node }>();
 /** what DEFS says, as text: anything cached by an equation's key that evaluates it must add this,
  *  since y = I(5) is worth something else (or nothing) when I changes. Set wherever DEFS is filled */
 export const defsSig = { v: '' };
+/** while the safety net checks a move, f(x) with no definition is some function: one fixed,
+ *  wiggly function per name, so what holds for every f holds for it (f(x) + 2 = 5 can move) */
+export const EVAL = { anyFn: false };
+function someFunction(name: string, a: number): number {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return Math.sin(0.9 * a + h) + 0.37 * a + 0.2 * Math.cos(2.3 * a - h / 7);
+}
 /** the letters you named (b): u → x², x → sin θ. A named letter is tied to the letters it was
  *  made from, so calculus treats it as changing with them (∫ cos u dx is not cos u · x) */
 export const LETS = new Map<string, Node>();
@@ -274,7 +282,8 @@ export function evaluate(n: Node, env: Env): number {
     }
     case 'call': {
       const d = DEFS.get(n.name) ?? CALC.primeDef(n.name);
-      if (!d || callDepth > 40) return NaN;
+      if (!d) return EVAL.anyFn ? someFunction(n.name, evaluate(n.arg, env)) : NaN;
+      if (callDepth > 40) return NaN;
       callDepth++;
       try { return evaluate(d.body, { ...env, [d.param]: evaluate(n.arg, env) }); } finally { callDepth--; }
     }

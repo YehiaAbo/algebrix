@@ -31,3 +31,9 @@ sum_{k=1}^{n} k = S
 y' = 2x y
 a x^2 + b x + c = 0
 (2x + 3)/(x - 1) = 5
+# m, m, m must keep crossing (2026-11-22: the aim landed inside the −, and m stopped)
+f(x) = x^2 + 1
+y = 3 - x
+y = f(x) + 2
+g(x) = 5 - f(x)
+y = 2 - sin(x)
