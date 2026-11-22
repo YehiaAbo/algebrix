@@ -351,8 +351,14 @@ export function evaluate(n: Node, env: Env): number {
     case 'int': return n.lo && n.hi ? CALC.integral(n, env) : EVAL.anyFn && n.v in env ? CALC.integral({ ...n, lo: PIN, hi: { k: 'sym', id: n.id + ':pin', name: n.v } }, env) : NaN;
     case 'at': {
       // an end at ±∞ is the limit there (−x e^(−x) at ∞ is 0)
-      const end = (b: Node) => { const x = evaluate(b, env); return Number.isFinite(x) ? evaluate(n.arg, { ...env, [n.v]: x }) : Number.isNaN(x) ? NaN : CALC.limit({ k: 'lim', id: n.id + ':lim', v: n.v, to: b, arg: n.arg }, env); };
-      return end(n.hi) - end(n.lo);
+      // and an end where it has no value (x² ln x at 0) is the limit from inside the interval
+      const end = (b: Node, side: '+' | '-') => {
+        const x = evaluate(b, env);
+        if (Number.isNaN(x)) return NaN;
+        const y = Number.isFinite(x) ? evaluate(n.arg, { ...env, [n.v]: x }) : NaN;
+        return Number.isFinite(y) ? y : CALC.limit({ k: 'lim', id: n.id + ':lim', v: n.v, to: b, arg: n.arg, ...(Number.isFinite(x) ? { side } : {}) }, env);
+      };
+      return end(n.hi, '-') - end(n.lo, '+');
     }
     case 'sum': return CALC.series(n, env);
     case 'grad': if (n.op && !isVector(n)) return fieldValue(n, env) as number;

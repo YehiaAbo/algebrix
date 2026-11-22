@@ -170,6 +170,11 @@ function oneSide(f: (x: number) => number, a: number, s: 1 | -1): number {
   // blowing up: big, one sign, and growing as h shrinks
   const big = [1e-4, 1e-6, 1e-8].map(at);
   if (big.every(Number.isFinite) && Math.abs(big[2]) > 1e6 && Math.abs(big[2]) > 10 * Math.abs(big[1]) && Math.abs(big[1]) > 10 * Math.abs(big[0]) * 0.9 && Math.sign(big[0]) === Math.sign(big[2])) return Math.sign(big[2]) * Infinity;
+  // so fast it overflows (eˣ toward ∞): growing, one sign, then past the largest number there is
+  if (Math.abs(big[2]) === Infinity) {
+    const ys = [1e-1, 1e-2, 1e-3, 1e-4, 1e-6, 1e-8].map(at), m = ys.map(Math.abs);
+    if (!ys.some(Number.isNaN) && ys.every(y => Math.sign(y) === Math.sign(big[2])) && m.every((y, i) => !i || y >= m[i - 1]) && m[0] < m[5]) return big[2];
+  }
   const r = extrapolate(at, Number.isFinite(a) ? 0.05 : 0.02);
   if (Number.isFinite(r.value) && r.err <= 1e-8 * (1 + Math.abs(r.value))) return r.value;
   // slow but steady, like x ln x or √x → 0: the steps toward it shrink by a steady factor, so
@@ -292,9 +297,32 @@ function integral(n: Int, env: Env): number {
   const at = memo.key && memo.key + memo.vars.map(v => env[v]).join(',');
   if (at && WORTH.has(at)) return WORTH.get(at)!;
   const a = evaluate(n.lo!, env), b = evaluate(n.hi!, env);
-  const r = Number.isNaN(a) || Number.isNaN(b) ? NaN : quad(x => evaluate(n.arg, { ...env, [n.v]: x }), a, b);
+  const f = (x: number) => evaluate(n.arg, { ...env, [n.v]: x });
+  // a corner inside (|x − 1| at 1) slows the quadrature to a stop: integrate up to each corner
+  const cuts = Number.isNaN(a) || Number.isNaN(b) ? [] : corners(n, env, a, b);
+  const r = Number.isNaN(a) || Number.isNaN(b) ? NaN : cuts.length ? [a, ...cuts, b].slice(1).reduce((s, hi, i, arr) => s + quad(f, i ? arr[i - 1] : a, hi), 0) : quad(f, a, b);
   if (at) { if (WORTH.size > 50000) WORTH.clear(); WORTH.set(at, r); }
   return r;
+}
+/** where an |…| inside an integral turns, strictly between finite bounds a < b */
+function corners(n: Int, env: Env, a: number, b: number): number[] {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a >= b) return [];
+  const gs: Node[] = [];
+  walk(n.arg, m => { if (m.k === 'fn' && m.name === 'abs' && symbols(m.arg).includes(n.v)) gs.push(m.arg); });
+  const out: number[] = [];
+  for (const g of gs) {
+    const at = (x: number) => evaluate(g, { ...env, [n.v]: x });
+    const N = 200;
+    for (let i = 0; i < N; i++) {
+      let lo = a + ((b - a) * i) / N, hi = a + ((b - a) * (i + 1)) / N;
+      const fl = at(lo), fh = at(hi);
+      if (fh === 0 && i < N - 1) { out.push(hi); continue; }
+      if (!(fl * fh < 0)) continue;
+      for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (at(lo) * at(m) <= 0) hi = m; else lo = m; }
+      out.push((lo + hi) / 2);
+    }
+  }
+  return [...new Set(out)].filter(x => Math.min(x - a, b - x) > 1e-9 * (1 + Math.abs(x))).sort((x, y) => x - y);
 }
 const SHAPE = new WeakMap<Node, { key: string; vars: string[] }>();
 const WORTH = new Map<string, number>();

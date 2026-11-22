@@ -23,6 +23,26 @@ export const tests = {
     await until(s => !s.eq.includes('x − 2') , "L'Hôpital takes the derivatives");
   },
 
+  async 'a limit at ∞ by hand: plug in names the form, then conjugate, ÷ the highest power, plug in'({ load, hold, countRefusals, refusals, until, assert, text }) {
+    await load('lim x->inf (sqrt(x^2 + x) - x)');
+    await countRefusals();
+    await hold('c', 'p');
+    assert(await refusals() === 1, 'plugging ∞ into ∞ − ∞ is refused');
+    const said = await text();
+    assert(said.includes('∞ − ∞') || said.startsWith('lim'), `it names the form: ${said}`);
+    await hold('c', 'j');
+    await until(s => s.eq === 'lim_{x→∞} x/(sqrt(x^2 + x) + x)', 'times the conjugate over itself');
+    await hold('c', 'h');
+    await until(s => s.eq === 'lim_{x→∞} 1/(sqrt(1 + 1/x) + 1)', 'top and bottom ÷ x');
+    await hold('c', 'p');
+    await until(s => s.eq === '1/2', 'now it plugs in');
+    await load('lim x->inf x e^(-x)');
+    await hold('c', 'q');
+    await until(s => s.eq === 'lim_{x→∞} x/(e^x)', '0·∞ as a fraction, eˣ underneath');
+    await hold('c', 'l');
+    await until(s => s.eq.startsWith('lim_{x→∞}') && !s.eq.includes('x/('), "then L'Hôpital");
+  },
+
   async 'e works out a derivative and tidies'({ load, key, expectEq }) {
     await load('d/dx (3x^2 - 4x + 1)');
     await key('e'); await expectEq('6x − 4', 10000);

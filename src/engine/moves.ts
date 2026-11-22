@@ -469,7 +469,12 @@ function verifyAt(before: Eq, r: MoveOk): string | null {
     const pairs: [number, number][] = r.check ? r.check(env) : (() => {
       const [l0, r0, l1, r1] = [before.lhs, before.rhs, r.eq.lhs, r.eq.rhs].map(n => evaluate(n, env)), f = r.factor(env);
       size = Math.abs(l1) + Math.abs(r1) + Math.abs(f) * (Math.abs(l0) + Math.abs(r0));
-      return Number.isFinite(f) && Number.isFinite(l0 - r0) ? [[l1 - r1, f * (l0 - r0)]] : [[NaN, NaN]];
+      if (Number.isFinite(f) && Number.isFinite(l0 - r0)) return [[l1 - r1, f * (l0 - r0)]];
+      // a side that is ∞ (a limit that grows without bound): each side has to stay what it was
+      const same = (a: number, b: number) => a === b || (Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1e-7 * (1 + Math.abs(a)));
+      const inf = [l0, r0, l1, r1].some(x => Math.abs(x) === Infinity);
+      if (f === 1 && inf && ![l0, r0, l1, r1].some(Number.isNaN) && same(l0, l1) && same(r0, r1)) return [[0, 0]];
+      return [[NaN, NaN]];
     })();
     if (!pairs.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))) { if (!vars.length) break; continue; }
     checked++;

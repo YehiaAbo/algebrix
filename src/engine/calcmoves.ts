@@ -2,7 +2,7 @@
 // limits (plug in, L'Hôpital), differentiating both sides, and the definition of the
 // derivative. Every step goes through the same numeric check as an algebra move: the kernel
 // in calculus.ts says what a derivative or limit is worth.
-import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad } from './ast';
+import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad, key } from './ast';
 import { dependsOn, derivative, limit2, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
 import { gcd } from './terms';
@@ -11,6 +11,7 @@ import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, b
 import { toText } from './print';
 import { timesOne } from './general';
 import { distributeNode, expandAll } from './rewrite';
+import { rationalizeTop } from './polytools';
 
 const one = () => 1;
 const fresh = cloneFresh;
@@ -275,9 +276,13 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
   const a = evaluate(L.to, env);
   if (!Number.isFinite(a)) {
     // toward ∞: the pieces that shrink go to 0. Only when the whole limit is a plain number.
+    // ∞/∞, 0·∞, ∞ − ∞, 1^∞ somewhere inside: that is a form to work on, not a value to put in
+    const form = formAtInf(L, env, a > 0 ? 1 : -1);
+    if (form) return { error: `As ${L.v} → ${fmt(a)} this is ${form.what} (${form.at}), which could be anything. ${form.hint}` };
     const val = symbols(L).length ? NaN : evaluate(L, {});
-    const n = ratNode(Math.round(val * 1e8) / 1e8);
-    if (!n) return { error: `You can't plug in ${fmt(a)} here. Try L'Hôpital (C + l), or divide top and bottom by the highest power (Tab).` };
+    const n = Math.abs(val) === Infinity ? (val > 0 ? sym('∞') : neg(sym('∞'))) : knownNumber(val);
+    if (!n) return { error: `You can't plug in ${fmt(a)} here. Try L'Hôpital (C + l), or divide top and bottom by the highest power (C + h).` };
+    if (n.k !== 'num' && Math.abs(val) === Infinity) return { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}: it grows without bound`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' };
     return checked(e, { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' });
   }
   const body = plugged(L);
@@ -299,6 +304,123 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
   return o ? { error: o } : r;
 }
 
+/** C + c in a limit: times the conjugate over itself, √A − B → (A − B²)/(√A + B), for ∞ − ∞ */
+export function conjugateLim(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L) return { error: 'No limit here.' };
+  const r = rationalizeTop(L.arg);
+  if (!r) return { error: 'Times the conjugate needs a root in a sum, like √(x² + x) − x.' };
+  const h = newHints();
+  const next = r.k === 'frac' ? frac(simplify(expandAll(r.num, h), h), r.den) : r;
+  return checked(e, { eq: replace(e, L.arg.id, next), label: 'times the conjugate over itself', hints: h, factor: one, select: null, rule: 'conjugate' });
+}
+
+/** C + h in a limit toward ±∞: top and bottom divided by the power of the letter the bottom grows
+ *  like (x², or x for √(4x² + 1)), so every piece that is left either stays or goes to 0 */
+export function divideHighest(e: Eq, sel: string | null): MoveResult {
+  const L = limTarget(e, sel);
+  if (!L || L.v.includes(',')) return { error: 'No limit here.' };
+  const env = sampleEnv(L), a = evaluate(L.to, env);
+  if (Number.isFinite(a)) return { error: 'Dividing by the highest power is for a limit toward ∞ or −∞.' };
+  if (L.arg.k !== 'frac') return { error: 'Make it one fraction first: top over bottom.' };
+  const F = L.arg, s = a > 0 ? 1 : -1, v = L.v;
+  // powers and roots of the letter only: eˣ or ln x don't grow like a power
+  let other = false;
+  walk(F, n => { if ((n.k === 'fn' || (n.k === 'pow' && dependsOn(n.exp, v))) && dependsOn(n, v)) other = true; });
+  if (other) return { error: 'Dividing by the highest power is for powers and roots of ' + v + '. With eˣ, ln or trig in it, try L’Hôpital (C, then l).' };
+  const at = (x: number) => Math.abs(evaluate(F.den, { ...env, [v]: s * x }));
+  const k0 = Math.log(at(1e8) / at(1e4)) / Math.log(1e4), k = Math.round(k0 * 2) / 2;
+  if (!(k > 0) || Math.abs(k - k0) > 0.05) return { error: 'The bottom doesn’t grow like a power of ' + v + ', so there is no highest power to divide by. Try L’Hôpital (C, then l).' };
+  if (s < 0 && !Number.isInteger(k)) return { error: 'Toward −∞ the bottom grows like a half power, which has no real value there.' };
+  const X = (p: number): Node => (p === 1 ? sym(v) : pow(sym(v), ratNode(p)!));
+  const h = newHints();
+  const over = (t: Node, p: number): Node => {
+    if (t.k === 'add') return add(t.terms.map(u => over(u, p)));
+    if (t.k === 'neg') return neg(over(t.arg, p));
+    // √A/xᵖ = √(A/x²ᵖ) when xᵖ > 0; toward −∞ an odd power is negative, so a minus comes out
+    if (t.k === 'sqrt') { const inner = over(t.arg, 2 * p); return s < 0 && p % 2 === 1 ? neg(sqrt(inner)) : sqrt(inner); }
+    if (t.k === 'mul' && t.factors.filter(f => dependsOn(f, v)).length === 1 && t.factors.some(f => f.k === 'sqrt' && dependsOn(f, v))) {
+      return mul(t.factors.map(f => (dependsOn(f, v) ? over(f, p) : cloneFresh(f))));
+    }
+    return simplify(frac(cloneFresh(t), X(p)), h);
+  };
+  const next = simplify(frac(over(F.num, k), over(F.den, k)), h);
+  if (key(next) === key(F)) return { error: 'Already divided through: plug in now (C, then p).' };
+  return checked(e, { eq: replace(e, F.id, next), label: `top and bottom ÷ ${toText(X(k))}`, hints: h, factor: one, select: null, rule: 'divide by the highest power' });
+}
+
+/** n without the minus signs and constant denominators around it, and how to put them back */
+function peelConst(n: Node, v: string): { core: Node; wrap: (m: Node) => Node } {
+  const wraps: ((m: Node) => Node)[] = [];
+  let core = n;
+  for (;;) {
+    if (core.k === 'neg') { wraps.push(m => neg(m)); core = core.arg; continue; }
+    if (core.k === 'frac' && !dependsOn(core.den, v)) { const d = core.den; wraps.push(m => frac(m, fresh(d))); core = core.num; continue; }
+    break;
+  }
+  return { core, wrap: m => wraps.reduceRight((x, w) => w(x), m) };
+}
+
+/** the first indeterminate form inside a limit toward ±∞, read from values further and further out */
+function formAtInf(L: Lim, env: Env, sgn: 1 | -1): { what: string; at: string; hint: string } | null {
+  const xs = [1e2, 1e4, 1e8, 1e16].map(x => sgn * x);
+  // steadily up (or down) from the first value to the last
+  const up = (m: number[]) => m.every((y, i) => i === 0 || y >= m[i - 1]) && m[3] > m[0];
+  const down = (m: number[]) => m.every((y, i) => i === 0 || y <= m[i - 1]) && m[3] < m[0];
+  const goes = (n: Node): 'zero' | 'inf' | '-inf' | 'one' | null => {
+    const ys = xs.map(x => evaluate(n, { ...env, [L.v]: x }));
+    if (ys.some(Number.isNaN)) return null;
+    const m = ys.map(Math.abs);
+    if (up(m) && m[3] > 20) return ys[3] > 0 ? 'inf' : '-inf';
+    if (down(m) && m[3] < 1e-3) return 'zero';
+    const d = ys.map(y => Math.abs(y - 1));
+    if (down(d) && d[3] < 1e-3 && d.some(y => y > 0)) return 'one';
+    return null;
+  };
+  const big = (g: string | null) => g === 'inf' || g === '-inf';
+  let found: { what: string; at: string; hint: string } | null = null;
+  const lh = "L'Hôpital (C, then l) or dividing top and bottom by the highest power (C, then h)";
+  walk(L.arg, n => {
+    if (found || !dependsOn(n, L.v)) return;
+    const at = toText(n);
+    if (n.k === 'frac') {
+      const t = goes(n.num), b = goes(n.den);
+      if (t === 'zero' && b === 'zero') found = { what: '0/0', at, hint: `Try ${lh}.` };
+      else if (big(t) && big(b)) found = { what: '∞/∞', at, hint: `Try ${lh}.` };
+    } else if (n.k === 'mul') {
+      const gs = n.factors.map(goes);
+      if (gs.includes('zero') && gs.some(big)) found = { what: '0·∞', at, hint: 'Write it as a fraction first (C, then q), then L\'Hôpital.' };
+    } else if (n.k === 'add') {
+      const gs = n.terms.map(goes);
+      if (gs.includes('inf') && gs.includes('-inf')) found = { what: '∞ − ∞', at, hint: 'Combine it into one fraction, or times the conjugate over itself (C, then j), first.' };
+    } else if (n.k === 'pow') {
+      const b = goes(n.base), x = goes(n.exp);
+      if (b === 'one' && big(x)) found = { what: '1^∞', at, hint: 'Bring the power down first: e^(g ln f) (C, then g).' };
+      else if (big(b) && x === 'zero') found = { what: '∞⁰', at, hint: 'Bring the power down first: e^(g ln f) (C, then g).' };
+      else if (b === 'zero' && x === 'zero') found = { what: '0⁰', at, hint: 'Bring the power down first: e^(g ln f) (C, then g).' };
+    }
+  });
+  return found;
+}
+
+/** a limit's value as an exact number: a fraction, a fraction of π or e, a root or a log of one */
+export function knownNumber(x: number): Node | null {
+  if (!Number.isFinite(x)) return null;
+  const r = ratNode(Math.round(x * 1e8) / 1e8);
+  if (r) return r;
+  const small = (y: number): Node | null => { for (let q = 1; q <= 12; q++) { const p = Math.round(y * q); if (p && Math.abs(p / q - y) < 1e-8 * (1 + Math.abs(y))) return ratNode(p / q); } return null; };
+  const times = (c: Node, k: Node): Node => (c.k === 'num' && c.v === 1 ? k : c.k === 'num' && c.v === -1 ? neg(k) : c.k === 'neg' ? neg(times(c.arg, k)) : c.k === 'frac' ? frac(times(c.num, k), c.den) : mul([c, k]));
+  const pi = small(x / Math.PI);
+  if (pi) return times(pi, sym('π'));
+  const E = small(x / Math.E);
+  if (E) return times(E, sym('e'));
+  const sq = small(x * x);
+  if (sq && x > 0) return sqrt(sq);
+  const lg = small(Math.exp(x));
+  if (lg && Math.exp(x) > 0) return fn('ln', lg);
+  return null;
+}
+
 /** defined on one side only (√x, x ln x at 0): the two-sided limit isn't there, a one-sided one is */
 function oneSided(L: Lim, env: Env, a: number): string | null {
   if (L.side) return null;
@@ -312,17 +434,28 @@ export function lhopital(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
   if (L.v.includes(',')) return { error: "L'Hôpital is for one letter. With two, try paths (C + p), or polar form." };
-  const f = L.arg;
+  // −f/g, (f/g)/2: the minus and the number wait outside
+  const { core: f, wrap } = peelConst(L.arg, L.v);
   if (f.k !== 'frac') return { error: "L'Hôpital needs a fraction. Make it one first (Tab + c)." };
   const env = sampleEnv(L);
   // ±∞ from the two sides (1/x at 0) still counts as ∞
-  const part = (n: Node) => { const x = evaluate(lim(L.v, L.to, n, L.side), env); return Number.isNaN(x) ? evaluate(lim(L.v, L.to, fn('abs', fresh(n)), L.side), env) : x; };
+  const a = evaluate(L.to, env);
+  const part = (n: Node) => {
+    const x = evaluate(lim(L.v, L.to, n, L.side), env);
+    if (!Number.isNaN(x)) return x;
+    const y = evaluate(lim(L.v, L.to, fn('abs', fresh(n)), L.side), env);
+    if (!Number.isNaN(y) || Number.isFinite(a)) return y;
+    // eˣ toward ∞ overflows the numeric limit: read it from values further and further out
+    const ys = [1e2, 1e4, 1e8].map(r => Math.abs(evaluate(n, { ...env, [L.v]: Math.sign(a) * r })));
+    return ys[0] < ys[1] && ys[1] <= ys[2] && ys[2] > 1e6 ? Infinity : ys[0] > ys[1] && ys[1] >= ys[2] && ys[2] < 1e-9 ? 0 : NaN;
+  };
   const t = part(f.num), b = part(f.den);
   const zero = (x: number) => Math.abs(x) < 1e-9, inf = (x: number) => !Number.isFinite(x) && !Number.isNaN(x);
   if (!((zero(t) && zero(b)) || (inf(t) && inf(b)))) return { error: `L'Hôpital needs 0/0 or ∞/∞. Here it is ${fmt(t)}/${fmt(b)}${Number.isFinite(t) && Number.isFinite(b) && !zero(b) ? ', so just plug in (C + p)' : ''}.` };
   const c: Ctx = { v: L.v, dep: [] };
   const dt = inner(f.num, c), db = inner(f.den, c);
-  const next = lim(L.v, L.to, db.k === 'num' && db.v === 1 ? dt : frac(dt, db), L.side, L.id);
+  const q = db.k === 'num' && db.v === 1 ? dt : frac(dt, db);
+  const next = lim(L.v, L.to, wrap(q), L.side, L.id);
   return checked(e, { eq: replace(e, L.id, next), label: `L'Hôpital (${zero(t) ? '0/0' : '∞/∞'})`, hints: newHints(), factor: one, select: null, rule: "L'Hôpital" });
 }
 
@@ -348,14 +481,22 @@ export function expLog(e: Eq, sel: string | null): MoveResult {
 /** 0·∞: one factor goes underneath as 1/it, so L'Hôpital can take the 0/0 */
 export function asQuotient(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
-  if (!L || L.arg.k !== 'mul' || L.arg.factors.length !== 2) return { error: 'Needs a limit of a product.' };
-  const t = tends(L), [A, B] = L.arg.factors, size = (n: Node) => { const x = t(n); return Number.isNaN(x) ? t(fn('abs', fresh(n))) : x; }, a = size(A), b = size(B);
+  // −x·e^(−x), 3x·ln x: the sign and the numbers stay out front, the two that change are the product
+  const { core: M, wrap } = L ? peelConst(L.arg, L.v) : { core: null, wrap: (n: Node) => n };
+  const vary = M?.k === 'mul' ? M.factors.filter(f => dependsOn(f, L!.v)) : [];
+  if (!L || !M || M.k !== 'mul' || vary.length !== 2) return { error: 'Needs a limit of a product.' };
+  const consts = M.factors.filter(f => !dependsOn(f, L.v)).map(fresh);
+  const t = tends(L), [A, B] = vary, size = (n: Node) => { const x = t(n); return Number.isNaN(x) ? t(fn('abs', fresh(n))) : x; }, a = size(A), b = size(B);
   if (!((huge(a) && near(b, 0)) || (huge(b) && near(a, 0)))) return { error: 'Only for 0·∞.' };
   // a ln or an inverse trig stays on top (its derivative is the easy one); else the 0 does, for 0/0
   const keep = (n: Node) => n.k === 'fn' && ['ln', 'log', 'asin', 'acos', 'atan'].includes(n.name);
-  const [top, other] = keep(A) ? [A, B] : keep(B) ? [B, A] : near(a, 0) ? [A, B] : [B, A];
-  const under = other.k === 'frac' && other.num.k === 'num' && other.num.v === 1 ? fresh(other.den) : frac(num(1), fresh(other));
-  const next = lim(L.v, fresh(L.to), frac(fresh(top), under), L.side, L.id);
+  // else the one whose 1/it is simpler goes underneath: x·e^(−x) is x/eˣ; on a tie the 0 stays on top, for 0/0
+  const flip = (n: Node): Node => n.k === 'pow' && n.exp.k === 'num' && n.exp.v > 0 ? frac(num(1), fresh(n)) : n.k === 'pow' ? pow(fresh(n.base), simplify(neg(fresh(n.exp)), newHints())) : n.k === 'frac' && n.num.k === 'num' && n.num.v === 1 ? fresh(n.den) : frac(num(1), fresh(n));
+  const len = (n: Node) => toText(n).length + (n.k === 'frac' ? 10 : 0);
+  const [top, other] = keep(A) ? [A, B] : keep(B) ? [B, A] : len(flip(A)) < len(flip(B)) ? [B, A] : len(flip(B)) < len(flip(A)) ? [A, B] : near(a, 0) ? [A, B] : [B, A];
+  const under = flip(other);
+  const q = frac(consts.length ? mul([...consts, fresh(top)]) : fresh(top), under);
+  const next = lim(L.v, fresh(L.to), wrap(q), L.side, L.id);
   return checked(e, { eq: replace(e, L.id, next), label: '0·∞: write it as a fraction', hints: newHints(), factor: one, select: null, rule: 'limit of a product' });
 }
 
@@ -402,6 +543,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
     }
     else if (t.k === 'lim') {
       r = plugIn(cur, t.id);
+      if (isErr(r) && /∞ − ∞/.test(r.error)) { const h = conjugateLim(cur, t.id); if (!isErr(h)) r = h; }
+      if (isErr(r) && /∞\/∞/.test(r.error)) { const h = divideHighest(cur, t.id); if (!isErr(h)) r = h; }
       if (isErr(r)) { const h = lhopital(cur, t.id); if (!isErr(h)) r = h; }
       if (isErr(r)) { const h = expLog(cur, t.id); if (!isErr(h)) r = h; }
       if (isErr(r)) { const h = asQuotient(cur, t.id); if (!isErr(h)) r = h; }

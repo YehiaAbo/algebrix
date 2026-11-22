@@ -7,8 +7,8 @@ import { toText } from './print';
 import { dependsOn, derivative, substitute } from './calculus';
 import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
 import { newHints, simplify } from './simplify';
-import { times, plus, prettyDerivative } from './calcmoves';
-import { partialFractions, longDivide } from './polytools';
+import { times, plus, prettyDerivative, knownNumber } from './calcmoves';
+import { partialFractions, longDivide, slopeSplit } from './polytools';
 import { expandAll } from './rewrite';
 
 const one = () => 1;
@@ -244,6 +244,9 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
   const piece = (w: Node): Node => { const q = quick(w, v); return q ? wrap(q.F) : int(v, fresh(w), T.lo && fresh(T.lo), T.hi && fresh(T.hi)); };
   const u = T.arg;
   let next: Node, label: string;
+  // |g| between bounds: split where g changes sign, then on each piece |g| is g or −g
+  const ab = def ? absPieces(T) : null;
+  if (ab) return checked(e, { eq: replace(e, T.id, ab.next), label: ab.label, hints: newHints(), factor: one, select: null, rule: 'absolute value' });
   const q = quick(u, v);
   if (q) { next = wrap(q.F); label = q.label; if (q.conditions) return finish(e, T, next, label, { conditions: q.conditions }); }
   else if (u.k === 'add') { next = plus(...u.terms.map(piece)); label = 'sum rule'; }
@@ -262,6 +265,10 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
     const { p, label } = rational(u)!;
     return checked(e, { eq: replace(e, T.id, int(v, p, T.lo && fresh(T.lo), T.hi && fresh(T.hi))), label, hints: newHints(), factor: one, select: null, rule: label });
   }
+  else if (u.k === 'frac' && slopeSplit(u)) {
+    // (Bx + C)/(quadratic): a multiple of the bottom's slope over it (a log) plus a number over it (tan⁻¹)
+    return checked(e, { eq: replace(e, T.arg.id, slopeSplit(u)!), label: 'top as the bottom’s slope plus a number', hints: newHints(), factor: one, select: null, rule: 'simplify' });
+  }
   else if (u.k === 'frac' && u.den.k === 'pow' && !dependsOn(u.den.base, v) && dependsOn(u.den.exp, v)) {
     // 1/eˣ is e⁻ˣ, x/2ˣ is x·2⁻ˣ: up on top, it is a rule (or by parts)
     const up = pow(fresh(u.den.base), neg(fresh(u.den.exp)));
@@ -275,6 +282,44 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
   }
   return finish(e, T, next, label);
 }
+
+/** ∫ₐᵇ with |g| inside: the pieces between the places g is 0, or, with none inside, |g| as ±g */
+function absPieces(T: Int): { next: Node; label: string } | null {
+  const v = T.v, lo = evaluate(T.lo!, {}), hi = evaluate(T.hi!, {});
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi) return null;
+  let A: Extract<Node, { k: 'fn' }> | null = null;
+  walk(T.arg, n => { if (!A && n.k === 'fn' && n.name === 'abs' && dependsOn(n.arg, v) && symbols(n.arg).every(w => w === v)) A = n; });
+  const g = A as Extract<Node, { k: 'fn' }> | null;
+  if (!g) return null;
+  const at = (x: number) => evaluate(g.arg, { [v]: x });
+  // where g changes sign inside (lo, hi), found on a fine grid and narrowed down, then made exact
+  const cuts: Node[] = [];
+  const N = 400;
+  for (let i = 0; i < N; i++) {
+    let a = lo + ((hi - lo) * i) / N, b = lo + ((hi - lo) * (i + 1)) / N;
+    if (!(at(a) * at(b) < 0) && !(at(b) === 0 && i < N - 1)) continue;
+    if (at(b) === 0) { const c = ratNode(b); if (c) cuts.push(c); continue; }
+    for (let k = 0; k < 60; k++) { const m = (a + b) / 2; if (at(a) * at(m) <= 0) b = m; else a = m; }
+    const x = (a + b) / 2;
+    // a turn at an end (√2 as the top bound) isn't inside
+    if (Math.min(x - lo, hi - x) < 1e-9 * (1 + Math.abs(x))) continue;
+    const c = knownNumber(x) ?? sqrtCut(x);
+    if (!c) return null;
+    cuts.push(c);
+  }
+  const name = `|${toText(g.arg)}|`;
+  if (cuts.length) {
+    const ends = [fresh(T.lo!), ...cuts, fresh(T.hi!)];
+    const parts = ends.slice(1).map((b, i) => int(v, fresh(T.arg), i ? fresh(ends[i]) : ends[i], b));
+    return { next: plus(...parts), label: `split where ${name} turns: ${cuts.map(c => `${v} = ${toText(c)}`).join(', ')}` };
+  }
+  // no turn inside: one sign all the way
+  const sgn = Math.sign(at((lo + hi) / 2));
+  if (!sgn) return null;
+  const swap = (n: Node): Node => (n === g ? (sgn > 0 ? fresh(g.arg) : neg(fresh(g.arg))) : withKids(n, swap));
+  return { next: int(v, swap(T.arg), fresh(T.lo!), fresh(T.hi!)), label: `${name} = ${sgn > 0 ? '' : '−'}(${toText(g.arg)}) from ${toText(T.lo!)} to ${toText(T.hi!)}` };
+}
+const sqrtCut = (x: number): Node | null => { const s = ratNode(Math.round(x * x * 1e9) / 1e9); return s && s.k === 'num' ? (x > 0 ? sqrtN(s) : neg(sqrtN(s))) : null; };
 
 /** how u and v are tied, for messages: u = x² */
 const letDef = (u: string, v: string) => (LETS.has(u) ? `${u} = ${toText(LETS.get(u)!)}` : LETS.has(v) ? `${v} = ${toText(LETS.get(v)!)}` : `${u} depends on ${v}`);
@@ -322,6 +367,9 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     let Q = tidy(frac(swap(fresh(f)), tidy(dg)));
     // what's left may be a power of g: x² with u = x² (∫ x³ e^(x²)), e^(2x) with u = eˣ
     if (dependsOn(Q, v)) Q = tidy(powersOf(Q, g, v, u));
+    // x is still written there but doesn't change anything ((x + 1)/(u(2x + 2)) is 1/(2u)): put
+    // in a value of x where it is defined, and the numbers check it
+    if (dependsOn(Q, v)) Q = idleIn(Q, v, u) ?? Q;
     if (dependsOn(Q, v)) continue;
     const def = !!(T.lo && T.hi);
     const bound = (b: Node) => tidy(substitute(fresh(g), v, b));
@@ -333,6 +381,20 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     return { move, side: def ? undefined : eq(sym(u), fresh(g)), u, g };
   }
   return { move: { error: aimed ? `Its derivative isn't there, so u = that doesn't work. Aim at another inside piece.` : 'No inside function whose derivative is also there. Try by parts (C + b).' } };
+}
+
+/** n with v in it only for show (it cancels): n at a whole-number v, else null */
+function idleIn(n: Node, v: string, u: string): Node | null {
+  const xs = [0.37, 0.71, 1.13, 1.9], us = [0.6, 1.7];
+  for (const uv of us) {
+    const ys = xs.map(x => evaluate(n, { [v]: x, [u]: uv }));
+    if (!ys.every(y => Number.isFinite(y) && Math.abs(y - ys[0]) < 1e-9 * (1 + Math.abs(ys[0])))) return null;
+  }
+  for (const x0 of [0, 1, 2, 3, -1]) {
+    const m = tidy(substitute(fresh(n), v, num(x0)));
+    if (us.every(uv => Math.abs(evaluate(m, { [u]: uv }) - evaluate(n, { [v]: 0.71, [u]: uv })) < 1e-9 * (1 + Math.abs(evaluate(m, { [u]: uv }))))) return m;
+  }
+  return null;
 }
 
 /** every piece of n that is c·gᵏ (checked at a few points) written c·uᵏ */
@@ -567,7 +629,12 @@ export function plugBounds(e: Eq, sel: string | null): MoveResult {
   if (!A) return { error: 'Nothing to plug the bounds into.' };
   const env: Env = {};
   symbols(A).forEach((s, i) => (env[s] = 1.3 + i));
-  const side = (b: Node, keep: boolean) => (Number.isFinite(evaluate(b, env)) ? substitute(keep ? A.arg : fresh(A.arg), A.v, b) : limOf(A, b));
+  // an end at ±∞, or one where it has no value (x² ln x at 0), goes in as a limit from inside
+  const side = (b: Node, keep: boolean, s: '+' | '-') => {
+    const x = evaluate(b, env);
+    if (!Number.isFinite(x)) return limOf(A, b);
+    return Number.isFinite(evaluate(A.arg, { ...env, [A.v]: x })) || !symbols(A.arg).includes(A.v) ? substitute(keep ? A.arg : fresh(A.arg), A.v, b) : lim(A.v, fresh(b), fresh(A.arg), s);
+  };
   // 0 to a power with a letter in it (x^(t+1) at x = 0) is 0 where the integral is defined: say where
   const conditions: string[] = [];
   const zeroPow = (n: Node): Node => {
@@ -575,7 +642,7 @@ export function plugBounds(e: Eq, sel: string | null): MoveResult {
     const ks = children(n);
     return ks.length ? withChildren(n, ks.map(zeroPow)) : n;
   };
-  const next = plus(zeroPow(side(A.hi, true)), times(num(-1), zeroPow(side(A.lo, false))));
+  const next = plus(zeroPow(side(A.hi, true, '-')), times(num(-1), zeroPow(side(A.lo, false, '+'))));
   return checked(e, { eq: replace(e, A.id, next), label: 'plug in the bounds', hints: newHints(), factor: one, select: next.id, rule: 'fundamental theorem', conditions });
 }
 const limOf = (A: At, b: Node): Node => lim(A.v, fresh(b), fresh(A.arg));

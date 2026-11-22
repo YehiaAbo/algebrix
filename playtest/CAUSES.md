@@ -163,3 +163,18 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   about an old f. Rule: anything read from the screen (what's defined, which form) is synced when the
   workspace changes, not on the next render.
   Guards: functions.test.ts K21, e2e byhand (the f menu box reads the function in front of you).
+- **K22 A fraction over a quadratic with no rational roots had no next step.** Partial fractions
+  only knew linear factors, and (Bx + C)/(x² + px + q) had no rule; u-sub also missed a top that is a
+  constant multiple of the bottom's slope ((x + 1)/(x² + 2x + 5)). Now partial fractions keep
+  (Bx + C)/q pieces (q, q², two quadratics in x²), the top splits into the slope plus a number (a log
+  and a tan⁻¹), and u-sub cancels a letter that only shows. Guards: tests/bookround.test.ts.
+- **K23 Plugging ∞ in skipped the thinking.** At ∞, plug in took the numeric value of anything, so
+  (1 + 1/x)^x became e in one press, and the moves a student uses were missing (the message even named
+  a "divide by the highest power" that didn't exist). Now plug in names the form in the way (∞/∞, 0·∞,
+  ∞ − ∞, 1^∞), C has h (÷ highest power), j (conjugate), q (0·∞ as a fraction), g (power down), and
+  values like π/2, e, ∞ come out exact. eˣ toward ∞ no longer reads as "no value" (overflow is ∞), and
+  the safety net compares sides that are both ∞. Guards: bookround.test.ts, e2e calc.
+- **K24 |g| and undefined ends stopped definite integrals.** ∫₀² |x − 1| had no move, and the numeric
+  check failed at a corner; [x² ln x]₀ had no value at 0. Now e splits at each turn (exact, π/2 and √2
+  too), and an end with no value goes in as a one-sided limit (evaluated that way too).
+  Guards: bookround.test.ts.

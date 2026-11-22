@@ -11,7 +11,7 @@ import { frac } from '../engine/ast';
 import { formsFor } from '../engine/forms';
 import { asPrime, hasDifferentials, integrateDifferentials, toDifferentials, letters, slopeVar } from '../engine/leibniz';
 import { tidy } from '../engine/techniques';
-import { derivStep, plugIn, lhopital, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
+import { derivStep, plugIn, lhopital, expLog, asQuotient, divideHighest, conjugateLim, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
 import { intStep, uCandidate, byParts, plugBounds, ratioTest, taylor, writeOut } from '../engine/integrate';
 import { bothVar, differentialsBoth, integrateBoth } from '../engine/general';
 import { knownSum } from '../engine/sums';
@@ -82,6 +82,12 @@ export function calcTechniques(this: App): Tech[] {
     const p = plugIn(eq, this.sel), l = lhopital(eq, this.sel);
     add('Limits', { lead: true, key: 'p', label: 'plug in', ok: !isErr(p), run: () => this.apply(plugIn(this.eq, this.sel), 1.1) });
     add('Limits', { key: 'l', label: "L'Hôpital", ok: !isErr(l), run: () => this.apply(lhopital(this.eq, this.sel), 1.1) });
+    // the other forms made ready for L'Hôpital: 0·∞ as a fraction, 1^∞ (0⁰, ∞⁰) with the power brought down
+    const q = asQuotient(eq, this.sel), x = expLog(eq, this.sel), hp = divideHighest(eq, this.sel), cj = conjugateLim(eq, this.sel);
+    add('Limits', { key: 'h', label: isErr(hp) ? '÷ highest power' : hp.label, ok: !isErr(hp), run: () => this.apply(divideHighest(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'j', label: 'times the conjugate', ok: !isErr(cj), run: () => this.apply(conjugateLim(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'q', label: '0·∞ as a fraction', ok: !isErr(q), run: () => this.apply(asQuotient(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'g', label: 'power down: e^(g ln f)', ok: !isErr(x), run: () => this.apply(expLog(this.eq, this.sel), 1.1) });
   } else if (fresh) {
     add('Limits', { key: 'l', label: `limit as ${v} →`, ok: true, run: () => {}, ask: { prompt: `${v} →`, hint: 'a number, or inf', run: text => this.addWork(limitOf(this.eq, v!, text), 'limit') } });
   }

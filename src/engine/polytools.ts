@@ -122,24 +122,32 @@ export function partialFractions(n: Node): Node | null {
   return parts.length === 1 ? parts[0] : add(parts);
 }
 
-/** a repeated factor: A/(x − r) + B/(x − r)² + …, one term for each power. The numbers come
- *  from N/Q at as many points as there are unknowns, solved exactly. */
+/** a repeated factor: A/(x − r) + B/(x − r)² + …, one term for each power; and what is left once
+ *  the rational roots are out, a quadratic with no rational roots (or the square of one, or two of
+ *  them as in x⁴ + 5x² + 4): (Bx + C)/q + …. The numbers come from N/Q at as many points as there
+ *  are unknowns, solved exactly. */
 function repeatedFractions(v: string, N: Rat[], Qc: Rat[], roots: Rat[], lead: Node[]): Node | null {
   const neg = (r: Rat) => rat(-r.p, r.q);
+  type Piece = { r: Rat; k: number } | { q: Rat[]; k: number; top: 0 | 1 };
   // multiplicity of each root, by dividing it out of Q
-  const powers: { r: Rat; k: number }[] = [];
+  const powers: Piece[] = [];
   let rest = Qc;
   for (const r of roots) {
     let k = 0;
     for (;;) { const d = divide(rest, [neg(r), rat(1)]); if (d.r.length) break; rest = d.q; k++; }
     for (let j = 1; j <= k; j++) powers.push({ r, k: j });
   }
-  if (powers.length !== Qc.length - 1) return null;
+  const quads = quadraticsOf(rest);
+  if (!quads) return null;
+  for (const { q, k } of quads) for (let j = 1; j <= k; j++) powers.push({ q, k: j, top: 1 }, { q, k: j, top: 0 });
   const n = powers.length;
+  if (n !== Qc.length - 1) return null;
   const pts: Rat[] = [];
-  for (let x = 2; pts.length < n; x++) if (!roots.some(r => r.q === 1 && r.p === x)) pts.push(rat(x));
+  for (let x = 2; pts.length < n && x < 60; x++) if (!isZero(evalPoly(Qc, rat(x)))) pts.push(rat(x));
+  if (pts.length < n) return null;
   const pow_ = (b: Rat, k: number) => Array.from({ length: k }).reduce<Rat>(s => rmul(s, b), rat(1));
-  const M = pts.map(x => [...powers.map(({ r, k }) => rdiv(rat(1), pow_(radd(x, neg(r)), k))), rdiv(evalPoly(N, x), evalPoly(Qc, x))]);
+  const basis = (P: Piece, x: Rat): Rat => 'r' in P ? rdiv(rat(1), pow_(radd(x, neg(P.r)), P.k)) : rdiv(P.top ? x : rat(1), pow_(evalPoly(P.q, x), P.k));
+  const M = pts.map(x => [...powers.map(P => basis(P, x)), rdiv(evalPoly(N, x), evalPoly(Qc, x))]);
   // Gauss–Jordan with fractions
   for (let c = 0; c < n; c++) {
     const p = M.findIndex((row, i) => i >= c && !isZero(row[c]));
@@ -151,20 +159,78 @@ function repeatedFractions(v: string, N: Rat[], Qc: Rat[], roots: Rat[], lead: N
   }
   if (M.some(row => row.some(x => !safe(x.p) || !safe(x.q)))) return null;
   let text = '';
-  powers.forEach(({ r, k }, i) => {
-    // A/(x − p/q)^k = A·q^k/(qx − p)^k
-    const A = rmul(M[i][n], rat(r.q ** k));
+  const put = (A: Rat, base: string) => {
     if (isZero(A)) return;
-    const lin = r.p === 0 ? v : `${r.q === 1 ? '' : r.q}${v} ${r.p > 0 ? '-' : '+'} ${Math.abs(r.p)}`;
-    const base = k === 1 ? (r.p === 0 ? lin : `(${lin})`) : r.p === 0 ? `${v}^${k}` : `(${lin})^${k}`;
     const den = A.q === 1 ? base : `(${A.q}${base})`;
     const term = `${Math.abs(A.p)}/${den}`;
     text += text === '' ? (A.p < 0 ? '-' : '') + term : (A.p < 0 ? ' - ' : ' + ') + term;
+  };
+  powers.forEach((P, i) => {
+    if ('r' in P) {
+      // A/(x − p/q)^k = A·q^k/(qx − p)^k
+      const { r, k } = P;
+      const lin = r.p === 0 ? v : `${r.q === 1 ? '' : r.q}${v} ${r.p > 0 ? '-' : '+'} ${Math.abs(r.p)}`;
+      put(rmul(M[i][n], rat(r.q ** k)), k === 1 ? (r.p === 0 ? lin : `(${lin})`) : r.p === 0 ? `${v}^${k}` : `(${lin})^${k}`);
+      return;
+    }
+    if (!P.top) return;
+    // (Bx + C)/q^k, its two unknowns together: B is this row, C the next
+    const B = M[i][n], C = M[i + 1][n];
+    const base = `(${polyText(v, P.q)})${P.k === 1 ? '' : `^${P.k}`}`;
+    if (isZero(B)) { put(C, base); return; }
+    // a whole number out front: (3x − 1)/(2(x² + 1)) reads better than ((3/2)x − 1/2)/(x² + 1)
+    const L = (B.q * C.q) / gcd(B.q, C.q), top = [rmul(C, rat(L)), rmul(B, rat(L))];
+    const flip = top[1].p < 0;
+    const body = polyText(v, flip ? top.map(neg) : top);
+    const term = `(${body})/${L === 1 ? base : `(${L}${base})`}`;
+    text += text === '' ? (flip ? '-' : '') + term : (flip ? ' - ' : ' + ') + term;
   });
   if (!text) return null;
   const pf = parseExpr(text);
   const parts = [...lead, ...(pf.k === 'add' ? pf.terms : [pf])];
   return parts.length === 1 ? parts[0] : add(parts);
+}
+
+/** what is left of a denominator once its rational roots are out, as quadratics with whole-number
+ *  coefficients: nothing, one quadratic, its square, or two of them (a quadratic in x²) */
+function quadraticsOf(c: Rat[]): { q: Rat[]; k: number }[] | null {
+  const whole = (q: Rat[]): Rat[] => {
+    const L = q.reduce((m, r) => (m * r.q) / gcd(m, r.q), 1), a = q.map(r => (r.p * L) / r.q);
+    const g = a.reduce((m, x) => gcd(m, Math.abs(x)), 0) * Math.sign(a[a.length - 1]);
+    return a.map(x => rat(x / g));
+  };
+  if (c.length === 1) return [];
+  if (c.length === 3) return [{ q: whole(c), k: 1 }];
+  if (c.length !== 5) return null;
+  // a(x² + bx + d)²
+  const m = c.map(r => rdiv(r, c[4]));
+  const b = rdiv(m[3], rat(2)), d = rdiv(radd(m[2], rmul(b, rmul(b, rat(-1)))), rat(2));
+  const same = (x: Rat, y: Rat) => isZero(radd(x, rmul(y, rat(-1))));
+  if (same(m[1], rmul(rat(2), rmul(b, d))) && same(m[0], rmul(d, d))) return [{ q: whole([d, b, rat(1)]), k: 2 }];
+  // ax⁴ + bx² + c with rational roots in x²: (x² − r₁)(x² − r₂)
+  if (isZero(c[1]) && isZero(c[3])) {
+    const roots = rationalRoots([c[0], c[2], c[4]]);
+    if (roots.length === 2) return roots.map(r => ({ q: whole([rmul(r, rat(-1)), rat(0), rat(1)]), k: 1 }));
+  }
+  return null;
+}
+
+/** (Bx + C)/(ax² + bx + c) → k·(2ax + b)/(ax² + bx + c) + m/(ax² + bx + c): the top as a multiple of
+ *  the bottom's slope (which integrates to a log) plus a number (tan⁻¹ once the square is completed) */
+export function slopeSplit(n: Node): Node | null {
+  if (n.k !== 'frac') return null;
+  const P = poly(n.num), Q = poly(n.den);
+  if (!P || !Q || !Q.v || P.c.length !== 2 || Q.c.length !== 3 || (P.v && P.v !== Q.v) || isZero(P.c[1])) return null;
+  const v = Q.v, [c0, b, a] = Q.c, [C, B] = P.c;
+  const k = rdiv(B, rmul(rat(2), a)), m = radd(C, rmul(rat(-1), rmul(k, b)));
+  const slope = parseExpr(polyText(v, [b, rmul(rat(2), a)]));
+  void c0;
+  const coef = (r: Rat, body: Node): Node => (r.p === r.q ? body : r.p === -r.q ? negate(body) : mul([parseExpr(r.q === 1 ? String(r.p) : `${r.p}/${r.q}`), body]));
+  // the top is already a multiple of the slope: that is a substitution, nothing to split
+  if (isZero(m)) return null;
+  const first = coef(k, frac(slope, cloneFresh(n.den)));
+  const second = frac(parseExpr(m.q === 1 ? String(Math.abs(m.p)) : `${Math.abs(m.p)}/${m.q}`), cloneFresh(n.den));
+  return add([first, m.p < 0 ? negate(second) : second]);
 }
 
 const hasSqrt = (n: Node): boolean => n.k === 'sqrt' || (n.k === 'mul' && n.factors.some(hasSqrt)) || (n.k === 'neg' && hasSqrt(n.arg));
