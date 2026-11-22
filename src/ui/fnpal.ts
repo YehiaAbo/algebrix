@@ -42,11 +42,19 @@ export function renderPal(this: App) {
   host.className = 'forms hub pal';
   const inv = inverseOf(this.peelSide());
   const pe = peel(this.eq, this.sel);
+  // the input box is always the first thing in the menu: type f(4), f(x² + 1), ln, e^_ …
+  const mine = [...DEFS.keys()].find(n => !n.endsWith('⁻¹'));
+  if (P.ask !== TYPED) {
+    const idle = document.createElement('div');
+    idle.className = 'pal-ask typed idle';
+    idle.innerHTML = `<input id="pal-idle" spellcheck="false" autocomplete="off" aria-label="type a function or a value" placeholder="${mine ? `${mine}(4)   ${mine}(x² + 1)   ` : ''}ln   e^_   _^2 + 1"><span class="op-note">${mine ? `press <kbd>${mine}</kbd> to type ${mine}(…), or <kbd>=</kbd>` : '<kbd>=</kbd> to type'}</span>`;
+    host.append(idle);
+  }
   const lead = document.createElement('div');
   lead.className = 'hub-row';
   const aimed = !!this.sel && this.sel !== 'eq';
   lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ' rec'}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button>`
-    + `<button class="chip lead" data-k="="><kbd>=</kbd>type any function</button>`
+
     + `<button class="chip lead${aimed ? '' : ' off'}" data-k="b"><kbd>b</kbd>${aimed ? 'make the aimed piece a function' : 'aim at a piece to make it a function'}</button>`
     + (this.invTarget() ? `<button class="chip lead" data-k="-"><kbd>-</kbd>write out ${this.invTarget()}⁻¹</button>` : '');
   host.append(lead);
@@ -62,15 +70,16 @@ export function renderPal(this: App) {
   host.append(row);
   if (P.ask) {
     const ask = document.createElement('div');
+    const first = P.ask === TYPED;
     ask.className = 'pal-ask';
     const typed = P.ask === TYPED, mine = isYours(P.ask);
     ask.className = 'pal-ask' + (typed ? ' typed' : mine ? ' yours' : '');
     ask.innerHTML = typed
-      ? `<span>each side →</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a function of each side" placeholder="e^_   _^2 + 1   ln   f⁻¹   f(3)"><span id="pal-note" class="op-note">a name, _ for each side, or f(3) for a value</span>`
+      ? `<span>type</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a function of each side" placeholder="f(4)   f(x² + 1)   ln   e^_   f⁻¹"><span id="pal-note" class="op-note">a name, _ for each side, or f(3) for a value</span>`
       : mine
       ? `<span>${P.ask.tpl}(</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a value for ${P.ask.tpl}"><span>)</span><span id="pal-note" class="op-note">${YOURS_NOTE(P.ask.tpl!)}</span>`
       : `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">a number or anything algebraic (a, k + 1, 1/x), Enter applies</span>`;
-    host.append(ask);
+    if (first) host.prepend(ask); else host.append(ask);
   }
   const tip = document.createElement('div');
   tip.className = 'forms-tip';
@@ -80,6 +89,8 @@ export function renderPal(this: App) {
   host.append(tip);
   host.hidden = false;
   this.place(host);
+  const idleBox = document.getElementById('pal-idle');
+  idleBox?.addEventListener('focus', () => this.choose(TYPED));
   if (P.ask) {
     const input = $<HTMLInputElement>('pal-input');
     input.addEventListener('keydown', e => this.askKey(e));
@@ -127,9 +138,11 @@ export function palKey(this: App, e: KeyboardEvent) {
   if (k === 'Enter') { if (P.moved) return this.choose(items[P.i]); P.moved = true; P.i = 0; this.renderPal(); return this.palPeek(); }
   if (k === 'i') return this.palInverse();
   if (k === '=') return this.choose(TYPED);
+  if (k === '(') return this.typeInPal('(');
   if (k === 'b') { this.closePal(false); return this.openName(true); }
   if (k === '-') { const F = this.invTarget(); if (!F) return this.refuse('No functions of yours yet. Type one (f(x) = …), then - writes out its inverse.'); this.closePal(false); return this.addInverse(F); }
   if (/^[1-9]$/.test(k)) { const yours = TABS[0].name === 'Yours' ? TABS[0].items[Number(k) - 1] : undefined; if (yours) return this.choose(yours); return this.refuse(DEFS.size ? `You have ${DEFS.size} function${DEFS.size > 1 ? 's' : ''}: 1–${DEFS.size}.` : 'No functions of yours yet. Type one (F(x) = …), or aim at a piece and press b.'); }
+  if (k.length === 1 && DEFS.has(k)) return this.typeInPal(`${k}(`);
   if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
   const w = WRAPS.find(x => x.key === k);
   if (w) return this.choose(w);
@@ -242,7 +255,8 @@ export function valueAsked(this: App): { F: string; text: string } | null {
   const w = this.pal.ask, v = $<HTMLInputElement>('pal-input').value.trim();
   if (isYours(w) && v) return { F: w!.tpl!, text: v };
   if (w !== TYPED) return null;
-  const m = /^([A-Za-zα-ω](?:⁻¹)?)\s*\((.+)\)$/.exec(v);
+  // the closing bracket can wait: f(4 is f(4)
+  const m = /^([A-Za-zα-ω](?:⁻¹)?)\s*\((.+?)\)?$/.exec(v);
   return m && !m[2].includes('_') ? { F: m[1], text: m[2] } : null;
 }
 
@@ -285,4 +299,13 @@ export function addValueOf(this: App, F: string, r: Eq, text: string) {
   this.entrance();
   this.save();
   this.say(`Equation ${this.cur + 1}: ${toText(r)}${worth(r)}. s works it out.`);
+}
+
+/** into the menu's box, with this already typed (f( when you press the letter of your f) */
+export function typeInPal(this: App, start: string) {
+  this.choose(TYPED);
+  const input = $<HTMLInputElement>('pal-input');
+  input.value = start;
+  input.setSelectionRange(start.length, start.length);
+  this.askPreview();
 }

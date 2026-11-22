@@ -274,6 +274,14 @@ export const tests = {
     await until(s => s.slots === 2 && s.eq.startsWith('f(4) = '), 'f(4) is an equation of its own');
     await key('s');
     await until(s => s.eq === 'f(4) = 11', 's works it out and keeps f(4)');
+    // the box is the first thing in the menu; the letter of your function types into it
+    await key('f');
+    const box = await p.evaluate(() => !!document.getElementById('pal-idle'));
+    assert(box, 'the f menu shows its input box straight away');
+    await key('f');
+    await until(s => s.mode === 'fnask', 'f in the menu starts typing f(…)');
+    await type('x^2 + 1'); await key('Enter');
+    await until(s => s.eq === 'f(x^2 + 1) = 2(x^2 + 1) + 3', 'f(x² + 1), closing bracket optional');
     await key('n'); await type('f(x - 1) = 9'); await key('Enter');
     await key('f'); await key('i');
     await until(s => s.eq === 'x − 1 = f⁻¹(9)', 'i undoes f: f⁻¹ both sides');

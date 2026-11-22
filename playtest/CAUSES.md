@@ -139,3 +139,9 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   the branch that gives every input back (x² + 1 → √(x − 1)), and says plainly when the function
   still turns around inside it. The graph draws a one-to-one function's inverse as its mirror
   image in y = x. Guard: tests/functions.test.ts (K18), e2e byhand.
+- **K19 A feature that works but can't be found is not built.** Values into your function (v58) hid
+  behind "press 1, then type"; the owner couldn't find it. The f menu now opens with its input box
+  on top, saying what goes in it (f(4), f(x² + 1), ln, e^_), and pressing your function's letter
+  starts typing it (the closing bracket can wait). Rule: put a feature where the user would look
+  first (the f menu's box for anything typed into a function), and check discoverability with a
+  screenshot of the menu as it first opens, before calling it done. Guard: e2e byhand.

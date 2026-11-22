@@ -443,7 +443,7 @@ export class App {
         : h?.sticky ? '<span class="aside">Algebra: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and <kbd>Tab</kbd> to apply. <kbd>Esc</kbd> closes.</span>'
         : '<span class="aside">Holding <kbd>Tab</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>';
     }
-    if (this.mode === 'fnpal') return `<span class="aside">Functions on both sides. <kbd>i</kbd> undoes the outer one. Arrows browse with a live preview. <kbd>Esc</kbd> cancels.</span>`;
+    if (this.mode === 'fnpal') return `<span class="aside">Type in the box: <i>f(4)</i> or <i>f(x² + 1)</i> puts it into your function; a function (<i>ln</i>, <i>e^_</i>) goes on both sides. <kbd>i</kbd> undoes the outer one. <kbd>Esc</kbd> cancels.</span>`;
     if (this.mode === 'fnask') return `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`;
     if (this.mode === 'op') return `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter (u), a function (I(t), or I(5) to make the 5 its letter), or what it equals.', value: 'Type a value: 0, t = 0, or a = 1, b = 2.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`;
     const parts: string[] = [];
