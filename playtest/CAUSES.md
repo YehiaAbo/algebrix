@@ -241,3 +241,8 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   it, e says so and points at the letter card. **K47** a letter written outside the integral is a
   parameter, not tied to u. **K48** lim at ∞ with another letter: pieces in u alone go to their
   numbers (tan⁻¹ u → π/2). |a| is a when a > 0. Frullani end to end: e2e/general.
+- **K49 Shift only pushed numbers out of √ and |…|, and only from the left:** a type gate (isConstNum)
+  decided instead of the safety net, so √((n + 1)(n − 1)) wouldn't split. Now any factor goes out from
+  either end and back in from either side; a rule that needs a part ≥ 0 records it as a condition
+  (none when a Σ or ∫ range keeps it ≥ 0), and a refusal says what is needed. Also a^(mn) = (a^m)^n
+  and a^m a^n = a^(m + n) by Shift. Guard: tests/slideout.test.ts, e2e/byhand.

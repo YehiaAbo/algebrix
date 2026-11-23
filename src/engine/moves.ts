@@ -38,6 +38,8 @@ export interface MoveOk {
   ties?: Record<string, Node>;
   /** text renamed in the conditions carried forward: 2C is called C from here on */
   rename?: [string, string][];
+  /** what to say if the safety net refuses it (a rule that holds only where a part is ≥ 0) */
+  ifRefused?: string;
 }
 
 /** ⇔: the new equation has exactly the same solutions. ⇒: every old solution survives but new ones may
@@ -204,7 +206,36 @@ const opName = (o: Op) => (o.k === 'int' ? `∫ … d${o.v}` : o.k === 'deriv' ?
 const factorsOf = (n: Node) => (n.k === 'mul' ? n.factors : [n]);
 const product = (fs: Node[], id?: string) => (fs.length === 1 ? fs[0] : mul(fs, id));
 
-type Slid = { node: Node; label: string; select?: string } | { error: string };
+type Need = [Node, '≥ 0' | '> 0'];
+type Slid = { node: Node; label: string; select?: string; ifRefused?: string; needs?: Need[] } | { error: string };
+/** the parts a rule needs ≥ 0 (or > 0) that could be otherwise here, as conditions: a letter a Σ or a
+ *  definite ∫ around it runs over takes the values of its range, any other letter those of its domain */
+function needed(needs: Need[] | undefined, path: Node[]): string[] {
+  const out: string[] = [];
+  for (const [n, rel] of needs ?? []) {
+    const bad = (v: number) => (rel === '> 0' ? v <= 0 : v < 0);
+    const range: Record<string, number[]> = {};
+    for (const P of path) {
+      if (P.k === 'sum' && isConstNum(P.lo) && isConstNum(P.hi)) {
+        const lo = Math.ceil(evaluate(P.lo, {})), hi = Math.min(Math.floor(evaluate(P.hi, {})), lo + 200);
+        range[P.v] = Array.from({ length: Math.max(0, hi - lo + 1) }, (_, i) => lo + i);
+      } else if (P.k === 'int' && P.lo && P.hi && isConstNum(P.lo) && isConstNum(P.hi)) {
+        const a = evaluate(P.lo, {}), b = evaluate(P.hi, {});
+        range[P.v] = Array.from({ length: 41 }, (_, i) => a + (b - a) * (i + 0.5) / 41);
+      }
+    }
+    let neg = false;
+    for (let i = 0; i < 60 && !neg; i++) {
+      const env: Env = {};
+      for (const v of symbols(n)) env[v] = range[v] ? range[v][i % range[v].length] : sampleIn(v, i);
+      try { const v = evaluate(n, env); if (Number.isFinite(v) && bad(v)) neg = true; } catch { /* undefined there */ }
+    }
+    if (neg) out.push(`${toText(n)} ${rel}`);
+  }
+  return out;
+}
+/** a rule that needs a part ≥ 0: what to say when the letters allow it to be negative */
+const needsNonneg = (rule: string, c: Node) => `${rule} needs ${toText(c)} ≥ 0, and it can be negative here. Click a letter on the left to say it is positive (or the sum's range keeps it ≥ 0).`;
 const isConstNum = (n: Node) => !hasSymbols(n) && Number.isFinite(evaluate(n, {}));
 
 /** c (the first factor of holder, which sits in W) out of W: the rest stays inside */
@@ -225,40 +256,54 @@ function slideOut(W: Node, holder: Node, c: Node, rest: Node | null): Slid | nul
   }
   if (!rest) return null;
   if (W.k === 'sqrt' && W.arg === holder) {
-    if (!isConstNum(c) || evaluate(c, {}) < 0) return { error: `√(ab) = √a √b needs a ≥ 0; ${toText(c)} isn't a number at least 0.` };
+    if (isConstNum(c) && evaluate(c, {}) < 0) return { error: `√(ab) = √a √b needs a ≥ 0, and ${toText(c)} is negative.` };
     const r = sqrt(c);
-    return { node: mul([r, { ...W, arg: keep }]), label: '√(ab) = √a √b', select: r.id };
+    return { node: mul([r, { ...W, arg: keep }]), label: '√(ab) = √a √b', select: r.id, ifRefused: needsNonneg('√(ab) = √a √b', c), needs: [[c, '≥ 0'], [keep, '≥ 0']] };
   }
   if (W.k === 'fn' && W.name === 'abs' && W.arg === holder) {
-    if (!isConstNum(c)) return { error: `|ab| = |a| |b|: only a number comes out bare.` };
-    const v = evaluate(c, {});
-    const out = v >= 0 ? c : fn('abs', c);
+    // |ab| = |a| |b| always; a number at least 0 comes out bare
+    const out = isConstNum(c) && evaluate(c, {}) >= 0 ? c : fn('abs', c);
     return { node: mul([out, { ...W, arg: keep }]), label: '|ab| = |a| |b|', select: out.id };
   }
   if ((W.k === 'fn' && (W.name === 'ln' || W.name === 'log')) && W.arg === holder) {
     const l = fn(W.name, c);
-    return { node: add([l, { ...W, arg: keep }]), label: `${W.name}(ab) = ${W.name} a + ${W.name} b`, select: l.id };
+    return { node: add([l, { ...W, arg: keep }]), label: `${W.name}(ab) = ${W.name} a + ${W.name} b`, select: l.id, ifRefused: needsNonneg(`${W.name}(ab) = ${W.name} a + ${W.name} b`, c).replace('≥ 0', '> 0'), needs: [[c, '> 0'], [keep, '> 0']] };
+  }
+  // a factor of an exponent comes out as the outer power: a^(2x) = (a^x)²
+  if (W.k === 'pow' && W.exp === holder) {
+    const inner = { ...W, exp: keep };
+    return { node: pow(inner, c), label: `${toText(c)} out of the exponent: a^(mn) = (a^m)^n`, ifRefused: `a^(mn) = (a^m)^n needs a > 0 or a whole power; ${toText(W.base)} can be negative here.` };
   }
   if (W.k === 'pow' && W.base === holder) {
     const p = pow(c, cloneFresh(W.exp));
-    return { node: mul([p, { ...W, base: keep }]), label: '(ab)ⁿ = aⁿ bⁿ', select: p.id };
+    return { node: mul([p, { ...W, base: keep }]), label: '(ab)ⁿ = aⁿ bⁿ', select: p.id, ifRefused: needsNonneg('(ab)ⁿ = aⁿ bⁿ for a power that is not whole', c), needs: W.exp.k === 'num' && Number.isInteger(W.exp.v) ? [] : [[c, '≥ 0'], [keep, '≥ 0']] };
   }
   return null;
 }
 
-/** c (just left of W in a product) into W */
-function slideIn(W: Node, c: Node): Slid | null {
-  const join = (inside: Node) => product([c, ...factorsOf(inside)], inside.k === 'mul' ? inside.id : undefined);
+/** c (beside W in a product: on its left, or on its right when fromRight) into W */
+function slideIn(W: Node, c: Node, fromRight = false): Slid | null {
+  const join = (inside: Node, x: Node = c) => product(fromRight ? [...factorsOf(inside), x] : [x, ...factorsOf(inside)], inside.k === 'mul' ? inside.id : undefined);
   if (isOp(W)) {
     if (symbols(c).includes(W.v)) return { error: `${toText(c)} depends on ${W.v}, so it can't go into ${opName(W)}.` };
     return { node: { ...W, arg: join(W.arg) } as Node, label: `${toText(c)} into ${SIGN[W.k]}` };
   }
   if (W.k === 'frac') return { node: { ...W, num: join(W.num) }, label: `${toText(c)} into the fraction` };
+  // the same base: the powers add, a^m a^n = a^(m + n) (a alone counts as a¹)
+  const base = (n: Node) => (n.k === 'pow' ? n.base : n), expOf = (n: Node) => (n.k === 'pow' ? n.exp : num(1));
+  if (W.k === 'pow' && key(base(c)) === key(W.base)) {
+    const terms = (n: Node) => (n.k === 'add' ? n.terms : [n]);
+    const sum = add(fromRight ? [...terms(W.exp), ...terms(expOf(c))] : [...terms(expOf(c)), ...terms(W.exp)], W.exp.k === 'add' ? W.exp.id : undefined);
+    return { node: { ...W, exp: sum }, label: `${toText(c)} joins the power: a^m a^n = a^(m + n)` };
+  }
   if (W.k === 'sqrt' || (W.k === 'fn' && W.name === 'abs')) {
-    if (!isConstNum(c) || evaluate(c, {}) < 0) return { error: `Only a number at least 0 goes in: a√b = √(a²b), a|b| = |ab|.` };
-    const inside = W.k === 'sqrt' ? pow(c, num(2)) : c;
-    const node = { ...W, arg: product([inside, ...factorsOf(W.arg)], W.arg.k === 'mul' ? W.arg.id : undefined) } as Node;
-    return { node, label: W.k === 'sqrt' ? `${toText(c)} into the root, as ${toText(c)}²` : `${toText(c)} into |…|` };
+    if (isConstNum(c) && evaluate(c, {}) < 0) return { error: `Only what is at least 0 goes in: a√b = √(a²b), a|b| = |ab|. ${toText(c)} is negative.` };
+    // a root into a root (√a √b = √(ab)) and |a| into |…| go in as what they hold; anything else as its square
+    const same = W.k === 'sqrt' ? c.k === 'sqrt' : c.k === 'fn' && c.name === 'abs';
+    const inside = same ? (c as { arg: Node }).arg : W.k === 'sqrt' ? pow(c, num(2)) : c;
+    const node = { ...W, arg: join(W.arg, inside) } as Node;
+    const rule = W.k === 'sqrt' ? 'a√b = √(a²b)' : 'a|b| = |ab|';
+    return { node, label: same ? `${toText(c)} joins it: ${W.k === 'sqrt' ? '√a √b = √(ab)' : '|a| |b| = |ab|'}` : W.k === 'sqrt' ? `${toText(c)} into the root, as ${toText(c)}²` : `${toText(c)} into |…|`, ifRefused: same ? undefined : needsNonneg(rule, c), needs: same ? [] : [[c, '≥ 0']] };
   }
   return null;
 }
@@ -286,36 +331,41 @@ function slideCalc(e: Eq, sel: string | null, dir: -1 | 1): MoveResult | null {
   // out past it, one level per press; a first term of an exponent comes out as its own power
   const inner = parent.k === 'mul' ? parent : null;
   const W = inner ? path[path.length - 3] : parent;
-  if (dir === -1 && W && (!inner || inner.factors[0] === node)) {
+  // (the last factor goes out to the right the same way, with → )
+  const edge = inner ? (dir === -1 ? inner.factors[0] : inner.factors[inner.factors.length - 1]) : node;
+  if (W && edge === node && !(dir === 1 && !inner && W.k !== 'frac')) {
     const holder = inner ?? node;
-    const rest = inner ? product(inner.factors.slice(1), inner.id) : null;
+    const rest = inner ? product(dir === -1 ? inner.factors.slice(1) : inner.factors.slice(0, -1), inner.id) : null;
     const out = slideOut(W, holder, node, rest);
     if (out) {
       if ('error' in out) return out;
       const host = path[path.length - (inner ? 4 : 3)];
-      const R = out.node;
+      let R = out.node;
+      if (dir === 1 && (R.k === 'mul' || R.k === 'add')) R = R.k === 'mul' ? { ...R, factors: [...R.factors].reverse() } : { ...R, terms: [...R.terms].reverse() };
       const eq2 = host?.k === 'mul' && R.k === 'mul'
         ? replace(e, host.id, { ...host, factors: host.factors.flatMap(f => (f === W ? R.factors : [f])) })
         : replace(e, W.id, R);
-      return { eq: eq2, ...label(out.label), select: out.select ?? node.id };
+      return { eq: eq2, ...label(out.label), select: out.select ?? node.id, ifRefused: out.ifRefused, conditions: needed(out.needs, path) };
     }
   }
-  if (dir === -1 && parent.k === 'add' && parent.terms[0] === node) {
+  if (parent.k === 'add' && parent.terms[dir === -1 ? 0 : parent.terms.length - 1] === node) {
     const P = path[path.length - 3];
     if (P?.k === 'pow' && P.exp === parent && parent.terms.length > 1) {
-      const rest = parent.terms.length === 2 ? parent.terms[1] : add(parent.terms.slice(1), parent.id);
+      const others = dir === -1 ? parent.terms.slice(1) : parent.terms.slice(0, -1);
+      const rest = others.length === 1 ? others[0] : add(others, parent.id);
       const a = pow(cloneFresh(P.base), node);
-      return { eq: replace(e, P.id, mul([a, { ...P, exp: rest }])), ...label(`${toText(node)} out of the power: a^(m + n) = a^m a^n`), select: a.id };
+      const rest2 = { ...P, exp: rest };
+      return { eq: replace(e, P.id, mul(dir === -1 ? [a, rest2] : [rest2, a])), ...label(`${toText(node)} out of the power: a^(m + n) = a^m a^n`), select: a.id };
     }
   }
-  // in: a factor next to a wrapper in a product slides into it
-  if (parent.k === 'mul' && dir === 1) {
-    const i = parent.factors.indexOf(node), nb = parent.factors[i + 1];
-    const into = nb ? slideIn(nb, node) : null;
+  // in: a factor next to a wrapper in a product slides into it, from either side
+  if (parent.k === 'mul') {
+    const i = parent.factors.indexOf(node), nb = parent.factors[i + dir];
+    const into = nb ? slideIn(nb, node, dir === -1) : null;
     if (!into) return null;
     if ('error' in into) return into;
-    const rest = parent.factors.flatMap((f, j) => (j === i ? [] : j === i + 1 ? [into.node] : [f]));
-    return { eq: replace(e, parent.id, product(rest, parent.id)), ...label(into.label) };
+    const rest = parent.factors.flatMap((f, j) => (j === i ? [] : j === i + dir ? [into.node] : [f]));
+    return { eq: replace(e, parent.id, product(rest, parent.id)), ...label(into.label), ifRefused: into.ifRefused, conditions: needed(into.needs, path) };
   }
   return null;
 }
@@ -689,7 +739,7 @@ export function checked(e: Eq, r: MoveResult): MoveResult {
   }
   if (problem) {
     console.error('[algebrix] refused move', r.label, problem);
-    return { error: 'The engine refused this: it would not keep the equation true.' };
+    return { error: r.ifRefused ?? 'The engine refused this: it would not keep the equation true.' };
   }
   return r;
 }

@@ -552,4 +552,19 @@ export const tests = {
     await key('q'); await wait(200);
     assert(await marks() > 0, 'q with nothing marked brings the marks back');
   },
+
+  async 'Shift pushes any factor out of a root, from either end, and back in'(h) {
+    const { load, key, until } = h;
+    await load('sum_(n=1)^99 sqrt(n + sqrt(n^2-1))/(n + sqrt((n+1)(n-1)))');
+    await dig(h, 'n + 1');
+    await key('Shift+ArrowLeft');
+    await until(s => s.eq === 'Σ_{n=1}^{99} sqrt(n + sqrt(n^2 − 1))/(n + sqrt(n + 1) sqrt(n − 1))', '(n + 1) pushed out of the root');
+    await dig(h, 'sqrt(n + 1)');
+    await key('Shift+ArrowRight');
+    await until(s => s.eq.includes('sqrt((n + 1)(n − 1))'), 'and pushed back in, joining the other root');
+    await load('y = sqrt((x+1)(x-1))');
+    await dig(h, 'x − 1');
+    await key('Shift+ArrowRight');
+    await until(s => s.eq === 'y = sqrt(x + 1) sqrt(x − 1)', 'the last factor out to the right');
+  },
 };
