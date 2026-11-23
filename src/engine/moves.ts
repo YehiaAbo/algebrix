@@ -48,7 +48,7 @@ export function direction(r: MoveOk): '⇔' | '⇒' {
 export type MoveResult = MoveOk | { error: string };
 export const isErr = (r: MoveResult): r is { error: string } => 'error' in r;
 
-export type MoveName = 'move' | 'divide' | 'multiply' | 'distribute' | 'simplify' | 'factor' | 'slideL' | 'slideR' | 'swap';
+export type MoveName = 'move' | 'divide' | 'multiply' | 'distribute' | 'simplify' | 'factor' | 'slideL' | 'slideR' | 'swap' | 'lift' | 'drop';
 
 const one = () => 1;
 const t = (n: Node) => toText(n);
@@ -334,6 +334,79 @@ function slide(e: Eq, sel: string | null, dir: -1 | 1): MoveResult {
   return { eq: replace(e, at.parent.id, p), label: 'reorder', hints: newHints(), factor: one, select: at.node.id };
 }
 
+/* ---------- Shift + ↑ ↓: up and down through the notation ---------- */
+/** a factor across the fraction bar flips the sign of its power (1/x² ↑ is x⁻², e⁻ˣ ↓ is 1/eˣ);
+ *  a power comes down in front of its log (ln x³ ↓ is 3 ln x) and goes back up (3 ln x ↑);
+ *  a bound of an integral goes over to the other end (∫ₐᵇ = −∫ᵇₐ). dir −1 is up, 1 is down. */
+function vertical(e: Eq, sel: string | null, dir: -1 | 1): MoveResult {
+  const at = locate(e, sel);
+  if (!at) return { error: 'Aim at a piece first: Shift + ↑ lifts it, Shift + ↓ drops it.' };
+  const { node, parent, path } = at;
+  const done = (eq2: Eq, label: string, select: string = node.id): MoveResult => ({ eq: eq2, label, hints: newHints(), factor: one, select });
+  /** the factor with its power's sign flipped, keeping the pieces it is made of */
+  const flip = (f: Node): Node => {
+    if (f.k === 'pow') {
+      const x = f.exp.k === 'num' ? num(-f.exp.v, f.exp.id) : f.exp.k === 'neg' ? f.exp.arg : neg(f.exp);
+      return x.k === 'num' && x.v === 1 ? f.base : { ...f, exp: x };
+    }
+    if (f.k === 'frac' && f.num.k === 'num' && f.num.v === 1) return f.den;
+    return pow(f, num(-1));
+  };
+  const negPow = (f: Node) => f.k === 'pow' && (isNeg(f.exp) || (f.exp.k === 'num' && f.exp.v < 0));
+  // a bound: over to the other end, and the integral turns round
+  const I = parent;
+  if (I.k === 'int' && I.lo && I.hi && (node === I.lo || node === I.hi)) {
+    if ((dir === -1 && node !== I.lo) || (dir === 1 && node !== I.hi)) return { error: dir === -1 ? 'The top bound is already up: Shift + ↓ takes it down.' : 'The bottom bound is already down: Shift + ↑ takes it up.' };
+    const turned = neg({ ...I, lo: I.hi, hi: I.lo });
+    return done(replace(e, I.id, turned) as Eq, `${toText(node)} to the ${dir === -1 ? 'top' : 'bottom'}: ∫ₐᵇ = −∫ᵇₐ`);
+  }
+  // a power down in front of its log, and back up
+  const L = path[path.length - 3];
+  if (dir === 1 && parent.k === 'pow' && node === parent.exp && L?.k === 'fn' && (L.name === 'ln' || L.name === 'log') && L.arg === parent) {
+    const even = parent.exp.k === 'num' && Number.isInteger(parent.exp.v) && parent.exp.v % 2 === 0;
+    const base = even ? fn('abs', parent.base) : parent.base;
+    return done(replace(e, L.id, mul([node, { ...L, arg: base }])) as Eq, `the power comes down: ln(aⁿ) = n ln ${even ? '|a|' : 'a'}`);
+  }
+  if (dir === -1 && parent.k === 'mul' && parent.factors.length === 2) {
+    const other = parent.factors.find(f => f !== node)!;
+    if (other.k === 'fn' && (other.name === 'ln' || other.name === 'log') && !(node.k === 'fn' && (node.name === 'ln' || node.name === 'log'))) {
+      const up = { ...other, arg: pow(other.arg, node) };
+      return done(replace(e, parent.id, up) as Eq, `${toText(node)} goes up as the power: n ln a = ln(aⁿ)`);
+    }
+  }
+  // across the fraction bar
+  const holder = parent.k === 'mul' ? parent : node;
+  const F = parent.k === 'mul' ? path[path.length - 3] : parent;
+  const others = parent.k === 'mul' ? parent.factors.filter(f => f !== node) : [];
+  const rest = others.length ? (others.length === 1 ? others[0] : { ...(parent as Mul), factors: others }) : null;
+  const zero = node.k === 'num' && node.v === 0;
+  if (F?.k === 'frac' && (F.den === holder || F.num === holder)) {
+    const onTop = F.num === holder;
+    if (zero) return { error: '0 has no reciprocal, so it cannot cross the bar.' };
+    if (onTop && dir === -1) return { error: `${toText(node)} is already on top: Shift + ↓ takes it below the bar.` };
+    if (!onTop && dir === 1) return { error: `${toText(node)} is already below: Shift + ↑ takes it up.` };
+    const moved = flip(node);
+    let out: Node;
+    if (onTop) {
+      const den = F.den.k === 'mul' ? { ...F.den, factors: [...F.den.factors, moved] } : mul([F.den, moved]);
+      out = { ...F, num: rest ?? num(1), den };
+    } else {
+      const top = F.num.k === 'num' && F.num.v === 1 ? moved : F.num.k === 'mul' ? { ...F.num, factors: [...F.num.factors, moved] } : mul([F.num, moved]);
+      out = rest ? { ...F, num: top, den: rest } : top;
+    }
+    const sign = negPow(moved) ? 'negative' : 'positive';
+    return done(replace(e, F.id, out) as Eq, `${toText(node)} ${onTop ? 'below' : 'over'} the bar: its power turns ${sign}`, moved.id);
+  }
+  // not in a fraction: a negative power drops below a new bar, x⁻² y is y/x²
+  if (dir === 1 && negPow(node)) {
+    const moved = flip(node);
+    const out = frac(rest ?? num(1), moved);
+    return done(replace(e, holder.id, out) as Eq, `${toText(node)} below the bar: its power turns positive`, moved.id);
+  }
+  if (dir === 1) return { error: `${toText(node)} has no bar to cross and no negative power to drop. Shift + ↓ takes a factor below a fraction bar, a negative power below a new one, or a power down off a log.` };
+  return { error: `Shift + ↑ lifts a factor from under the bar, a number in front of a log into its power, or a bottom bound to the top. ${toText(node)} is none of those.` };
+}
+
 export function swapSides(e: Eq, sel: string | null): MoveResult {
   return { eq: eq(e.rhs, e.lhs), label: 'swap sides', hints: newHints(), factor: () => -1, select: sel };
 }
@@ -341,6 +414,7 @@ export function swapSides(e: Eq, sel: string | null): MoveResult {
 const MOVES: Record<MoveName, (e: Eq, sel: string | null) => MoveResult> = {
   move: moveAcross, divide: divideBoth, multiply: multiplyBoth, distribute, simplify: simplifyMove,
   factor: factorMove, slideL: (e, s) => slide(e, s, -1), slideR: (e, s) => slide(e, s, 1), swap: swapSides,
+  lift: (e, s) => vertical(e, s, -1), drop: (e, s) => vertical(e, s, 1),
 };
 
 /* ---------- apply an operation to both sides ---------- */
@@ -618,6 +692,11 @@ export function checked(e: Eq, r: MoveResult): MoveResult {
     return { error: 'The engine refused this: it would not keep the equation true.' };
   }
   return r;
+}
+
+/** what a move would do, before the safety net checks it: cheap, for hints that only need the label */
+export function previewMove(name: MoveName, e: Eq, sel: string | null): MoveResult {
+  return MOVES[name](e, sel);
 }
 
 export function applyMove(name: MoveName, e: Eq, sel: string | null): MoveResult {

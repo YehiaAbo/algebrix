@@ -666,3 +666,27 @@ export function timesOne(e: Eq, sel: string | null, text: string): MoveResult {
   const shown = A.k === 'add' ? `(${toText(A)})` : toText(A);
   return checked(e, { eq: replace(e, T.id, next) as Eq, label: `× ${shown}/${shown}, which is 1`, hints: h, factor: () => 1, select: next.id, rule: 'multiply by 1', conditions: symbols(A).length ? [`${toText(A)} ≠ 0`] : [] });
 }
+
+/** Tab + =: the aimed piece rewritten as the form you type (x² − 1 as (x − 1)(x + 1)), kept only if
+ *  it is equal. Pieces you wrote again keep their identity, so they stay put and the rest moves. */
+export function rewriteAs(e: Eq, at: string | null, text: string): MoveResult {
+  const target = at && at !== 'eq' ? find(e, at) : relOf(e) === 'expr' ? e.lhs : null;
+  if (!target) return { error: 'Aim at the piece to rewrite first (i types over the whole line).' };
+  if (!text.trim()) return { error: `Type the form you want for ${toText(target)}.` };
+  let n: Node;
+  try { n = parseExpr(text); } catch (err) { return { error: (err as Error).message }; }
+  if (key(n) === key(target)) return { error: 'That is how it is written now. Change it to the form you want.' };
+  const pool = new Map<string, Node[]>();
+  walk(target, m => { const k = key(m); pool.set(k, [...(pool.get(k) ?? []), m]); });
+  const used = new Set<string>();
+  const graft = (m: Node): Node => {
+    const hit = pool.get(key(m))?.find(c => !used.has(c.id));
+    if (hit) { walk(hit, c => { used.add(c.id); }); return hit; }
+    return withChildren(m, children(m).map(graft));
+  };
+  let out = graft(n);
+  // a new whole takes the old one's place; a piece of the old one written alone stays itself
+  if (!used.has(out.id)) out = { ...out, id: target.id };
+  const r = checked(e, { eq: replace(e, target.id, out) as Eq, label: `rewrite as ${toText(n)}`, rule: 'rewrite as', hints: newHints(), factor: () => 1, select: out.id });
+  return isErr(r) ? { error: `${toText(n)} isn’t equal to ${toText(target)} here, so it can’t take its place.` } : r;
+}

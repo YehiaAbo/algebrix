@@ -16,7 +16,7 @@ const EQS = [
   '1/(2x) = 3', '-3x/7 + 20/7 = y', 'x·x = 4', '2·3x = 12', 'x^3 = 8', 'sin(x) = 1/2', 'x^(-1) = 2', '10^x = 1000',
   '-2(x - 1) + 3 = -x', 'x/-2 = 3', '-x/2 = 3',
 ];
-const MOVES: MoveName[] = ['move', 'divide', 'multiply', 'distribute', 'simplify', 'factor', 'slideL', 'slideR', 'swap'];
+const MOVES: MoveName[] = ['move', 'divide', 'multiply', 'distribute', 'simplify', 'factor', 'slideL', 'slideR', 'swap', 'lift', 'drop'];
 const UGLY = [/·1(?![0-9])/, /\b1·/, /\+ −/, /− −/, /−−/, /\^1(?![0-9])/, /\/1(?![0-9])/, /^0 \+|\+ 0(?![0-9.])/, /\(\)/, /·−/, /NaN|Infinity|undefined/, /\(x\)/];
 
 it('sweep', () => {

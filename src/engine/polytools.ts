@@ -464,14 +464,29 @@ export function divideOut(n: Node, d: Node): Node | { error: string } {
   }
   // anything else (3, 2x, a, sin x): each term divided by it, as on paper: 6x + 9 = 3(2x + 3)
   const terms = n.k === 'add' ? n.terms : [n];
-  if (terms.length < 2 && n.k !== 'mul') return { error: 'Aim at a sum, like 6x + 9, to take a factor out of it.' };
+  if (terms.length < 2 && n.k !== 'mul' && n.k !== 'num') return { error: 'Aim at a sum, like 6x + 9, to take a factor out of it.' };
   const h = newHints();
   const inside = terms.map(t => simplify(frac(cloneFresh(t), cloneFresh(d)), h));
   return mul([cloneFresh(d), inside.length === 1 ? inside[0] : add(inside)]);
 }
 
+/** a whole number as primes and their powers, 360 = 2³·3²·5; null when it is prime, too small or too big */
+export function primeFactors(v: number): [number, number][] | null {
+  let n = Math.abs(v);
+  if (!Number.isInteger(n) || n < 4 || n > 1e12) return null;
+  const out: [number, number][] = [];
+  for (let p = 2; p * p <= n; p += p === 2 ? 1 : 2) {
+    let k = 0;
+    while (n % p === 0) { n /= p; k++; }
+    if (k) out.push([p, k]);
+  }
+  if (n > 1) out.push([n, 1]);
+  return out.length === 1 && out[0][1] === 1 ? null : out;
+}
+
 /** a sensible first guess for Tab q: the common factor (3 in 6x + 9, 2x in 2x² + 4x), else x − 1 */
 export function factorGuess(n: Node): string {
+  if (n.k === 'num') return String(primeFactors(n.v)?.[0][0] ?? 2);
   const h = newHints(), f = factorize(n, h);
   if (f && f.k === 'mul' && f.factors.length >= 2) {
     const out = f.factors.filter(x => x.k !== 'add');
@@ -485,6 +500,8 @@ export function factorGuess(n: Node): string {
 export function polyTarget(e: Eq, sel: string | null): string | null {
   const ok = (n: Node | null) => !!n && (n.k === 'add' || n.k === 'mul');
   const aimed = sel && sel !== 'eq' ? find(e, sel) : null;
+  // an aimed number takes out a factor too: 12 = 3·4, 7 = 2·(7/2)
+  if (aimed?.k === 'num') return aimed.v !== 0 && Math.abs(aimed.v) !== 1 ? aimed.id : null;
   if (aimed) return ok(aimed) ? aimed.id : null;
   return ok(e.lhs) ? e.lhs.id : ok(e.rhs) ? e.rhs.id : null;
 }

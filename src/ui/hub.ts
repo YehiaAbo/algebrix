@@ -45,6 +45,8 @@ export function techniques(this: App): Tech[] {
   // an identity in x with unknown coefficients (1 = A(x + 2) + B(x + 1)): one equation per power
   const cv = relOf(eq) === '=' ? (aimVar && !isErr(compareCoefficients(eq, aimVar).first) ? aimVar : ['x', 't', ...vars].find(w => vars.includes(w) && !isErr(compareCoefficients(eq, w).first))) : undefined;
   if (cv) out.push({ key: 'e', label: `compare coefficients of ${cv}`, ok: true, run: () => this.compareKey(cv) });
+  // the form you want, typed: it goes in only if it is equal
+  if (aimed || relOf(eq) === 'expr') out.push({ key: '=', label: 'rewrite as…', ok: true, run: () => this.openRewrite() });
   // any piece times A/A: e⁻ˣ on top and below, a conjugate, a missing factor
   if (aimed) out.push({ key: 'm', label: 'multiply by 1…', ok: true, run: () => this.openOne() });
   this.slots.forEach((_, j) => {

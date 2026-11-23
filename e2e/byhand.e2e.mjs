@@ -471,4 +471,70 @@ export const tests = {
     await type("V''(2)"); await key('Enter');
     await until(s => s.slots === 3 && s.eq.startsWith('V′′(2) = '), 'V″(2) asked for');
   },
+
+  async 'Shift ↑ ↓ move a piece through the notation: over the bar, off a log, round the bounds'(h) {
+    const { load, key, until, p, assert } = h;
+    await load('y = 3/x^2');
+    await dig(h, 'x^2');
+    await key('Shift+ArrowUp');
+    await until(s => s.eq === 'y = 3x^(−2)' && s.aim === 'x^(−2)', 'x² up over the bar, its power negative, still aimed');
+    await key('Shift+ArrowDown');
+    await until(s => s.eq === 'y = 3/(x^2)', 'and back down');
+    const badge = await p.evaluate(() => document.querySelector('.titem .tback')?.textContent);
+    assert(badge === '↺1', `up and back down is a round trip: ${badge}`);
+    await load('y = ln(x^3)');
+    await dig(h, '3');
+    await key('Shift+ArrowDown');
+    await until(s => s.eq === 'y = 3 ln(x)', 'the power comes down off the log');
+    await key('Shift+ArrowUp');
+    await until(s => s.eq === 'y = ln(x^3)', 'and goes back up');
+    await load('y = int_0^1 x dx');
+    await dig(h, '0');
+    await key('Shift+ArrowUp');
+    await until(s => s.eq === 'y = −∫_{1}^{0} x dx', 'the bottom bound to the top, with a minus');
+    await load('y = x + 2');
+    await dig(h, 'x');
+    await key('Shift+ArrowUp');
+    await until(s => s.eq === 'y = x + 2', 'nothing to lift: refused');
+    const said = await p.evaluate(() => document.querySelector('#hints')?.textContent ?? '');
+    assert(/Shift \+ ↑ lifts/.test(said), `says what ↑ does: ${said.slice(0, 120)}`);
+  },
+
+  async 'a number: Tab f gives its primes, Tab q takes out any factor'(h) {
+    const { load, key, hold, type, until, p, assert } = h;
+    await load('y = 360x');
+    await dig(h, '360');
+    await hold('Tab', 'f');
+    await until(s => s.eq === 'y = 2^3·3^2·5x', '360 as its primes');
+    await load('y = 12x');
+    await dig(h, '12');
+    await hold('Tab', 'q');
+    await until(() => true, '');
+    const guess = await p.evaluate(() => document.querySelector('#op-input').value);
+    assert(guess === '2', `the guess is the smallest prime: ${guess}`);
+    await p.keyboard.press('Control+a');
+    await type('3');
+    await key('Enter');
+    await until(s => s.eq === 'y = 3·4x', '3 taken out of 12');
+  },
+
+  async 'Tab = rewrites the aimed piece as the form you type, only if it is equal'(h) {
+    const { load, key, hold, type, until, p, assert } = h;
+    await load('y = x^2 - 1');
+    await dig(h, 'x^2 − 1');
+    await hold('Tab', '=');
+    await until(() => true, '');
+    const start = await p.evaluate(() => document.querySelector('#op-input').value);
+    assert(start === 'x^2 − 1', `starts from how it is written: ${start}`);
+    await p.keyboard.press('Control+a');
+    await type('(x-1)^2');
+    const bad = await p.evaluate(() => document.querySelector('#op').classList.contains('bad'));
+    assert(bad, 'an unequal form shows as wrong while typing');
+    await key('Enter');
+    await until(s => s.eq === 'y = x^2 − 1', 'and is refused');
+    await p.keyboard.press('Control+a');
+    await type('(x-1)(x+1)');
+    await key('Enter');
+    await until(s => s.eq === 'y = (x − 1)(x + 1)', 'the equal form goes in');
+  },
 };

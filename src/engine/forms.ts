@@ -1,6 +1,6 @@
 // Equivalent forms of the aimed expression (or the whole equation), for the
 // forms strip. Every candidate goes through the same numeric check as a move.
-import { Node, Eq, find, replace, eq, num, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate, isLeibniz2, symbols, cloneFresh, deriv } from './ast';
+import { Node, Eq, find, replace, eq, num, neg, add, mul, frac, pow, sqrt, fn, walk, key, Env, relOf, findPath, evaluate, isLeibniz2, symbols, cloneFresh, deriv } from './ast';
 import { dependsOn, derivative } from './calculus';
 import { quick } from './integrate';
 import { negate } from './terms';
@@ -12,7 +12,7 @@ import { isLeibniz, toLeibniz, toPrime, toDifferentials, letters } from './leibn
 import { gcd } from './terms';
 import { combineLogs } from './techniques';
 import { sumForms } from './sums';
-import { longDivide, partialFractions, rationalize, rationalizeTop, trigForms, completeSquare, Range, factorFully } from './polytools';
+import { longDivide, partialFractions, rationalize, rationalizeTop, trigForms, completeSquare, Range, factorFully, primeFactors } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
 
@@ -22,7 +22,7 @@ const CHORDS: Record<string, string> = {
   'as a power of a power': 'p', 'powers combined': 'p',
   'one log': 'l', 'long division': 'q', 'partial fractions': 'v', 'rationalized': 'n', 'completed square': 'h',
   'as dy/dx': 'y', 'as y′': 'y', 'as d²y/dx²': 'y', 'as y″': 'y', 'as differentials': 'k', 'product rule backwards': 'b',
-  'split the sum': 't', 'split the product': 't', 'as a limit of partial sums': 'm', 'one factor out': 'd',
+  'split the sum': 't', 'split the product': 't', 'as a limit of partial sums': 'm', 'one factor out': 'd', 'prime factors': 'f',
 };
 
 const one = () => 1;
@@ -125,6 +125,14 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
       if (r) { push('factored', replace(e, n.id, r), h, one, r.id); break; }
     }
   }
+  // a whole number as its primes: 360 = 2³·3²·5
+  at('prime factors', () => {
+    const ps = target.k === 'num' ? primeFactors(target.v) : null;
+    if (!ps) return null;
+    const fs = ps.map(([p, k]) => (k === 1 ? num(p) : pow(num(p), num(k))));
+    const body = fs.length === 1 ? fs[0] : mul(fs);
+    return (target as { v: number }).v < 0 ? neg(body) : body;
+  });
   at('completed square', () => completeSquare(target));
   at('expanded', h => (hasExpandable(target) ? expandAll(target, h) : null));
   at('split into terms', h => {

@@ -130,7 +130,7 @@ describe('moves', () => {
 
 describe('fuzz: random legal moves never break the equation', () => {
   const seeds = ['7y + 3x = 20', '2(x - 3) + 4x = 5x/2 + 1', 'x^2 - 5x + 6 = 2x(x + 1)', '(3x + 6)/3 = y - 4', 'a b + 2a = 6 - b/2'];
-  const names: MoveName[] = ['move', 'divide', 'multiply', 'distribute', 'simplify', 'factor', 'slideL', 'slideR', 'swap'];
+  const names: MoveName[] = ['move', 'divide', 'multiply', 'distribute', 'simplify', 'factor', 'slideL', 'slideR', 'swap', 'lift', 'drop'];
   it.each(seeds)('%s', src => {
     let e = parseEquation(src);
     let rng = 7;

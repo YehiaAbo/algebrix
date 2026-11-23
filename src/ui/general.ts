@@ -2,13 +2,13 @@
 // holds for every value, hold Tab + n subs a piece in from equation n, and C does calculus to both
 // sides. Each is one step in the tree; the shortcuts in C are chains of these.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, LETS, isDiff, Node, key, replace, walk, DEFS, Eq } from '../engine/ast';
+import { find, symbols, LETS, isDiff, Node, key, replace, walk, DEFS, Eq, relOf } from '../engine/ast';
 import { parseExpr } from '../engine/parse';
 import { divideOut, polyTarget, factorGuess } from '../engine/polytools';
 import { newHints } from '../engine/simplify';
 import { toText } from '../engine/print';
 import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
-import { nameIt, subIn, putValue, tryValue, valueParts, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne } from '../engine/general';
+import { nameIt, subIn, putValue, tryValue, valueParts, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne, rewriteAs } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
 import { compareCoefficients } from '../engine/techniques';
@@ -151,7 +151,7 @@ export function commitValue(this: App) {
 /** Tab + q on a polynomial: take out a factor you type, P = (x − 2)·Q + R */
 export function openDivide(this: App) {
   const id = polyTarget(this.eq, this.sel);
-  if (!id) return this.refuse('Aim at a sum, like 6x + 9 or x³ − 2x − 4, then Tab + q takes out a factor you type.');
+  if (!id) return this.refuse('Aim at a sum (6x + 9, x³ − 2x − 4) or a number (12), then Tab + q takes out a factor you type.');
   this.opKind = 'divide';
   this.divideAt = id;
   this.closeHub(false);
@@ -186,6 +186,36 @@ export function commitDivide(this: App) {
   this.apply(r, 1.05);
 }
 
+/** Tab + =: type the form you want the aimed piece in; it lands only if it is equal */
+export function openRewrite(this: App) {
+  const target = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : relOf(this.eq) === 'expr' ? this.eq.lhs : null;
+  if (!target) return this.refuse('Aim at the piece to rewrite, then Tab + = and type the form you want.');
+  this.opKind = 'as';
+  this.asAt = target.id;
+  this.closeHub(false);
+  this.setMode('op');
+  const input = $<HTMLInputElement>('op-input');
+  // start from how it is written now: edit it into the form you want, as on paper
+  input.value = toText(target);
+  $('op').hidden = false;
+  this.place($('op'));
+  input.focus();
+  input.select();
+  this.onOpType();
+  this.renderHints();
+}
+
+export function asResult(this: App): MoveResult {
+  return rewriteAs(this.eq, this.asAt, $<HTMLInputElement>('op-input').value);
+}
+
+export function commitRewrite(this: App) {
+  const r = this.asResult();
+  if (isErr(r)) return this.refuse(r.error);
+  this.closeOp();
+  this.apply(r, 1.05);
+}
+
 /** Tab + m: multiply the aimed piece by A/A, A typed (e⁻ˣ, √x − 1, the conjugate…) */
 export function openOne(this: App) {
   if (!this.sel || this.sel === 'eq') return this.refuse('Aim at the piece to multiply by 1 (a fraction, usually), then Tab + m.');
@@ -215,10 +245,16 @@ export function commitOne(this: App) {
   this.apply(r, 1.05);
 }
 
-/** what the box shows while you type, for b, p, Tab q and Tab m */
+/** what the box shows while you type, for b, p, Tab q, Tab m and Tab = */
 export function onNameType(this: App) {
   const note = $('op-note'), symEl = $('op-sym');
-  if (this.opKind === 'one') {
+  if (this.opKind === 'as') {
+    const r = this.asResult();
+    symEl.textContent = 'rewrite as';
+    $('op').classList.toggle('bad', isErr(r));
+    note.textContent = isErr(r) ? r.error : 'equal · Enter';
+    this.peek = isErr(r) ? null : r.eq;
+  } else if (this.opKind === 'one') {
     const r = this.oneResult();
     symEl.textContent = '× 1 as';
     $('op').classList.toggle('bad', isErr(r));

@@ -3,7 +3,7 @@ import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
 import { parseEquation, ParseError, setRedefining } from '../engine/parse';
 import { toText } from '../engine/print';
-import { applyMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
+import { applyMove, previewMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { substitute } from '../engine/calculus';
 import { simplify, newHints } from '../engine/simplify';
@@ -89,13 +89,14 @@ export class App {
   /** the step of another equation the next move uses (set as a piece of it flies in) */
   linkNext: Link | null = null;
   /** what the small box is for: both sides (o), naming a piece (b), or putting in a value (p) */
-  opKind: 'both' | 'name' | 'value' | 'divide' | 'one' = 'both';
+  opKind: 'both' | 'name' | 'value' | 'divide' | 'one' | 'as' = 'both';
   valueOf: string | null = null;
   /** p on an equation that says which value works: a typed value is tried, not put in */
   valueCheck = false;
   /** the polynomial Tab q takes a factor out of */
   divideAt: string | null = null;
   oneAt: string | null = null;
+  asAt: string | null = null;
   graphTimer = 0;
   /** Shift+P playing the steps back: where it stops, and the next beat */
   replaying: { to: number; timer: number } | null = null;
@@ -471,7 +472,7 @@ export class App {
     }
     if (this.mode === 'fnpal') return `<span class="aside">Type in the box: <i>f(4)</i> or <i>f(x² + 1)</i> puts it into your function; a function (<i>ln</i>, <i>e^_</i>) goes on both sides. <kbd>i</kbd> undoes the outer one. <kbd>Esc</kbd> cancels.</span>`;
     if (this.mode === 'fnask') return `<span class="aside">Type the number. The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> goes back.</span>`;
-    if (this.mode === 'op') return `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter (u), a function (I(t), or I(5) to make the 5 its letter), or what it equals.', value: 'Type a value: 0, t = 0, or a = 1, b = 2.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`;
+    if (this.mode === 'op') return `<span class="aside">${({ both: 'Type what to apply to both sides.', name: 'Type a name: a letter (u), a function (I(t), or I(5) to make the 5 its letter), or what it equals.', value: 'Type a value: 0, t = 0, or a = 1, b = 2.', divide: 'Type the factor to take out.', one: 'Type what to multiply by over itself.', as: 'Edit it into the form you want; it goes in only if it is equal.' })[this.opKind]} The preview is live. <kbd>Enter</kbd> applies, <kbd>Esc</kbd> cancels.</span>`;
     const parts: string[] = [];
     const node = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
     parts.push(`<span class="what" data-text="${node ? escapeHtml(toText(node)) : ''}">${node ? escapeHtml(pretty(toText(node))) : this.sel === 'eq' ? 'whole equation' : 'nothing aimed'}</span>`);
@@ -483,9 +484,10 @@ export class App {
       for (const k of MOVE_KEYS.slice(1)) {
         if (k.name !== 'any' && !isErr(applyMove(k.name, this.eq, this.sel))) parts.push(`<span class="hint"><kbd>${k.key}</kbd> ${k.verb}</span>`);
       }
-      // Shift slides through ∫ Σ d/dx lim: say where, since it is more than a reorder there
-      for (const [name, arrow] of [['slideL', '←'], ['slideR', '→']] as const) {
-        const r = applyMove(name, this.eq, this.sel);
+      // Shift slides through ∫ Σ d/dx lim: say where, since it is more than a reorder there; ↑ ↓ move up and down through the notation
+      // (↑ ↓ label from the move itself: checking it here would integrate numerically on every aim)
+      for (const [name, arrow] of [['slideL', '←'], ['slideR', '→'], ['lift', '↑'], ['drop', '↓']] as const) {
+        const r = name === 'lift' || name === 'drop' ? previewMove(name, this.eq, this.sel) : applyMove(name, this.eq, this.sel);
         if (!isErr(r) && r.label !== 'reorder') parts.push(`<span class="hint"><kbd class="wide">⇧${arrow}</kbd> ${escapeHtml(pretty(r.label))}</span>`);
       }
     }

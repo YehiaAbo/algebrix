@@ -60,7 +60,7 @@ for (const src of CORPUS) {
     if (!here.sel || seen.has(here.sel)) continue;
     seen.add(here.sel);
     // every single-key move the bar offers for this piece must do something, undo and redo exactly
-    const offered = [['m', /\bm ?(move|÷|×|undo|take)/], ['s', /\bs ?simplify/], ['d', /\bd ?distribute/], ['x', /\bx ?swap/], ['Shift+ArrowLeft', /⇧←/], ['Shift+ArrowRight', /⇧→/]].filter(([, re]) => re.test(here.hints));
+    const offered = [['m', /\bm ?(move|÷|×|undo|take)/], ['s', /\bs ?simplify/], ['d', /\bd ?distribute/], ['x', /\bx ?swap/], ['Shift+ArrowLeft', /⇧←/], ['Shift+ArrowRight', /⇧→/], ['Shift+ArrowUp', /⇧↑/], ['Shift+ArrowDown', /⇧↓/]].filter(([, re]) => re.test(here.hints));
     for (const [k] of offered) {
       checks++;
       const before = await st();
