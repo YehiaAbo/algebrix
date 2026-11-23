@@ -267,6 +267,19 @@ export function limit2Step(e: Eq, sel: string | null): MoveResult {
   return { error: `No single value: the paths toward (${toText(A)}, ${toText(B)}) don't settle. Try polar form, x = r cos θ, y = r sin θ.` };
 }
 
+/** n with each smallest piece that holds v and no other letter replaced by its limit (a number
+ *  it is known to be: π/2 for tan⁻¹ u as u → ∞, 0 for 1/u); null if any piece has no finite one */
+function piecesAtInf(n: Node, v: string, to: Node): Node | null {
+  if (!dependsOn(n, v)) return cloneFresh(n);
+  if (!symbols(n).some(w => w !== v && w !== '∞')) {
+    const x = evaluate(lim(v, cloneFresh(to), cloneFresh(n)), {});
+    return Number.isFinite(x) ? knownNumber(x) : null;
+  }
+  const kids: Node[] = [];
+  for (const c of children(n)) { const k = piecesAtInf(c, v, to); if (!k) return null; kids.push(k); }
+  return withChildren(n, kids);
+}
+
 /** C + p: put the value in. Only where the function is continuous: the check makes sure. */
 export function plugIn(e: Eq, sel: string | null): MoveResult {
   const L = limTarget(e, sel);
@@ -280,6 +293,11 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
     // ∞/∞, 0·∞, ∞ − ∞, 1^∞ somewhere inside: that is a form to work on, not a value to put in
     const form = formAtInf(L, env, a > 0 ? 1 : -1);
     if (form) return { error: `As ${L.v} → ${fmt(a)} this is ${form.what} (${form.at}), which could be anything. ${form.hint}` };
+    // other letters in it (tan⁻¹(u)/a as u → ∞): each piece with only u in it goes to its number
+    if (symbols(L.arg).some(w => w !== L.v && w !== '∞')) {
+      const p = piecesAtInf(L.arg, L.v, L.to);
+      if (p) return checked(e, { eq: replace(e, L.id, simplify(p, newHints())), label: `${L.v} → ${fmt(a)}`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' });
+    }
     const val = symbols(L).length ? NaN : evaluate(L, {});
     const n = Math.abs(val) === Infinity ? (val > 0 ? sym('∞') : neg(sym('∞'))) : knownNumber(val);
     if (!n) return { error: `You can't plug in ${fmt(a)} here. Try L'Hôpital (C + l), or divide top and bottom by the highest power (C + h).` };
@@ -610,6 +628,8 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
             r = b;
           } else { const x = expandInside(cur, t); if (x) r = x; }
         }
+        // stuck only because the sign of a letter decides where u ends up: say that, not "no rule"
+        if (isErr(r)) { const s2 = uSub(cur, t.id).move; if (isErr(s2) && /depending on the sign/.test(s2.error)) r = s2; }
       }
     }
     if (isErr(r)) return { steps, stuck: r.error };

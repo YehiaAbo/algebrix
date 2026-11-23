@@ -106,7 +106,7 @@ function tokenize(src: string): Tok[] {
     if (/^\\?lim(?![a-zA-Z])/.test(rest)) { out.push({ t: 'cmd', v: 'lim' }); i += rest[0] === '\\' ? 4 : 3; if (s[i] === '_') i++; continue; }
     const arrow = /^(?:->|→|\\to(?![a-zA-Z])|\\rightarrow)/.exec(rest);
     if (arrow) { out.push({ t: 'op', v: '→' }); i += arrow[0].length; continue; }
-    const inf = prevLetter ? null : /^(?:∞|\\infty|infinity|inf(?![a-zA-Z]))/.exec(rest);
+    const inf = prevLetter ? null : /^(?:∞|\\infty|infinity|inf(?![a-zA-Z])|oo(?![a-zA-Z]))/.exec(rest);
     if (inf) { out.push({ t: 'id', v: '∞' }); i += inf[0].length; continue; }
     if (c === '⁺' || c === '⁻') { out.push({ t: 'op', v: c }); i++; continue; }
     // a one-sided limit in LaTeX: 0^+ or 0^{-} (but not x^-1)
@@ -538,12 +538,19 @@ function definesAnew(name: string, param: string, body: Node): boolean {
   return d.param === param && keyOf(d.body) === keyOf(body);
 }
 
+/** does the text use the letter x as a letter of its own, the way the tokenizer reads it
+ *  (tan⁻¹(ax) has a; tan has no a); text that doesn't tokenize yet falls back to the plain look */
+function usesLetter(text: string, x: string): boolean {
+  try { return tokenize(text).some(t => t.t === 'id' && t.v === x); }
+  catch { return new RegExp(`(^|[^A-Za-z])${x}([^A-Za-z]|$)`).test(text); }
+}
+
 /** An equation, an inequality, or (with `allowExpr`) a lone expression. */
 export function parseEquation(src: string, allowExpr = false): Eq {
   // F(t) = … with t on the right defines F, whatever letter F is (I(t) = ∫₀¹ … dx), not F·t
   const dm = /^\s*([A-Za-zα-ωΑ-Ω](?:_\{?\w+\}?)?)\s*\(\s*([A-Za-zα-ω](?:\s*,\s*[A-Za-zα-ω])*)\s*\)\s*:?=([^=<>≤≥]*)$/.exec(src);
   const dps = dm ? dm[2].split(',').map(x => x.trim()) : [];
-  if (dm && !DEFINING && !dps.includes(dm[1]) && dm[1] !== 'e' && dps.some(x => new RegExp(`(^|[^A-Za-z])${x}([^A-Za-z]|$)`).test(dm[3]))) {
+  if (dm && !DEFINING && !dps.includes(dm[1]) && dm[1] !== 'e' && dps.some(x => usesLetter(dm[3], x))) {
     DEFINING = dm[1].replace(/[{}]/g, '');
     try { return parseEquation(src.replace(/:=/, '='), allowExpr); } finally { DEFINING = null; }
   }

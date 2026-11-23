@@ -5,7 +5,7 @@
 import { Node, Eq, Int, At, Sum, num, sym, add, mul, neg, frac, pow, fn, call, int, at, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env, children, withChildren, sqrt as sqrtN, linkedTo, LETS } from './ast';
 import { toText } from './print';
 import { dependsOn, derivative, substitute } from './calculus';
-import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
+import { checked, MoveOk, MoveResult, isErr, indefiniteVars, sampleIn } from './moves';
 import { newHints, simplify } from './simplify';
 import { times, plus, prettyDerivative, knownNumber } from './calcmoves';
 import { partialFractions, longDivide, slopeSplit } from './polytools';
@@ -257,8 +257,11 @@ export function intStep(e: Eq, sel: string | null): MoveResult {
   if (holdsCalc(T) && !ftc) return { error: 'Work out what is inside the integral first.' };
   if (!(T.lo && T.hi) && findPath(e, T.id)?.some(n => n !== T && n.k === 'int' && n.lo && n.hi)) return { error: 'The inside integral has no bounds, so its + C would end up inside the outer one. Give it bounds too.' };
   const v = T.v, def = !!(T.lo && T.hi);
-  // a named letter tied to v (u = x² inside ∫ … dx) isn't a constant: finish the substitution first
-  const tied = linkedTo(v).filter(w => symbols(T.arg).includes(w));
+  // a named letter tied to v (u = x² inside ∫ … dx) isn't a constant: finish the substitution first.
+  // A letter also written outside the integral is a parameter of it (a in I′(a) = ∫ … du with
+  // u = ax): it stays put while u runs
+  const outside = symbols(replace(e, T.id, num(0)) as Eq);
+  const tied = linkedTo(v).filter(w => symbols(T.arg).includes(w) && !outside.includes(w));
   if (tied.length) return { error: `${tied[0]} changes with ${v} (${letDef(tied[0], v)}), so it isn't a constant here. Sub in d${v} too, so the integral is all in one letter.` };
   const wrap = (F: Node): Node => (def ? at(v, F, fresh(T.lo!), fresh(T.hi!)) : F);
   const piece = (w: Node): Node => { const q = quick(w, v); return q ? wrap(q.F) : int(v, fresh(w), T.lo && fresh(T.lo), T.hi && fresh(T.hi)); };
@@ -402,6 +405,8 @@ export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; 
     const def = !!(T.lo && T.hi);
     const bound = (b: Node) => endOf(g, v, b);
     const next = def ? int(u, Q, bound(T.lo!), bound(T.hi!)) : int(u, Q);
+    const unsure = def ? endDepends((next as Int).lo, (next as Int).hi, u, g) : null;
+    if (unsure) return { move: { error: unsure } };
     const label = `u-substitution: ${u} = ${toText(g)}`;
     const check = def ? undefined : (env: Env) => [[evaluate(Q, { ...env, [u]: evaluate(g, env) }) * evaluate(dg, env), evaluate(f, env)]] as [number, number][];
     let move = checked(e, { eq: replace(e, T.id, next), label, hints: newHints(), factor: one, select: null, rule: 'u-substitution', check });
@@ -426,7 +431,30 @@ function endOf(g: Node, v: string, b: Node): Node {
   const x = evaluate(t, {});
   if (x === Infinity) return sym('∞');
   if (x === -Infinity) return neg(sym('∞'));
+  // other letters in it (a∞ with u = ax): the same infinity for every value they may take
+  const s = signedInf(t);
+  if (s && s !== 'depends') return s;
   return knownNumber(x) ?? t;
+}
+
+/** an end with ∞ and other letters in it (a∞): ∞ or −∞ when it is the same for every value
+ *  the letters may take (their domains), 'depends' when the sign of a letter decides it */
+export function signedInf(t: Node, env: (i: number) => Env = i => Object.fromEntries(symbols(t).filter(w => w !== '∞').map(w => [w, sampleIn(w, i)]))): Node | 'depends' | null {
+  if (!symbols(t).some(w => w !== '∞')) return null;
+  const vs = Array.from({ length: 10 }, (_, i) => evaluate(t, env(i)));
+  if (vs.every(x => x === Infinity)) return sym('∞');
+  if (vs.every(x => x === -Infinity)) return neg(sym('∞'));
+  return vs.some(x => Math.abs(x) === Infinity) ? 'depends' : null;
+}
+
+/** an end the sign of a letter decides: say so, and how to settle it */
+export function endDepends(lo: Node | undefined, hi: Node | undefined, u: string, g: Node): string | null {
+  for (const b of [lo, hi]) {
+    if (!b || signedInf(b) !== 'depends') continue;
+    const ps = symbols(b).filter(w => w !== '∞');
+    return `${u} = ${toText(g)} heads to ∞ or −∞ depending on the sign of ${ps.join(', ')}. Click ${ps[0]} in the letters on the left and choose positive (or the sign it has), then try again.`;
+  }
+  return null;
 }
 
 /** f(x) against Q(g(x))·g′(x) at points inside the range of a definite integral */

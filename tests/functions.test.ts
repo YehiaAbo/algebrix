@@ -288,3 +288,26 @@ describe('what goes into a function is read from the form in front of you (K21)'
     expect(t && T(t.eq)).toBe('y = 5/4');
   });
 });
+
+describe('a definition whose letter sits inside a product or a function (K44)', () => {
+  it('I(a) = ∫ (tan⁻¹(ax) − tan⁻¹ x)/x dx defines I: a is a letter of its own in ax', () => {
+    for (const [src, out] of [
+      ['I(a) = int_{0}^{∞} (tan^-1(ax) - tan^-1(x))/x dx', 'I(a) = ∫_{0}^{∞} (tan⁻¹(ax) − tan⁻¹(x))/x dx'],
+      ['I(t) = int_0^oo e^(-tx) dx', 'I(t) = ∫_{0}^{∞} e^(−tx) dx'],
+      ['g(t) = sin(3t)', 'g(t) = sin(3t)'],
+      ['F(a) = int_0^a x dx', 'F(a) = ∫_{0}^{a} x dx'],
+    ]) {
+      DEFS.clear();
+      const e = parseEquation(src);
+      expect(relOf(e), src).toBe('def');
+      expect(toText(e)).toBe(out);
+    }
+  });
+  it('a letter only inside a word (tan, sin) is not the letter', () => {
+    expect(relOf(parseEquation('A(n) = tan(x)'))).toBe('=');
+  });
+  it('oo is ∞, but not inside a word', () => {
+    expect(toText(parseEquation('y = int_0^oo e^(-x) dx'))).toBe('y = ∫_{0}^{∞} e^(−x) dx');
+    expect(toText(parseEquation('y = zoo'))).not.toContain('∞');
+  });
+});

@@ -136,6 +136,37 @@ export const tests = {
     await until(s => s.eq === 'I(0) = ln|0 + 1| + C', 'folded back from an aim inside it');
   },
 
+  async 'typing I(a) = ∫ … with a inside ax defines I at once (not I·a)'(h) {
+    const { load, key, type, until, p } = h;
+    await load('y = 1');
+    await key('i'); await p.keyboard.press('Control+a'); await key('Backspace');
+    await type('I(a) = int_{0}^{∞} (tan^-1(ax) - tan^-1(x))/x dx');
+    const shown = await p.evaluate(() => window.toText(window.algebrix.preview));
+    if (!shown.startsWith('I(a) =')) throw new Error(`the live preview reads a call: ${shown}`);
+    await key('Enter');
+    await until(s => s.eq.startsWith('I(a) = ∫_{0}^{∞}'), 'defined as I(a)');
+    const said = await p.evaluate(() => document.getElementById('hints').textContent);
+    if (!said.includes('Defined I')) throw new Error(`says it defined I: ${said}`);
+  },
+
+  async 'Frullani by Feynman: I(a) = ∫ (tan⁻¹(ax) − tan⁻¹ x)/x dx; the sign of a is asked for, then I′(a) = π/(2a)'(h) {
+    const { load, key, type, hold, until, p, wait } = h;
+    await load('y = 1');
+    await key('i'); await p.keyboard.press('Control+a'); await key('Backspace');
+    await type('I(a) = int_0^oo (tan^-1(ax) - tan^-1(x))/x dx'); await key('Enter');
+    await until(s => s.eq.startsWith('I(a) ='), 'defined');
+    await hold('c', 'd');
+    await key('e');
+    await p.waitForFunction(() => document.getElementById('hints').textContent.includes('depending on the sign of a'), null, { timeout: 12000 });
+    await p.click('#vars li.ri .var'); await wait(150);
+    await p.click('#vars .ri-dom[data-d="positive"]'); await wait(150);
+    await key('e');
+    await until(s => s.eq === 'I′(a) = π/(2a)', 'I′(a) = π/(2a)', 15000);
+    await hold('c', 'i');
+    await key('e');
+    await until(s => s.eq === 'I(a) = π ln(a)/2 + C', 'integrated back in a', 12000);
+  },
+
   async 'p on an equation to solve tries the value and says whether it works'(h) {
     const { load, key, type, p, assert, wait } = h;
     await load('x^2 = 4');

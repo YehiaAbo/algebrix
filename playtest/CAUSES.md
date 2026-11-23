@@ -231,3 +231,13 @@ every core key on stress/corpus.txt; add an equation there for each new class.
 - **K43 Fold needed the exact piece aimed:** after unfolding, an aim inside the integral (or no
   aim) couldn't fold it back. fold() now tries the aim, then each piece around it, else the first
   that folds anywhere.
+- **K44 Typing f(a) = … decided "a is in the body" from raw text:** a inside ax or tan⁻¹(ax) has
+  letters next to it, so I(a) = ∫ (tan⁻¹(ax) − tan⁻¹ x)/x dx read as I·a. Now usesLetter() asks the
+  tokenizer. Also oo is ∞. Guard: tests/functions.test.ts (K44).
+- **K45 du = x da + a dx couldn't sub into ∫ … dx:** a is fixed inside the integral, so da is 0; the
+  new letter is the one written inside. And the u-sub chain now tries all three moves before playing
+  any (it stopped halfway, leaving ∫ 1/(1 + u²) dx). Guard: tests/params.test.ts.
+- **K46 An ∞ end with a parameter (a∞ for u = ax):** decided over a's domain; when its sign decides
+  it, e says so and points at the letter card. **K47** a letter written outside the integral is a
+  parameter, not tied to u. **K48** lim at ∞ with another letter: pieces in u alone go to their
+  numbers (tan⁻¹ u → π/2). |a| is a when a > 0. Frullani end to end: e2e/general.

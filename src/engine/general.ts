@@ -4,7 +4,7 @@
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
 import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim, holds, CALC } from './ast';
-import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove } from './moves';
+import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove, sampleIn } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
 import { solvedForm } from './techniques';
@@ -13,6 +13,7 @@ import { fold } from './goals';
 import { toText } from './print';
 import { letters, toDifferentials, hasDifferentials, integrateDifferentials } from './leibniz';
 import { splitXY } from './ode';
+import { signedInf, endDepends } from './integrate';
 import { expandAll } from './rewrite';
 import { finishCalc } from './calcmoves';
 
@@ -221,7 +222,16 @@ export function subIn(e: Eq, src: Eq, sel: string | null, name: string): MoveRes
   if (ds.length >= 2) {
     for (const dX of ds) {
       const T = intIn(e, sel, dX.slice(1));
-      if (T) return changeVariable(e, T, src, dX, ds.find(d => d !== dX)!, name);
+      if (!T) continue;
+      if (ds.length === 2) return changeVariable(e, T, src, dX, ds.find(d => d !== dX)!, name);
+      // du = x da + a dx inside ∫ … dx: a is held fixed there, so da is 0. The new letter is the
+      // one written inside the integral; the others are constants of it
+      const inside = symbols(T.arg), rest = ds.filter(d => d !== dX);
+      const neu = rest.filter(d => inside.includes(d.slice(1)));
+      if (neu.length !== 1) continue;
+      let fixed: Eq = src;
+      for (const d of rest) if (d !== neu[0]) fixed = eq(tidy(substitute(fixed.lhs, d, num(0))), tidy(substitute(fixed.rhs, d, num(0))));
+      return changeVariable(e, T, fixed, dX, neu[0], name);
     }
     return { error: `${name} is about differentials, but there is no integral in ${ds.map(d => d.slice(1)).join(' or ')} here.` };
   }
@@ -323,12 +333,20 @@ function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: st
     else return { error: `To change the bounds too, name ${W} from ${X} (like ${W} = …${X}…), or work out the integral first and put ${X} back.` };
     // a bound the name sends off to infinity (u = ln x at x = 0): the limit from inside, written ∞
     const a = evaluate(T.lo, {}), b = evaluate(T.hi, {});
+    // With other letters in the name (u = ax), where it goes can depend on them: the limit is tried
+    // at values each letter may take (its domain); one answer for all of them, or say what decides it
+    const params = g ? symbols(g).filter(p => p !== X) : [];
+    let unsure: string | null = null;
     const edge = (n: Node, at: Node, side: '+' | '-'): Node => {
       if (!g || !Number.isNaN(evaluate(n, {}))) return n;
-      const v = evaluate(lim(X, cloneFresh(at), cloneFresh(g), side), {});
-      return v === Infinity ? sym('∞') : v === -Infinity ? neg(sym('∞')) : n;
+      const L = lim(X, cloneFresh(at), cloneFresh(g), side);
+      if (!params.length) { const v = evaluate(L, {}); return v === Infinity ? sym('∞') : v === -Infinity ? neg(sym('∞')) : n; }
+      const s = signedInf(L, i => Object.fromEntries(params.map(p => [p, sampleIn(p, i)])));
+      if (s === 'depends') unsure = endDepends(n, undefined, W, g) ?? `${W} = ${t(g)} heads to ∞ or −∞ depending on the sign of ${params.join(', ')}. Click ${params[0]} in the letters on the left and choose positive, then sub in again.`;
+      return s && s !== 'depends' ? s : n;
     };
     lo = edge(lo!, T.lo, a < b ? '+' : '-'); hi = edge(hi!, T.hi, a < b ? '-' : '+');
+    if (unsure) return { error: unsure };
   }
   const next = replace(e, T.id, int(W, integrand, lo, hi)) as Eq;
   const label = `sub in d${X} = ${t(tidy(ratio))} d${W}`;

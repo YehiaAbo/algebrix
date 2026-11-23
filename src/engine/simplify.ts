@@ -1,7 +1,7 @@
 // Local simplification: arithmetic, like terms, cancellation. Each rule keeps the
 // ids of what survives and reports what got absorbed into what, so the renderer
 // can fly the absorbed pieces into their target instead of just deleting them.
-import { Node, children, withChildren, num, sym, add, mul, neg, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff, DEFS, cloneFresh, oneToOne } from './ast';
+import { Node, children, withChildren, num, sym, add, mul, neg, frac, pow, sqrt, fn, key, evaluate, hasSymbols, symbols, isDiff, DEFS, cloneFresh, oneToOne, LIMITS } from './ast';
 import { negate, coefOf, termInfo, buildTerm, gcd, rat, radd, rdiv, safe } from './terms';
 
 export interface Hints {
@@ -216,7 +216,7 @@ const ratOf = (n: Node) => (n.k === 'num' ? rat(n.v) : n.k === 'frac' && n.num.k
 export function nonneg(n: Node): boolean {
   switch (n.k) {
     case 'num': return n.v >= 0;
-    case 'sym': return n.name === 'e' || n.name === 'π';
+    case 'sym': return n.name === 'e' || n.name === 'π' || LIMITS.nonneg.has(n.name);
     case 'sqrt': return true;
     case 'fn': return n.name === 'abs';
     case 'pow': return (n.exp.k === 'num' && n.exp.v % 2 === 0) || (n.base.k === 'sym' && n.base.name === 'e') || (n.base.k === 'num' && n.base.v > 0) || nonneg(n.base);

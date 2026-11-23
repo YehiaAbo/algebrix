@@ -2,7 +2,7 @@
 // holds for every value, hold Tab + n subs a piece in from equation n, and C does calculus to both
 // sides. Each is one step in the tree; the shortcuts in C are chains of these.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, LETS, isDiff, Node, key, replace, walk, DEFS } from '../engine/ast';
+import { find, symbols, LETS, isDiff, Node, key, replace, walk, DEFS, Eq } from '../engine/ast';
 import { parseExpr } from '../engine/parse';
 import { divideOut, polyTarget, factorGuess } from '../engine/polytools';
 import { newHints } from '../engine/simplify';
@@ -308,6 +308,18 @@ export function stepIn(this: App, j: number, r: MoveOk) {
   this.save();
 }
 
+/** the u-substitution's three moves without playing them: the reason one would fail, or null */
+function dryUSub(named: Eq, def: Eq, letter: string): string | null {
+  const had = LETS.get(letter);
+  LETS.set(letter, def.rhs);
+  try {
+    const d = differentialsBoth(def);
+    if (isErr(d)) return d.error;
+    const s = subIn(named, d.eq, null, 'the name');
+    return isErr(s) ? s.error : null;
+  } finally { if (had) LETS.set(letter, had); else LETS.delete(letter); }
+}
+
 /** C + u, the shortcut: name the inside u, take the differentials of u = g, and sub them in.
  *  Three general steps, each in the tree; e then integrates in u and puts x back. */
 export function uSubShortcut(this: App, then?: () => void): boolean {
@@ -318,6 +330,9 @@ export function uSubShortcut(this: App, then?: () => void): boolean {
   const letter = ['u', 'w', 's', 'v', 'z'].find(c => !taken.has(c)) ?? 'q';
   const n = nameIt(this.eq, g.id, letter, [...taken]);
   if ('error' in n) { if (!then) this.refuse(n.error); return false; }
+  // try all three moves first: a chain that stops halfway leaves the integral in two letters
+  const tried = dryUSub(n.step.eq, n.def, letter);
+  if (tried) { if (!then) this.refuse(tried); else this.say(tried); return false; }
   this.addName(n);
   const j = this.slots.length - 1;
   this.later(ms(560), () => {
