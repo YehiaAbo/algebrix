@@ -12,7 +12,7 @@ import type { App } from './app';
 
 /** start over with one equation (the tour uses this) */
 export function loadFresh(this: App, src: string) {
-  this.slots = []; this.cur = 0; this.writing = 'new';
+  this.slots = []; this.cur = 0; this.writing = 'new'; this.kept.clear();
   // the old workspace's definitions go with it, or f(x) = … here would read as an equation about them
   this.syncDefs();
   this.commit(src, true);
@@ -20,7 +20,7 @@ export function loadFresh(this: App, src: string) {
 }
 
 export function restoreSlots(this: App, slots: Slot[], cur: number) {
-  this.slots = slots; this.cur = cur;
+  this.slots = slots; this.cur = cur; this.kept.clear();
   this.setMode('solve');
   this.stage.clear();
   this.renderAll(null);

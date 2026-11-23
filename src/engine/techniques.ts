@@ -936,11 +936,13 @@ export interface Spot { node: string; marks: string[]; move: MoveOk }
 /** The smallest piece that would simplify, the parts that would change, and the move that does it. */
 const hasCalcNode = (n: Node) => { let f = false; walk(n, m => { if (['deriv', 'lim', 'int', 'at', 'sum', 'grad'].includes(m.k)) f = true; }); return f; };
 
-export function simplifySpot(e: Eq): Spot | null {
+/** kept: forms you said to leave as written (q), by key. A piece that is or holds one is not offered. */
+export function simplifySpot(e: Eq, kept: Set<string> = new Set()): Spot | null {
+  const skip = (n: Node) => { if (!kept.size) return false; let k = false; walk(n, m => { if (!k && kept.has(key(m))) k = true; }); return k; };
   let hit: { n: Node; r: Node; h: ReturnType<typeof newHints> } | null = null;
   const visit = (n: Node) => {
     for (const c of children(n)) { visit(c); if (hit) return; }
-    if (hit || n.k === 'eq' || isSubject(e, n)) return;
+    if (hit || n.k === 'eq' || isSubject(e, n) || skip(n)) return;
     const h = newHints();
     const r = simplify(n, h);
     // a change you couldn't see isn't worth a press
@@ -952,7 +954,7 @@ export function simplifySpot(e: Eq): Spot | null {
   const found = hit as { n: Node; r: Node; h: ReturnType<typeof newHints> };
   if (!symbols(found.n).length) {
     const top = findPath(e, found.n.id)?.find(m => m.k !== 'eq' && !symbols(m).length && !hasCalcNode(m) && !isSubject(e, m));
-    if (top && top !== found.n) {
+    if (top && top !== found.n && !skip(top)) {
       const h = newHints(), r = simplify(top, h);
       if (key(r) !== key(top) && toText(r) !== toText(top)) hit = { n: top, r, h };
     }

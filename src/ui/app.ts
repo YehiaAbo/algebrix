@@ -661,12 +661,14 @@ export class App {
   /* ---------------- simplification on offer ---------------- */
 
   spot: Spot | null = null;
+  /** forms you said to keep (q): their marks stay off, here and in later steps, until q brings them back */
+  kept = new Set<string>();
 
   /** mark what could simplify with dashed boxes and a small prompt; nothing changes until you press s */
   renderSpot() {
     const host = $('spots');
     host.replaceChildren();
-    this.spot = this.mode === 'solve' && !this.peek && !this.preview && this.eq ? simplifySpot(this.eq) : null;
+    this.spot = this.mode === 'solve' && !this.peek && !this.preview && this.eq ? simplifySpot(this.eq, this.kept) : null;
     if (!this.spot) return;
     const boxes = this.spot.marks.map(id => this.stage.box(id)).filter((r): r is Rect => !!r);
     if (!boxes.length) { this.spot = null; return; }
@@ -681,13 +683,26 @@ export class App {
     const first = boxes.reduce((a, b) => (b.y < a.y ? b : a));
     const chip = document.createElement('button');
     chip.className = 'spot-chip';
-    chip.innerHTML = '<kbd>s</kbd> simplify';
-    chip.title = 'Simplify the marked part';
+    chip.innerHTML = '<kbd>s</kbd> simplify <span class="spot-keep"><kbd>q</kbd> keep</span>';
+    chip.title = 'Simplify the marked part (s), or keep it as written (q)';
     const x = Math.min(...boxes.map(b => b.x)), x2 = Math.max(...boxes.map(b => b.x + b.w));
     chip.style.left = `${(x + x2) / 2}px`;
     chip.style.top = `${first.y + first.h + p + 10}px`;
-    chip.addEventListener('mousedown', e => { e.stopPropagation(); this.simplifyKey(true); });
+    chip.addEventListener('mousedown', e => { e.stopPropagation(); if ((e.target as HTMLElement).closest('.spot-keep')) this.keepForm(); else this.simplifyKey(true); });
     host.append(chip);
+  }
+
+  /** q: leave the marked piece as written; its marks stay off (q with none marked brings them all back) */
+  keepForm() {
+    if (this.spot) {
+      const n = find(this.eq, this.spot.node);
+      if (n) this.kept.add(key(n));
+      sound.tick(0);
+      this.renderSpot();
+      return this.say(this.spot ? 'Kept as written. Another piece could simplify: q keeps that one too.' : 'Kept as written. s on it still simplifies it; q again brings the marks back.');
+    }
+    if (this.kept.size) { this.kept.clear(); this.renderSpot(); return this.say('Simplify marks are back.'); }
+    this.refuse('Nothing is marked to simplify.');
   }
 
   /** s: simplify what is aimed if it can, otherwise take the offered simplification */

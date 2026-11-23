@@ -371,6 +371,8 @@ kbd.wide { padding: 0 7px; }
 .spot-chip { position: absolute; transform: translateX(-50%); pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 4px; border: 0; border-radius: 7px; background: var(--desk); color: var(--muted); font-size: 12px; cursor: pointer; box-shadow: 0 0 0 1px var(--line), 0 4px 12px var(--shadow); animation: spot-in .35s .35s var(--ease) backwards; }
 .spot-chip:hover { color: var(--ink); }
 .spot-chip kbd { min-width: 17px; height: 17px; font-size: 10px; }
+.spot-keep { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 9px; border-left: 1px solid var(--line); }
+.spot-keep:hover { color: var(--ink); }
 @keyframes spot-in { from { opacity: 0; transform: translateY(3px); } }
 .spot-chip { animation-name: chip-in; }
 @keyframes chip-in { from { opacity: 0; transform: translate(-50%, 3px); } }

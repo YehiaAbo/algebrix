@@ -40,3 +40,18 @@ describe('rewrite as', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe('q keeps a form: the simplify marks skip it', () => {
+  it('offers the next piece, or nothing, once a form is kept', async () => {
+    const { simplifySpot } = await import('../src/engine/techniques');
+    const { key, find } = await import('../src/engine/ast');
+    const e = parseEquation('y = 2·3 x + x/1');
+    const first = simplifySpot(e)!;
+    const kept = new Set([key(find(e, first.node)!)]);
+    const next = simplifySpot(e, kept);
+    expect(next).not.toBeNull();
+    expect(next!.node).not.toBe(first.node);
+    kept.add(key(find(e, next!.node)!));
+    expect(simplifySpot(e, kept)).toBeNull();
+  });
+});

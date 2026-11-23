@@ -236,6 +236,7 @@ export function key(this: App, e: KeyboardEvent) {
     case 'M': handled(); return this.toggleSound();
     case 'g': handled(); return this.tour.menu();
     case 'v': handled(); return this.openTree();
+    case 'q': handled(); return this.keepForm();
     case 'b': handled(); return this.openName();
     case 'p': handled(); return this.openValue();
     case 'w': handled(); this.closeModes(); return this.library.open();

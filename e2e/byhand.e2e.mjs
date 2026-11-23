@@ -537,4 +537,19 @@ export const tests = {
     await key('Enter');
     await until(s => s.eq === 'y = (x − 1)(x + 1)', 'the equal form goes in');
   },
+
+  async 'q keeps a form as written: its simplify marks go and stay gone, q again brings them back'(h) {
+    const { load, key, until, p, assert, wait } = h;
+    await load('y = 2·3x + x/1');
+    const marks = () => p.evaluate(() => [...document.querySelectorAll('#spots .spot')].length);
+    const chip = () => p.evaluate(() => document.querySelector('#spots .spot-chip')?.textContent ?? '');
+    await wait(500);
+    assert(await marks() > 0, 'something is marked to simplify');
+    assert(/q\s*keep/.test(await chip()), `the chip offers q: ${await chip()}`);
+    for (let i = 0; i < 4 && await marks(); i++) { await key('q'); await wait(150); }
+    assert(await marks() === 0, 'every marked form kept: no marks left');
+    await until(s => s.eq === 'y = 2·3x + x/1', 'nothing changed in the equation');
+    await key('q'); await wait(200);
+    assert(await marks() > 0, 'q with nothing marked brings the marks back');
+  },
 };
