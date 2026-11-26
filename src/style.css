@@ -802,3 +802,8 @@ body[data-mode="write"] .input-keys { display: flex; }
 .mf .mq-math-mode .mq-int > big { transform: none; font-size: 165%; vertical-align: -0.22em; margin-right: .05em; }
 .mf .mq-math-mode .mq-int > .mq-supsub > .mq-sub { margin-left: -0.2em; }
 .mf .mq-math-mode .mq-large-operator big { font-size: 150%; }
+/* powers sit like the stage's (MathQuill's own offsets are for Times) */
+.mf .mq-math-mode .mq-supsub { font-size: 72%; }
+.mf .mq-math-mode .mq-supsub.mq-sup-only { vertical-align: 0.3em; }
+.mf .mq-math-mode .mq-supsub.mq-sup-only > .mq-sup { vertical-align: 0.15em; }
+.mf .mq-math-mode var + .mq-supsub, .mf .mq-math-mode var.mq-operator-name + .mq-supsub { margin-left: 0.02em; }

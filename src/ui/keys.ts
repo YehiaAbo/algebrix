@@ -11,7 +11,13 @@ import { mathField, field } from './mathfield';
 
 export function bind(this: App) {
   const input = mathField($('input'), { onKey: e => this.inputKey(e) });
-  input.el.addEventListener('input', () => { this.onType(); this.showNotation(); });
+  // the typed math draws at once; the stage's preview follows on the next frame (keys typed
+  // faster than a frame share one preview), so typing never waits on reading and drawing
+  let typedFrame = 0;
+  input.el.addEventListener('input', () => {
+    this.showNotation();
+    if (!typedFrame) typedFrame = requestAnimationFrame(() => { typedFrame = 0; if (this.mode === 'write') this.onType(); });
+  });
   input.el.addEventListener('focusout', () => this.closeNotation());
   // quick inserts under the box, for what's awkward to type: each types what you would type
   const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x)=', ''], ['d/dx', 'd/dx(', ''], ['lim', 'lim', ''], ['∫', 'int', ''], ['Σ', 'sum', ''], ['∂', '∂/∂x(', ''], ['∇', 'nabla(', ''], ['⟨ ⟩', '⟨', 'vector']];
@@ -251,7 +257,8 @@ export function inputKey(this: App, e: KeyboardEvent): boolean {
   if (N && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { N.i = (N.i + (e.key === 'ArrowDown' ? 1 : -1) + N.items.length) % N.items.length; sound.tick(2); this.renderNotation(); return true; }
   if (N && e.key === 'Tab') { this.takeNotation(N.i); return true; }
   if (N && e.key === 'Escape') { this.closeNotation(); return true; }
-  if (e.key === 'Enter') { this.commit(field('input').value); return true; }
+  // the preview may be a frame behind the last key: bring it up to date first
+  if (e.key === 'Enter') { this.onType(); this.commit(field('input').value); return true; }
   if (e.key === 'Escape') { this.cancelEdit(); return true; }
   return false;
 }

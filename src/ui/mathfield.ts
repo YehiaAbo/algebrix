@@ -103,7 +103,7 @@ export function mathField(host: HTMLElement, opts: FieldOptions = {}): MathField
   const mq: MQField = window.MathQuill.getInterface(3).MathField(host, {
     ...OPTIONS,
     handlers: { edit: changed },
-    overrideTypedText: (t: string) => { if (!opts.onKey?.({ key: t } as KeyboardEvent)) type(t); },
+    overrideTypedText: (t: string) => { if (!opts.onKey?.({ key: t } as KeyboardEvent)) typeOnce(t); },
     overrideKeystroke: (k: string, e: KeyboardEvent) => { if (!opts.onKey?.(e)) mq.keystroke(k, e); else e.preventDefault(); },
   });
   // keys typed here are the field's: the app's own single-letter keys must not see them
@@ -135,6 +135,14 @@ export function mathField(host: HTMLElement, opts: FieldOptions = {}): MathField
     const top = (cmd.ends[-1] as MQNode).latex().replace(/\s/g, ''), bottom = (cmd.ends[1] as MQNode).latex().replace(/\s/g, '');
     return /^(?:d|\\partial|d\^\{?2\}?|d[a-zA-Z]|d\^\{?2\}?[a-zA-Z])$/.test(top) && /^(?:d[a-zA-Z]|\\partial[a-zA-Z])(?:\^\{?2\}?)?$/.test(bottom) ? cmd : null;
   };
+
+  /** a typed key may take several editor steps (int, then into its bound): the box hears of it once */
+  function typeOnce(t: string) {
+    const was = quiet, l0 = mq.latex();
+    quiet = true;
+    try { type(t); } finally { quiet = was; }
+    if (mq.latex() !== l0) changed();
+  }
 
   /** one typed character, by the app's rules (see the top of this file), else as MathQuill types it */
   function type(t: string) {
@@ -184,7 +192,13 @@ export function mathField(host: HTMLElement, opts: FieldOptions = {}): MathField
         if (!(w.block.latex().trim()) && !(w.cmd.ends[1] as MQNode).latex().trim()) return leave(w.cmd);
         return mq.keystroke('Up');
       }
-      if (big || ((inSub || inSup) && atEnd())) return leave(w!.cmd);
+      if (big) return leave(w.cmd);
+      if ((inSub || inSup) && atEnd()) {
+        leave(w.cmd);
+        // and the bottom it was on: 1/x^2 dx
+        const o = where();
+        if (o?.seq === '\\frac' && o.upper && atEnd() && !ownBracket.has(o.cmd)) leave(o.cmd);
+      }
       return;
     }
     if (big && w.lower && t === '_') return;
@@ -201,7 +215,17 @@ export function mathField(host: HTMLElement, opts: FieldOptions = {}): MathField
     // e^(x + 1), sqrt(x + 1): a ( straight into an empty power or root is the power's own bracket,
     // so it isn't drawn, and the ) that matches it steps back out
     if (t === '(' && w && !w.block.latex().trim() && (inSup || w.seq === '\\sqrt' || (w.seq === '\\frac' && w.upper))) { ownBracket.add(w.cmd); return; }
-    if (t === ')' && w && ownBracket.has(w.cmd)) return leave(w.cmd);
+    if (t === ')' && w) {
+      // the ) of a swallowed bracket, however deep inside it the cursor is: e^(−x^2)
+      for (let b: MQNode | undefined = w.block; b?.parent?.ctrlSeq; b = b.parent.parent) {
+        const c = b.parent;
+        if (/^\\left/.test(c.ctrlSeq!)) break;
+        if (ownBracket.has(c)) { while (where() && where()!.cmd !== c) leave(where()!.cmd); return leave(c); }
+      }
+    }
+    // + − = < > after the bottom of a fraction come after the fraction, as typed on one line: x/3 + x/4 = 7
+    // (1/(x + 1) keeps them: its bracket holds them)
+    if ('+-=<>'.includes(t) && w?.seq === '\\frac' && w.upper && atEnd() && w.block.latex().trim() && !ownBracket.has(w.cmd)) { leave(w.cmd); return type(t); }
     // and inside it, + − = don't end the power early: 2^(x + 1)
     if ('+-=<>'.includes(t) && inSup && ownBracket.has(w.cmd)) { mq.write(t); return; }
     // a ) for a bracket outside: out of the power, root or fraction first (d/dx(x^3))
@@ -258,7 +282,7 @@ export function mathField(host: HTMLElement, opts: FieldOptions = {}): MathField
     before,
     caretAt(i: number) { const l = mq.latex(); mq.selection({ latex: l, startIndex: i, endIndex: i }); },
     selectRange(from: number, to: number) { const l = mq.latex(); mq.selection({ latex: l, startIndex: from, endIndex: to }); },
-    typeText(s: string) { for (const ch of s) type(ch); },
+    typeText(s: string) { for (const ch of s) typeOnce(ch); },
     splice(from: number, to: number, tex: string) {
       const l = mq.latex();
       quiet = true;
