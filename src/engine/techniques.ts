@@ -284,7 +284,7 @@ function moveAnyRaw(e: Eq, sel: string | null): MoveResult {
   const path = findPath(e, sel);
   if (!path) return { error: 'Aim at a piece first.' };
   const node = path[path.length - 1], parent = path[path.length - 2], root = path[1];
-  if (node === root && (inverseOf(node) || yourCall(node))) return peel(e, sel);
+  // m is always "move it across", a whole side too (x² = … leaves 0 there); f + i undoes an outer function
   const a = moveAcross(e, sel);
   if (!isErr(a)) return a;
   if (parent === root && root.k === 'mul') return divideBoth(e, sel);

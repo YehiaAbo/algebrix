@@ -1,6 +1,6 @@
 // The algebra hub (Tab): techniques by key, and forms to browse and apply.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, relOf, DEFS } from '../engine/ast';
+import { find, symbols, relOf, DEFS, Eq, Node } from '../engine/ast';
 import { unfold, fold } from '../engine/goals';
 import { applyMove, isErr } from '../engine/moves';
 import { formsFor } from '../engine/forms';
@@ -164,6 +164,34 @@ export function peekAt(this: App) {
   this.renderHub();
 }
 
+/** math drawn small for a card, shrunk to fit its width */
+export function cardMath(n: Node, size = 15, maxW = 240): HTMLElement {
+  let lay = layout(n, size);
+  if (lay.w > maxW) lay = layout(n, Math.max(8, size * maxW / lay.w));
+  const mini = document.createElement('div');
+  mini.className = 'mini';
+  mini.style.width = lay.w + 'px';
+  mini.style.height = lay.asc + lay.desc + 'px';
+  new Stage(mini).show(lay, 0, 0, null);
+  return mini;
+}
+
+/** C, browsing: the stage plays what the technique would do, as Tab does for forms */
+export function peekTech(this: App) {
+  const h = this.hub!;
+  const t = h.moved ? groupTechs(h)[h.i] : null;
+  const m = t?.ok && t.move && !isErr(t.move) ? t.move : null;
+  if (m) {
+    this.peek = m.eq;
+    this.renderMain({ quick: true, absorbs: m.hints.absorbs, flights: m.hints.flights });
+    this.graph.draw(this.peek, true);
+  } else if (this.peek) {
+    this.peek = null;
+    this.renderMain({ quick: true });
+  }
+  this.renderHub();
+}
+
 export function applyForm(this: App) {
   const h = this.hub;
   if (!h) return;
@@ -180,6 +208,7 @@ export function closeHub(this: App, animateBack: boolean) {
   this.peek = null;
   $('forms').hidden = true;
   this.setMode('solve');
+  this.giveBackRoom();
   if (animateBack && peeked) { sound.undo(); this.renderAll({ quick: true }, true); }
   else { this.renderHints(); if (this.slots.length > 1) this.renderTree(); }
 }
@@ -193,19 +222,19 @@ export function calcKey(this: App, e: KeyboardEvent) {
   const h = this.hub!;
   const k = e.key;
   if (h.asking) return;
-  if (k === 'Escape') { if (h.moved) { h.moved = false; sound.tick(1); return this.renderHub(); } return this.closeHub(true); }
+  if (k === 'Escape') { if (h.moved) { h.moved = false; sound.tick(1); return this.peekTech(); } return this.closeHub(true); }
   if (e.repeat) return;
   const items = groupTechs(h);
   const dx = k === 'ArrowRight' ? 1 : k === 'ArrowLeft' ? -1 : 0;
   if (dx && !h.moved) { h.tab = ((h.tab ?? 0) + dx + CALC_GROUPS.length) % CALC_GROUPS.length; sound.tick(1); return this.renderHub(); }
-  if (dx && h.moved) { if (items.length) h.i = (h.i + dx + items.length) % items.length; sound.tick(2); return this.renderHub(); }
+  if (dx && h.moved) { if (items.length) h.i = (h.i + dx + items.length) % items.length; sound.tick(2); return this.peekTech(); }
   if (k === 'ArrowDown' && !h.moved) {
     if (!items.length) return this.refuse(`Nothing in ${CALC_GROUPS[h.tab ?? 0].name} applies here. Try ${CALC_GROUPS[h.tab ?? 0].example}.`);
-    h.moved = true; h.i = Math.max(0, items.findIndex(t => t.ok)); sound.tick(2); return this.renderHub();
+    h.moved = true; h.i = Math.max(0, items.findIndex(t => t.ok)); sound.tick(2); return this.peekTech();
   }
-  if (k === 'ArrowUp' && h.moved) { h.moved = false; sound.tick(1); return this.renderHub(); }
+  if (k === 'ArrowUp' && h.moved) { h.moved = false; sound.tick(1); return this.peekTech(); }
   if (k === 'Enter' || ((k === 'c' || k === 'C') && h.moved)) {
-    if (!h.moved) { if (!items.length) return this.refuse(`Nothing in ${CALC_GROUPS[h.tab ?? 0].name} applies here.`); h.moved = true; h.i = 0; return this.renderHub(); }
+    if (!h.moved) { if (!items.length) return this.refuse(`Nothing in ${CALC_GROUPS[h.tab ?? 0].name} applies here.`); h.moved = true; h.i = 0; return this.peekTech(); }
     return this.runTech(items[h.i]);
   }
   if (k === 'c' || k === 'C') return this.closeHub(true);
@@ -233,6 +262,19 @@ export function runTech(this: App, t: Tech) {
   t.run();
 }
 
+/** what a C card draws: the equation the step gives, or the new one it adds (worked out once) */
+const SHOWN = new WeakMap<Tech, { n: Node; note: string } | null>();
+function techShows(t: Tech): { n: Node; note: string } | null {
+  if (SHOWN.has(t)) return SHOWN.get(t)!;
+  let out: { n: Node; note: string } | null = null;
+  if (t.move && !isErr(t.move)) out = { n: t.move.eq, note: '' };
+  else if (t.makes) {
+    try { const e = t.makes(); if (e && !('error' in e)) out = { n: (e as Eq).rel === 'expr' ? (e as Eq).lhs : e as Eq, note: 'as a new one' }; } catch { out = null; }
+  }
+  SHOWN.set(t, out);
+  return out;
+}
+
 function renderCalcHub(this: App, host: HTMLElement) {
   const h = this.hub!;
   host.classList.add('pal', 'calc');
@@ -245,10 +287,22 @@ function renderCalcHub(this: App, host: HTMLElement) {
   host.append(tabs);
   const items = groupTechs(h);
   const row = document.createElement('div');
-  row.className = 'hub-row calc-items';
-  row.innerHTML = items.length
-    ? items.map((t, j) => `<button class="chip${t.ok ? '' : ' off'}${h.moved && j === h.i ? ' on' : ''}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}${t.ask ? ' …' : ''}${t.shortcut ? '<span class="short" title="a chain of general moves, each one in the tree">chain</span>' : ''}</button>`).join('')
-    : `<span class="calc-empty">Nothing here for this one. Type ${escapeHtml(CALC_GROUPS[h.tab ?? 0].example)}.</span>`;
+  row.className = 'hub-forms calc-items';
+  if (!items.length) row.innerHTML = `<span class="calc-empty">Nothing here for this one. Type ${escapeHtml(CALC_GROUPS[h.tab ?? 0].example)}.</span>`;
+  // each one a card: its name, and what it gives drawn as math (the new equation, or the step)
+  items.forEach((t, j) => {
+    const card = document.createElement('button');
+    card.className = 'form-card' + (t.ok ? '' : ' off') + (h.moved && j === h.i ? ' on' : '');
+    card.dataset.k = t.key;
+    card.dataset.i = String(j);
+    const name = document.createElement('span');
+    name.className = 'form-name';
+    name.innerHTML = `<kbd>${t.key}</kbd>${escapeHtml(t.label)}${t.ask ? ' …' : ''}${t.shortcut ? '<span class="short" title="a chain of general moves, each one in the tree">chain</span>' : ''}`;
+    card.append(name);
+    const shows = t.ok ? techShows(t) : null;
+    if (shows) card.append(cardMath(shows.n, 15, 230), Object.assign(document.createElement('span'), { className: 'form-sub', textContent: shows.note }));
+    row.append(card);
+  });
   host.append(row);
   if (h.asking) {
     const ask = document.createElement('div');

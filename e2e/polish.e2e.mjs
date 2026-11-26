@@ -167,4 +167,81 @@ export const tests = {
     await p.click('#fns li.ri'); await wait(100);
     assert(!(await p.evaluate(() => document.querySelector('#fns .ri-card'))), 'a second click closes it');
   },
+
+  async 'a move\'s animation is never cut short by a redraw (the bottom bar growing resized the stage)'(h) {
+    const { load, key, p, assert, wait } = h;
+    await load('y = 2x + 3');
+    await p.evaluate(() => {
+      const a = window.algebrix, was = Object.getPrototypeOf(a).renderMain;
+      window.__cut = 0;
+      a.renderMain = function (tr) {
+        const running = document.getElementById('stage').getAnimations({ subtree: true }).filter(x => x.playState === 'running' && x.effect?.getTiming().iterations !== Infinity);
+        if (tr === null && running.length) window.__cut++;
+        return was.call(this, tr);
+      };
+      const hits = []; const v = n => { if (!n || typeof n !== 'object') return; if (n.k && window.toText(n) === '3') hits.push(n.id); for (const x of Object.values(n)) if (Array.isArray(x)) x.forEach(v); else if (x && typeof x === 'object' && x.k) v(x); };
+      v(a.eq); a.select(hits[0]);
+    });
+    for (const k of ['m', 'm', 'm', 's']) { await key(k); await wait(400); }
+    const cut = await p.evaluate(() => window.__cut);
+    assert(cut === 0, `an animation was snapped to its end ${cut} times`);
+  },
+
+  async 'a group of terms stays aimed after m, m again, and no menu covers the equation'(h) {
+    const { load, key, p, assert, wait, until } = h;
+    await p.setViewportSize({ width: 1280, height: 650 });
+    await load('y = x^2 + 2x + 1');
+    await p.evaluate(() => { const a = window.algebrix, t = a.eq.rhs.terms; a.selectRange(t[0].id, t[1].id); });
+    await until(s => s.aim === 'x^2 + 2x', 'x² + 2x aimed together');
+    await key('m');
+    await until(s => s.eq === 'y − x^2 − 2x = 1' && s.aim === '−x^2 − 2x', 'moved, and still just the group');
+    await key('m');
+    await wait(300);
+    const sel = await p.evaluate(() => { const a = window.algebrix, f = (n) => { if (!n || typeof n !== 'object') return null; if (n.id === a.sel) return window.toText(n); for (const x of Object.values(n)) { if (Array.isArray(x)) { for (const y of x) { const r = f(y); if (r) return r; } } else if (x && typeof x === 'object' && x.k) { const r = f(x); if (r) return r; } } return null; }; return f(a.eq); });
+    assert(sel === 'x^2 + 2x', `back across, the aim is still the group: ${sel}`);
+    await load('f(x) = x^2 + 2x');
+    await p.evaluate(() => window.algebrix.select(window.algebrix.eq.rhs.id));
+    for (const k of ['f', 'Tab']) {
+      await p.keyboard.down(k); await wait(350);
+      const hit = await p.evaluate(() => {
+        const m = document.getElementById('forms').getBoundingClientRect();
+        const gs = [...document.querySelectorAll('#stage .g')].filter(g => !g.closest('#forms')).map(g => g.getBoundingClientRect());
+        return gs.some(g => g.left < m.right && g.right > m.left && g.top < m.bottom && g.bottom > m.top);
+      });
+      await p.keyboard.up(k); await key('Escape'); await wait(300);
+      assert(!hit, `the ${k} menu covers part of the equation`);
+    }
+    await p.setViewportSize({ width: 1280, height: 800 });
+  },
+
+  async 'the f and C menus show each choice as math, play it while browsing, and fit beside the equation'(h) {
+    const { load, key, p, assert, wait, until } = h;
+    await p.setViewportSize({ width: 1280, height: 650 });
+    const covered = () => p.evaluate(() => {
+      const host = document.getElementById('forms'), m = host.getBoundingClientRect();
+      const gs = [...document.querySelectorAll('#stage .g')].filter(g => !g.closest('#forms')).map(g => g.getBoundingClientRect());
+      return { hit: gs.some(g => g.left < m.right && g.right > m.left && g.top < m.bottom && g.bottom > m.top), capped: host.scrollHeight > host.clientHeight + 1 };
+    });
+    await load('f(x) = x^2 + 2x');
+    await key('f'); await wait(300);
+    await key('ArrowRight'); await key('ArrowRight'); await key('ArrowDown');
+    await until(() => p.evaluate(() => document.querySelectorAll('#forms .pal-items .mini').length >= 2), 'the Roots cards hold math');
+    const peeked = await p.evaluate(() => window.algebrix.peek && window.toText(window.algebrix.peek));
+    assert(peeked && peeked.includes('sqrt'), `browsing √ plays it on the equation: ${peeked}`);
+    let c = await covered();
+    assert(!c.hit && !c.capped, `the f menu fits beside the equation: ${JSON.stringify(c)}`);
+    await key('Escape'); await key('Escape'); await wait(300);
+    await until(s => s.eq === 'f(x) = x^2 + 2x', 'Esc puts the equation back');
+    await load('int x e^x dx');
+    await p.keyboard.down('Shift'); await key('C'); await p.keyboard.up('Shift'); await wait(300);
+    await key('ArrowDown');
+    await until(() => p.evaluate(() => document.querySelectorAll('#forms .calc-items .mini').length >= 1), 'the C cards hold math');
+    c = await covered();
+    assert(!c.hit, `the C menu fits beside the equation: ${JSON.stringify(c)}`);
+    const before = await p.evaluate(() => window.toText(window.algebrix.eq));
+    await key('Escape'); await key('Escape'); await wait(300);
+    const after = await p.evaluate(() => window.toText(window.algebrix.eq));
+    assert(before === after, 'browsing C changes nothing until Enter');
+    await p.setViewportSize({ width: 1280, height: 800 });
+  },
 };

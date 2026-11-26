@@ -112,7 +112,14 @@ export class App {
     let size = '';
     onResize($('stage'), () => {
       const st = $('stage'), next = `${st.clientWidth}x${st.clientHeight}`;
-      if (next !== size) { size = next; this.renderMain(null); }
+      if (next === size) return;
+      size = next;
+      // a move's animation is never cut short: the bottom bar growing a line after a move resizes
+      // the stage, and redrawing then snapped every piece to its end. Wait for it, then glide.
+      const running = st.getAnimations({ subtree: true }).filter(a => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity);
+      if (!running.length) return this.renderMain(null);
+      const n = this.renders;
+      Promise.all(running.map(a => a.finished.catch(() => undefined))).then(() => { if (this.renders === n) this.renderMain({ quick: true }); });
     });
     this.tour = new Tour(this);
     const app = this;
@@ -159,7 +166,12 @@ export class App {
 
   /* ---------------- rendering ---------------- */
 
+  /** px the equation glides down (or up) to make room for an open menu; 0 when none is open */
+  room = 0;
+  renders = 0;
+
   renderMain(tr: Transition | null) {
+    this.renders++;
     $('hover').classList.remove('on');
     if (!this.preview) $('stage').classList.remove('preview');
     const eq = this.shown;
@@ -179,7 +191,8 @@ export class App {
     ox = Math.min(Math.max(ox, W / 2 - lay.w / 2 - drift), W / 2 - lay.w / 2 + drift);
     ox = Math.min(Math.max(ox, pad), Math.max(pad, W - pad - lay.w));
     if (lay.w > W - 2 * pad) ox = (W - lay.w) / 2;
-    const oy = Math.round(Math.max(H * 0.56 - (lay.asc + lay.desc) / 2, Math.min(230, H * 0.4)));
+    if (this.room && $('forms').hidden && $('op').hidden) this.room = 0;
+    const oy = Math.round(Math.max(H * 0.56 - (lay.asc + lay.desc) / 2, Math.min(230, H * 0.4))) + this.room;
     this.stage.show(lay, Math.round(ox), oy, tr);
     // a final answer that isn't an equation (an inequality's solution set) sits under it
     const ans = $('answer');
@@ -552,6 +565,9 @@ export class App {
 
   apply(r: MoveResult, pitch = 1, opts: { quietLabel?: boolean } = {}) {
     if (isErr(r)) { this.refuse(r.error); return false; }
+    // a group that lands inside a sum (or product) of its own kind melts into it; remember its ends,
+    // so the aim stays on exactly what moved instead of growing to the whole side
+    const run = runOf(r.eq, r.select ?? null);
     r = { ...r, eq: ungroup(r.eq) };
     this.grouped = null;
     const before = this.eq;
@@ -561,6 +577,10 @@ export class App {
     const { answer } = sheet.addStep(this, r, { link, out });
     // the aim follows the work, so the arrows keep going without a fresh Space
     this.sel = nav.aimAfter(before, this.eq, this.sel, out.back ? (r.select ? nav.carryAim(r.eq, this.eq, r.select) : undefined) : r.select);
+    if (run && find(this.base, run[0]) && find(this.base, run[1])) {
+      const g = group(this.base, run);
+      if (!('error' in g) && g.eq !== this.base) { this.grouped = { base: this.base, eq: g.eq, id: g.id, anchor: run[0], head: run[1] }; this.sel = g.id; }
+    }
     sound.move(pitch);
     // judged first, so a wrong answer is drawn as one
     const now = solvedFor(r.eq);
@@ -1061,19 +1081,45 @@ export class App {
   /* ---------------- pop-ups and theme ---------------- */
 
   /** sit a floating panel above the aimed piece (or the equation), inside the stage */
-  place(host: HTMLElement) {
-    const anchor = (this.sel && this.sel !== 'eq' ? this.stage.box(this.sel) : null) ?? this.stage.box('eq');
-    const W = $('stage').clientWidth;
+  /** a menu or box beside the equation, never on it: above if it fits, else below, else on the
+   *  roomier side with its height capped there (it scrolls), so the math always stays in view */
+  place(host: HTMLElement): void {
+    host.style.maxHeight = '';
+    host.style.overflowY = '';
+    const piece = this.sel && this.sel !== 'eq' ? this.stage.box(this.sel) : null;
+    const whole = this.stage.box('eq') ?? piece;
+    const W = $('stage').clientWidth, H = $('stage').clientHeight;
     const hw = host.offsetWidth, hh = host.offsetHeight;
-    let x = anchor ? anchor.x + anchor.w / 2 - hw / 2 : (W - hw) / 2;
-    x = Math.max(12, Math.min(W - hw - 12, x));
-    let y = anchor ? anchor.y - hh - 26 : 40;
-    if (y < 8) y = anchor ? anchor.y + anchor.h + 22 : 8;
-    // a short window: never past the bottom of the stage (covering some of the equation beats hiding the panel)
-    const H = $('stage').clientHeight;
-    y = Math.max(8, Math.min(y, H - hh - 8));
+    const cx = (piece ?? whole) ? (piece ?? whole)!.x + (piece ?? whole)!.w / 2 : W / 2;
+    const x = Math.max(12, Math.min(W - hw - 12, cx - hw / 2));
+    let y = 40;
+    if (whole) {
+      const gap = 18, edge = 8;
+      const top = whole.y - gap - edge, bottom = H - (whole.y + whole.h) - gap - edge;
+      if (hh <= top) y = whole.y - gap - hh;
+      else if (hh <= bottom) y = whole.y + whole.h + gap;
+      else if (!this.room && Math.min(top, bottom) > 0) {
+        // no room either side: the equation glides toward the far edge to make some, then try again
+        this.room = top >= bottom ? bottom : -top;
+        this.renderMain({ quick: true });
+        return this.place(host);
+      } else {
+        const room = Math.max(top, bottom, 120);
+        host.style.maxHeight = `${room}px`;
+        host.style.overflowY = 'auto';
+        y = top >= bottom ? Math.max(edge, whole.y - gap - room) : whole.y + whole.h + gap;
+      }
+    }
     host.style.left = `${x}px`;
     host.style.top = `${y}px`;
+  }
+
+  /** a menu closed: the equation glides back, unless something else has drawn it since */
+  giveBackRoom() {
+    if (!this.room) return;
+    this.room = 0;
+    const n = this.renders;
+    requestAnimationFrame(() => { if (this.renders === n) this.renderMain({ quick: true }); });
   }
 
   bubble(text: string, bad: boolean, id: string | null = this.sel) {
@@ -1137,6 +1183,16 @@ export class App {
 
 /** the methods that live in their own files */
 type Part<M> = { [K in keyof M]: M[K] };
+/** the first and last pieces of a group that ungroup() will melt into the sum or product around it */
+function runOf(e: Eq, id: string | null): [string, string] | null {
+  const path = id ? findPath(e, id) : null;
+  if (!path || path.length < 3) return null;
+  const n = path[path.length - 1], parent = path[path.length - 2];
+  if (!((n.k === 'add' && parent.k === 'add') || (n.k === 'mul' && parent.k === 'mul'))) return null;
+  const ks = children(n);
+  return ks.length > 1 ? [ks[0].id, ks[ks.length - 1].id] : null;
+}
+
 export interface App extends Part<typeof opsPart>, Part<typeof hubPart>, Part<typeof fnpalPart>, Part<typeof solvingPart>, Part<typeof keysPart>, Part<typeof persistPart>, Part<typeof calcPart>, Part<typeof generalPart>, Part<typeof replayPart> {}
 for (const part of [opsPart, hubPart, fnpalPart, solvingPart, keysPart, persistPart, calcPart, generalPart, replayPart]) Object.assign(App.prototype, part);
 

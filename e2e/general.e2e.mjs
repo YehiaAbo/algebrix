@@ -183,7 +183,7 @@ export const tests = {
   async 'C hub marks the shortcuts as chains'({ load, p, key, assert, wait }) {
     await load('int 2x cos(x^2) dx');
     await p.keyboard.down('c'); await wait(150);
-    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .chip')].map(c => ({ t: c.textContent, chain: !!c.querySelector('.short') })));
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .calc-items .form-name')].map(c => ({ t: c.textContent, chain: !!c.querySelector('.short') })));
     await p.keyboard.up('c'); await key('Escape');
     const u = chips.find(c => c.t.includes('u-substitution'));
     assert(u && u.chain, `u-substitution is tagged as a chain: ${JSON.stringify(chips)}`);

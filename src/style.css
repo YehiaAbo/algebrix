@@ -359,6 +359,7 @@ kbd.wide { padding: 0 7px; }
 .pal-items .chip { flex-direction: column; align-items: center; gap: 3px; height: auto; padding: 24px 10px 6px; min-width: 78px; position: relative; }
 .pal-items .chip kbd { position: absolute; left: 5px; top: 5px; }
 .pal-items .chip .fx { line-height: 1.1; }
+.pal-items .chip .mini { color: var(--ink); margin: 2px 0; }
 .pal-name { font-size: 11px; color: var(--muted); }
 .chip.on { background: var(--sel-fill); box-shadow: inset 0 0 0 1.5px var(--sel); }
 .pal-ask { display: flex; align-items: center; gap: 10px; padding: 6px 4px 2px; font-size: 12.5px; color: var(--ink); }
@@ -773,3 +774,14 @@ body[data-mode="write"] .input-keys { display: flex; }
 .ri-dom.on { background: var(--sel); color: var(--on-sel); box-shadow: none; }
 .ri-card i, .fns i { font-style: italic; }
 .ri-row.stack { grid-template-columns: minmax(0, 1fr); gap: 5px; }
+/* C menu: each technique a card with what it gives, drawn as math */
+.form-card.off { opacity: .38; }
+.form-sub { font-size: 10.5px; color: var(--faint); min-height: 0; }
+.form-sub:empty { display: none; }
+.forms.calc .hub-forms { flex-wrap: wrap; overflow-x: visible; border-top: 0; }
+.forms.calc .form-card { justify-items: start; max-width: 260px; }
+.form-name .short { margin-left: 2px; font-size: 9px; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--faint); border-radius: 4px; padding: 0 4px; line-height: 13px; }
+.pal .pal-tabs { align-items: flex-end; }
+.pal-lead { margin-left: auto; display: flex; gap: 5px; padding-bottom: 4px; }
+.pal-lead .chip { height: 26px; font-size: 12px; }
+.pal .pal-tab { white-space: nowrap; }

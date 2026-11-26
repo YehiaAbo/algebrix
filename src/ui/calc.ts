@@ -58,36 +58,36 @@ export function calcTechniques(this: App): Tech[] {
   // Derivatives
   if (has(eq, 'deriv')) {
     const r = derivStep(eq, this.sel);
-    add('Derivatives', { lead: true, key: 'd', label: isErr(r) ? 'next rule' : r.label, ok: !isErr(r), run: () => this.apply(derivStep(this.eq, this.sel), 1.1) });
+    add('Derivatives', { lead: true, key: 'd', label: isErr(r) ? 'next rule' : r.label, ok: !isErr(r), move: r, run: () => this.apply(derivStep(this.eq, this.sel), 1.1) });
     const def = definitionForm(eq, this.sel);
     add('Derivatives', { key: 'h', label: 'the definition (h → 0)', ok: !!def, run: () => { const d = definitionForm(this.eq, this.sel); if (d) this.apply(d, 1.15); } });
   } else if (multi) {
     const pv = aimed?.k === 'sym' && vs.includes(aimed.name) ? aimed.name : vs[0];
-    add('Several variables', { lead: true, key: 'd', label: `∂/∂${pv}${aimed?.k === 'sym' ? '' : ' (aim at a letter for another)'}`, ok: true, run: () => this.addWork(partialOf(this.eq, pv), `partial derivative in ${pv}`) });
+    add('Several variables', { lead: true, key: 'd', label: `∂/∂${pv}${aimed?.k === 'sym' ? '' : ' (aim at a letter for another)'}`, ok: true, makes: () => partialOf(eq, pv), run: () => this.addWork(partialOf(this.eq, pv), `partial derivative in ${pv}`) });
   } else if (fresh) {
-    add('Derivatives', { lead: true, key: 'd', label: `derivative d/d${v}`, ok: true, run: () => this.addWork(derivativeOf(this.eq, v!), 'derivative') });
+    add('Derivatives', { lead: true, key: 'd', label: `derivative d/d${v}`, ok: true, makes: () => derivativeOf(eq, v!), run: () => this.addWork(derivativeOf(this.eq, v!), 'derivative') });
   } else if (isEq && !field && !diffs) {
     const r = bv ? bothSides(eq, bv) : { error: '' };
-    add('Derivatives', { key: 'd', label: `d/d${bv ?? 'x'} both sides`, ok: !isErr(r), run: () => this.apply(bothSides(this.eq, bothVar(this.eq, this.sel)!), 1.1) });
+    add('Derivatives', { key: 'd', label: `d/d${bv ?? 'x'} both sides`, ok: !isErr(r), move: r, run: () => this.apply(bothSides(this.eq, bothVar(this.eq, this.sel)!), 1.1) });
   }
   // the differentials of both sides: u = x² gives du = 2x dx; y′ = f gives dy = f dx
   if (isEq && !diffs && !hasCalc(eq)) {
     const r = slopes ? toDifferentials(eq) : differentialsBoth(eq);
-    add('Derivatives', { key: 'k', label: slopes ? 'as differentials: dy = … dx' : 'differentials of both sides', ok: !isErr(r), run: () => (slopes ? this.apply(toDifferentials(this.eq), 1.1) : this.differentialsKey()) });
+    add('Derivatives', { key: 'k', label: slopes ? 'as differentials: dy = … dx' : 'differentials of both sides', ok: !isErr(r), move: r, run: () => (slopes ? this.apply(toDifferentials(this.eq), 1.1) : this.differentialsKey()) });
   }
   if (fresh) add('Derivatives', { key: 'm', label: 'critical points (f′ = 0)', shortcut: true, ok: true, run: () => this.addWork(criticalOf(this.eq, v!), 'critical points') });
 
   // Limits
   if (has(eq, 'lim')) {
     const p = plugIn(eq, this.sel), l = lhopital(eq, this.sel);
-    add('Limits', { lead: true, key: 'p', label: 'plug in', ok: !isErr(p), why: isErr(p) ? p.error : undefined, run: () => this.apply(plugIn(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'l', label: "L'Hôpital", ok: !isErr(l), why: isErr(l) ? l.error : undefined, run: () => this.apply(lhopital(this.eq, this.sel), 1.1) });
+    add('Limits', { lead: true, key: 'p', label: 'plug in', ok: !isErr(p), why: isErr(p) ? p.error : undefined, move: p, run: () => this.apply(plugIn(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'l', label: "L'Hôpital", ok: !isErr(l), why: isErr(l) ? l.error : undefined, move: l, run: () => this.apply(lhopital(this.eq, this.sel), 1.1) });
     // the other forms made ready for L'Hôpital: 0·∞ as a fraction, 1^∞ (0⁰, ∞⁰) with the power brought down
     const q = asQuotient(eq, this.sel), x = expLog(eq, this.sel), hp = divideHighest(eq, this.sel), cj = conjugateLim(eq, this.sel);
-    add('Limits', { key: 'h', label: isErr(hp) ? '÷ highest power' : hp.label, ok: !isErr(hp), why: isErr(hp) ? hp.error : undefined, run: () => this.apply(divideHighest(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'j', label: 'times the conjugate', ok: !isErr(cj), why: isErr(cj) ? cj.error : undefined, run: () => this.apply(conjugateLim(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'q', label: '0·∞ as a fraction', ok: !isErr(q), why: isErr(q) ? q.error : undefined, run: () => this.apply(asQuotient(this.eq, this.sel), 1.1) });
-    add('Limits', { key: 'g', label: 'power down: e^(g ln f)', ok: !isErr(x), why: isErr(x) ? x.error : undefined, run: () => this.apply(expLog(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'h', label: isErr(hp) ? '÷ highest power' : hp.label, ok: !isErr(hp), why: isErr(hp) ? hp.error : undefined, move: hp, run: () => this.apply(divideHighest(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'j', label: 'times the conjugate', ok: !isErr(cj), why: isErr(cj) ? cj.error : undefined, move: cj, run: () => this.apply(conjugateLim(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'q', label: '0·∞ as a fraction', ok: !isErr(q), why: isErr(q) ? q.error : undefined, move: q, run: () => this.apply(asQuotient(this.eq, this.sel), 1.1) });
+    add('Limits', { key: 'g', label: 'power down: e^(g ln f)', ok: !isErr(x), why: isErr(x) ? x.error : undefined, move: x, run: () => this.apply(expLog(this.eq, this.sel), 1.1) });
   } else if (fresh) {
     add('Limits', { key: 'l', label: `limit as ${v} →`, ok: true, run: () => {}, ask: { prompt: `${v} →`, hint: 'a number, or inf', run: text => this.addWork(limitOf(this.eq, v!, text), 'limit') } });
   }
@@ -95,34 +95,34 @@ export function calcTechniques(this: App): Tech[] {
   // Integrals
   if (has(eq, 'int')) {
     const r = intStep(eq, this.sel), u = uCandidate(eq, this.sel), b = byParts(eq, this.sel);
-    add('Integrals', { lead: true, key: 'i', label: isErr(r) ? 'integrate' : r.label, ok: !isErr(r), why: isErr(r) ? r.error : undefined, run: () => this.apply(intStep(this.eq, this.sel), 1.1) });
-    add('Integrals', { key: 'b', label: isErr(b) ? 'by parts' : b.label, ok: !isErr(b), why: isErr(b) ? b.error : undefined, run: () => this.apply(byParts(this.eq, this.sel), 1.1) });
+    add('Integrals', { lead: true, key: 'i', label: isErr(r) ? 'integrate' : r.label, ok: !isErr(r), why: isErr(r) ? r.error : undefined, move: r, run: () => this.apply(intStep(this.eq, this.sel), 1.1) });
+    add('Integrals', { key: 'b', label: isErr(b) ? 'by parts' : b.label, ok: !isErr(b), why: isErr(b) ? b.error : undefined, move: b, run: () => this.apply(byParts(this.eq, this.sel), 1.1) });
     add('Integrals', { key: 'u', label: u ? `u-substitution: u = ${toText(u)}` : 'u-substitution', shortcut: true, ok: !!u, why: u ? undefined : (() => { const m = uSub(eq, this.sel).move; return isErr(m) ? m.error : undefined; })(), run: () => this.uSubShortcut() });
   } else if (isEq && !diffs && bv) {
     const r = integrateBoth(eq, bv);
-    add('Integrals', { key: 'i', label: `∫ both sides d${bv}`, ok: !isErr(r), run: () => this.integrateBothKey() });
+    add('Integrals', { key: 'i', label: `∫ both sides d${bv}`, ok: !isErr(r), move: r, run: () => this.integrateBothKey() });
   } else if (fresh || multi) {
     const iv = fresh ? v! : (aimed?.k === 'sym' && vs.includes(aimed.name) ? aimed.name : vs[0]);
-    add('Integrals', { key: 'i', label: `antiderivative ∫ d${iv}`, ok: true, run: () => this.addWork(eqOf(int(iv, cloneFresh(body(this.eq)))), 'antiderivative') });
+    add('Integrals', { key: 'i', label: `antiderivative ∫ d${iv}`, ok: true, makes: () => eqOf(int(iv, cloneFresh(body(eq)))), run: () => this.addWork(eqOf(int(iv, cloneFresh(body(this.eq)))), 'antiderivative') });
     if (fresh) add('Integrals', { key: 'a', label: 'definite integral (area)', ok: true, run: () => {}, ask: { prompt: 'from, to', hint: 'two numbers, like 0, 1', run: text => this.addWork(definiteOf(this.eq, v!, text), 'definite integral') } });
   }
   if (has(eq, 'at')) {
     const p = plugBounds(eq, this.sel);
-    add('Integrals', { lead: true, key: 'p', label: 'plug in the bounds', ok: !isErr(p), run: () => this.apply(plugBounds(this.eq, this.sel), 1.1) });
+    add('Integrals', { lead: true, key: 'p', label: 'plug in the bounds', ok: !isErr(p), move: p, run: () => this.apply(plugBounds(this.eq, this.sel), 1.1) });
   }
 
   // Series
   if (has(eq, 'sum')) {
     const k = knownSum(eq, this.sel), w = writeOut(eq, this.sel);
-    if (!isErr(w)) add('Series', { lead: true, key: 'x', label: 'write out the terms', ok: true, run: () => this.apply(writeOut(this.eq, this.sel), 1.1) });
-    add('Series', { lead: isErr(w), key: 'k', label: isErr(k) ? 'known sum' : k.label, ok: !isErr(k), run: () => this.apply(knownSum(this.eq, this.sel), 1.1) });
+    if (!isErr(w)) add('Series', { lead: true, key: 'x', label: 'write out the terms', ok: true, move: w, run: () => this.apply(writeOut(this.eq, this.sel), 1.1) });
+    add('Series', { lead: isErr(w), key: 'k', label: isErr(k) ? 'known sum' : k.label, ok: !isErr(k), move: k, run: () => this.apply(knownSum(this.eq, this.sel), 1.1) });
     add('Series', { key: 'r', label: 'ratio test', ok: true, run: () => { this.say(ratioTest(this.eq, this.sel)); this.tour.check(); } });
   }
   if (fresh) add('Series', { key: 't', label: 'Taylor polynomial', shortcut: true, ok: true, run: () => { const t = taylor(this.eq, v!); if ('error' in t) return this.refuse(t.error); this.addWork(t.poly, `Taylor polynomial of degree 5 about ${v} = ${t.about}`); } });
 
   // Several variables
   if (multi) {
-    add('Several variables', { key: 'n', label: 'gradient ∇', ok: true, run: () => this.addWork(mkEq(grad(cloneFresh(body(this.eq)), vs), num(0), 'expr'), 'gradient') });
+    add('Several variables', { key: 'n', label: 'gradient ∇', ok: true, makes: () => mkEq(grad(cloneFresh(body(eq)), vs), num(0), 'expr'), run: () => this.addWork(mkEq(grad(cloneFresh(body(this.eq)), vs), num(0), 'expr'), 'gradient') });
     add('Several variables', { key: 'm', label: 'critical points (∇ = 0)', shortcut: true, ok: true, run: () => this.addWork(gradientZero(this.eq), 'critical points: every partial is 0') });
     const j = this.slots.findIndex((_, i) => i !== this.cur && !('error' in lagrange(eq, this.eqOf(i))));
     add('Several variables', { key: 'k', label: j >= 0 ? `Lagrange condition, with (${j + 1})` : 'Lagrange (type a constraint first)', ok: j >= 0, run: () => this.addWork(lagrange(this.eq, this.eqOf(j)), `Lagrange condition with equation ${j + 1}`) });
@@ -134,7 +134,7 @@ export function calcTechniques(this: App): Tech[] {
   // Differential equations
   if (diffs && !hasCalc(eq)) {
     const r = integrateDifferentials(eq);
-    add('Differential equations', { lead: true, key: 'i', label: 'integrate both sides', ok: !isErr(r), run: () => this.apply(integrateDifferentials(this.eq), 1.1) });
+    add('Differential equations', { lead: true, key: 'i', label: 'integrate both sides', ok: !isErr(r), move: r, run: () => this.apply(integrateDifferentials(this.eq), 1.1) });
   }
   if (ode && ode !== 'second') {
     add('Differential equations', { lead: true, key: 's', label: 'separate the variables', shortcut: true, ok: ode === 'separable', run: () => this.separateShortcut() });
@@ -147,8 +147,8 @@ export function calcTechniques(this: App): Tech[] {
   // Vector fields
   if (field && eq.lhs.k === 'vec') {
     const F = eq.lhs;
-    add('Vector fields', { lead: true, key: 'v', label: 'divergence ∇·', ok: F.items.length >= 2, run: () => this.addWork(eqOf(fieldOp('div', cloneFresh(F))), 'divergence') });
-    add('Vector fields', { key: 'w', label: 'curl ∇×', ok: F.items.length === 2 || F.items.length === 3, run: () => this.addWork(eqOf(fieldOp('curl', cloneFresh(F))), 'curl') });
+    add('Vector fields', { lead: true, key: 'v', label: 'divergence ∇·', ok: F.items.length >= 2, makes: () => eqOf(fieldOp('div', cloneFresh(F))), run: () => this.addWork(eqOf(fieldOp('div', cloneFresh(F))), 'divergence') });
+    add('Vector fields', { key: 'w', label: 'curl ∇×', ok: F.items.length === 2 || F.items.length === 3, makes: () => eqOf(fieldOp('curl', cloneFresh(F))), run: () => this.addWork(eqOf(fieldOp('curl', cloneFresh(F))), 'curl') });
   }
   return out;
 }

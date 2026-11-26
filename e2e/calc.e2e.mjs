@@ -3,7 +3,7 @@ export const tests = {
   async 'C shows the rule that fits, and d takes it'({ load, p, key, hold, until, assert, wait }) {
     await load('d/dx x^2 sin(x)');
     await p.keyboard.down('c'); await wait(150);
-    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .chip')].map(c => c.textContent));
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .calc-items .form-name')].map(c => c.textContent));
     assert(chips.includes('dproduct rule'), `the chip names the rule: ${chips}`);
     await key('d'); await p.keyboard.up('c');
     await until(s => s.eq === '2x sin(x) + x^2 cos(x)' && s.mode === 'solve', 'the product rule applied');
@@ -75,7 +75,7 @@ export const tests = {
   async 'two letters: C shows ∂, ∇ and Lagrange, and aiming picks the letter'({ load, p, key, hold, until, assert, wait, aim }) {
     await load('x^2 y + y^3');
     await p.keyboard.down('c'); await wait(150);
-    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .chip')].map(c => c.textContent));
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .calc-items .form-name')].map(c => c.textContent));
     await p.keyboard.up('c'); await key('Escape');
     assert(chips.some(c => c.startsWith('d∂/∂x')) && chips.some(c => c.startsWith('ngradient')), `partials and the gradient: ${chips}`);
     assert(chips.some(c => c.includes('type a constraint first')), `Lagrange waits for a constraint: ${chips}`);
@@ -95,7 +95,7 @@ export const tests = {
   async "a differential equation: C offers the method that fits, and e solves it"({ load, p, key, until, assert, wait }) {
     await load("y' = x y");
     await p.keyboard.down('c'); await wait(150);
-    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .chip')].map(c => c.textContent + (c.classList.contains('off') || c.hasAttribute('disabled') ? ' (off)' : '')));
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .calc-items .form-name')].map(c => c.textContent + (c.closest('.form-card').classList.contains('off') ? ' (off)' : '')));
     await p.keyboard.up('c'); await key('Escape');
     assert(chips.some(c => c.startsWith('sseparate')), `separate is offered: ${chips}`);
     await key('e'); await until(s => s.eq.startsWith('y = ') && !s.eq.includes('∫'), 'separated, integrated and solved', 12000);

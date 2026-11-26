@@ -12,6 +12,7 @@ import { toText } from '../engine/print';
 import { here } from './tree';
 import { sound } from './sound';
 import { $, escapeHtml } from './shared';
+import { cardMath } from './hub';
 import type { App } from './app';
 
 /** tab and item being browsed; moved = the person browsed with the arrows */
@@ -53,24 +54,23 @@ export function renderPal(this: App) {
     idle.innerHTML = `<input id="pal-idle" spellcheck="false" autocomplete="off" aria-label="type a function or a value" placeholder="${mine ? `${mine}(4)   ${mine}(x² + 1)   ` : ''}ln   e^_   _^2 + 1"><span class="op-note">${mine ? `press <kbd>${mine[0]}</kbd> to type ${mine}(…), or <kbd>=</kbd>` : '<kbd>=</kbd> to type'}</span>`;
     host.append(idle);
   }
-  const lead = document.createElement('div');
-  lead.className = 'hub-row';
+  // the tabs share their row with i, b and - (one row less, so the menu fits beside the equation)
   const aimed = !!this.sel && this.sel !== 'eq';
-  lead.innerHTML = `<button class="chip lead${isErr(pe) ? ' off' : ' rec'}" data-k="i"><kbd>i</kbd>${isErr(pe) ? 'inverse: nothing to undo here' : `inverse: ${escapeHtml(pe.label)}`}</button>`
-
-    + `<button class="chip lead${aimed ? '' : ' off'}" data-k="b"><kbd>b</kbd>${aimed ? 'make the aimed piece a function' : 'aim at a piece to make it a function'}</button>`
-    + (this.invTarget() ? `<button class="chip lead" data-k="-"><kbd>-</kbd>write out ${this.invTarget()}⁻¹</button>` : '');
-  host.append(lead);
   const tabs = document.createElement('div');
-  tabs.className = 'pal-tabs';
   tabs.className = 'pal-tabs' + (P.moved ? '' : ' focus');
   const TABS = this.palTabs();
-  tabs.innerHTML = TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('');
+  tabs.innerHTML = TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('')
+    + '<span class="pal-lead">'
+    + (isErr(pe) ? '' : `<button class="chip lead rec" data-k="i"><kbd>i</kbd>inverse: ${escapeHtml(pe.label)}</button>`)
+    + `<button class="chip lead${aimed ? '' : ' off'}" data-k="b" title="${aimed ? 'the aimed piece becomes a function' : 'aim at a piece first'}"><kbd>b</kbd>make a function</button>`
+    + (this.invTarget() ? `<button class="chip lead" data-k="-"><kbd>-</kbd>write out ${this.invTarget()}⁻¹</button>` : '')
+    + '</span>';
   host.append(tabs);
   const row = document.createElement('div');
   row.className = 'hub-row pal-items';
   row.innerHTML = TABS[P.tab].items.map((w, j) => `<button class="chip${!w.tpl && inv?.f === w.f ? ' rec' : ''}${P.moved && j === P.i ? ' on' : ''}" data-k="${w.key}" data-i="${j}">${w.key ? `<kbd>${w.key}</kbd>` : ''}<span class="fx">${w.show}</span><span class="pal-name">${w.label}</span></button>`).join('');
   host.append(row);
+  this.fillPal(row, TABS[P.tab].items);
   if (P.ask) {
     const ask = document.createElement('div');
     const first = P.ask === TYPED;
@@ -102,6 +102,40 @@ export function renderPal(this: App) {
   }
 }
 
+/** what each function would make, as math on its card (Tab's previews): ones already worked out
+ *  show at once, the rest fill in one per frame so a slow check never holds up the menu */
+const MADE = new WeakMap<Eq, Map<string, MoveResult>>();
+let filling = 0;
+function made(app: App, w: WrapItem): MoveResult {
+  let m = MADE.get(app.eq);
+  if (!m) MADE.set(app.eq, m = new Map());
+  const k = `${app.sel}|${w.tpl ?? ''}|${w.f}`;
+  if (!m.has(k)) m.set(k, app.palResult(w));
+  return m.get(k)!;
+}
+function known(app: App, w: WrapItem) { return MADE.get(app.eq)?.has(`${app.sel}|${w.tpl ?? ''}|${w.f}`); }
+
+export function fillPal(this: App, row: HTMLElement, items: WrapItem[]) {
+  const token = ++filling, eqNow = this.eq;
+  const show = (b: HTMLElement) => {
+    const w = items[+b.dataset.i!];
+    const r = made(this, w);
+    if (isErr(r)) { b.classList.add('off'); b.title = r.error; return; }
+    b.querySelector('.fx')?.replaceWith(cardMath(r.eq, 14, 190));
+  };
+  const cards = [...row.querySelectorAll<HTMLElement>('button[data-i]')].filter(b => !items[+b.dataset.i!].ask);
+  const later = cards.filter(b => !known(this, items[+b.dataset.i!]));
+  cards.filter(b => !later.includes(b)).forEach(show);
+  if (!later.length) return;
+  const step = () => {
+    if (token !== filling || this.eq !== eqNow || !row.isConnected) return;
+    show(later.shift()!);
+    if (later.length) requestAnimationFrame(step);
+    else this.place($('forms'));
+  };
+  requestAnimationFrame(step);
+}
+
 export function peelSide(this: App): Node {
   const p = this.sel && this.sel !== 'eq' ? findPath(this.eq, this.sel) : null;
   if (p) return p[1];
@@ -120,9 +154,10 @@ export function palResult(this: App, w: WrapItem, arg?: Node): MoveResult {
 export function palPeek(this: App) {
   const P = this.pal;
   const w = this.palTabs()[P.tab].items[P.i];
-  const r = w.ask ? null : this.palResult(w);
+  const r = w.ask ? null : made(this, w);
   this.peek = r && !isErr(r) ? r.eq : null;
   this.renderMain({ quick: true });
+  this.place($('forms'));
 }
 
 export function palKey(this: App, e: KeyboardEvent) {
@@ -245,6 +280,7 @@ export function askKey(this: App, e: KeyboardEvent) {
 export function closePal(this: App, animateBack = false) {
   $('forms').hidden = true;
   const peeked = !!this.peek;
+  this.giveBackRoom();
   this.peek = null;
   this.setMode('solve');
   if (animateBack && peeked) this.renderAll({ quick: true }, true);

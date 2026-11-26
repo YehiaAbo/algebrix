@@ -1,6 +1,6 @@
 // Types, constants and small helpers shared by the app and its parts.
 import { Eq } from '../engine/ast';
-import { Domain } from '../engine/moves';
+import { Domain, MoveResult } from '../engine/moves';
 import { parseEquation } from '../engine/parse';
 import { MoveName } from '../engine/moves';
 import { Form } from '../engine/forms';
@@ -46,7 +46,13 @@ export const LABEL_CHARS = 'asdfghjklqwertyuiopzxcvbnm';
 export const DOMAIN_TEXT: Record<Domain, string> = { real: 'real number', positive: 'positive', nonneg: 'zero or more', integer: 'whole number' };
 
 /** group: its section in the C hub. ask: it needs something typed first (a limit's target, bounds) */
-export interface Tech { key: string; label: string; ok: boolean; why?: string; run: () => void; group?: string; lead?: boolean; shortcut?: boolean; ask?: { prompt: string; hint: string; run: (text: string) => void } }
+export interface Tech {
+  key: string; label: string; ok: boolean; why?: string; run: () => void; group?: string; lead?: boolean; shortcut?: boolean; ask?: { prompt: string; hint: string; run: (text: string) => void };
+  /** what it does to this equation, already worked out: drawn on its card, and played on the stage while you browse to it */
+  move?: MoveResult;
+  /** a new equation it adds instead (a derivative, a gradient): drawn on its card */
+  makes?: () => Eq | { error: string } | null;
+}
 /** calc: the calculus hub (C) rather than the algebra hub (Tab); there, tab is the section shown and
  *  asking the technique waiting for typed input */
 export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; pending?: string; calc?: boolean; tab?: number; asking?: Tech }

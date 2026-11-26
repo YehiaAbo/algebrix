@@ -95,6 +95,7 @@ export function onOpType(this: App) {
 export function closeOp(this: App) {
   $('op').hidden = true;
   $('op').classList.remove('naming', 'bad');
+  this.giveBackRoom();
   this.opKind = 'both';
   $<HTMLInputElement>('op-input').blur();
   const had = !!this.peek;

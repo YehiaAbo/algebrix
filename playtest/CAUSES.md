@@ -246,3 +246,11 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   either end and back in from either side; a rule that needs a part ≥ 0 records it as a condition
   (none when a Σ or ∫ range keeps it ≥ 0), and a refusal says what is needed. Also a^(mn) = (a^m)^n
   and a^m a^n = a^(m + n) by Shift. Guard: tests/slideout.test.ts, e2e/byhand.
+- **K50 Animations stalled then jumped to the end:** after a move the bottom bar often grows a line,
+  the stage shrinks, and its ResizeObserver redrew with no transition, snapping every piece to its
+  end ~25 ms in. Now a resize waits for running animations, then glides. Guard: e2e/polish
+  (no redraw cuts an animation). **K51** a group of terms melted into the sum after m, so the aim grew
+  to the whole side: the group is rebuilt over the moved terms. **K52** m on a whole side peeled it
+  (x² took a root, f(x) tried f⁻¹): m now always moves across (f + i undoes). **K53** menus were
+  clamped onto the equation in short windows: they sit above or below it, and the equation glides
+  aside to make room. Guards: tests/mconsistent.test.ts, e2e/polish.
