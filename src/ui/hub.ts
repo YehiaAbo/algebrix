@@ -16,6 +16,7 @@ import { appearsIn } from '../engine/general';
 import { CALC_GROUPS } from './calc';
 import { calcForms } from './calcforms';
 import type { App } from './app';
+import { mathField } from './mathfield';
 
 export function techniques(this: App): Tech[] {
   const eq = this.eq;
@@ -307,7 +308,7 @@ function renderCalcHub(this: App, host: HTMLElement) {
   if (h.asking) {
     const ask = document.createElement('div');
     ask.className = 'pal-ask';
-    ask.innerHTML = `<span>${escapeHtml(h.asking.label)}: ${escapeHtml(h.asking.ask!.prompt)}</span><input id="calc-input" spellcheck="false" autocomplete="off"><span class="op-note">${escapeHtml(h.asking.ask!.hint)}, Enter applies</span>`;
+    ask.innerHTML = `<span>${escapeHtml(h.asking.label)}: ${escapeHtml(h.asking.ask!.prompt)}</span><span id="calc-input"></span><span class="op-note">${escapeHtml(h.asking.ask!.hint)}, Enter applies</span>`;
     host.append(ask);
   }
   const tip = document.createElement('div');
@@ -317,17 +318,16 @@ function renderCalcHub(this: App, host: HTMLElement) {
     : `<kbd>←</kbd><kbd>→</kbd> sections <kbd>↓</kbd> open one, or press a key. ${h.sticky ? '<kbd>Esc</kbd> closes' : ''}`;
   host.append(tip);
   if (h.asking) {
-    const input = $<HTMLInputElement>('calc-input');
-    input.addEventListener('keydown', ev => {
-      ev.stopPropagation();
-      if (ev.key === 'Escape') { ev.preventDefault(); h.asking = undefined; this.renderHub(); return; }
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        if (!input.value.trim()) return this.refuse(h.asking!.ask!.hint[0].toUpperCase() + h.asking!.ask!.hint.slice(1) + ', then Enter.');
+    const input = mathField($('calc-input'), {
+      onKey: ev => {
+        if (ev.key === 'Escape') { h.asking = undefined; this.renderHub(); return true; }
+        if (ev.key !== 'Enter') return false;
+        if (!input.value.trim()) { this.refuse(h.asking!.ask!.hint[0].toUpperCase() + h.asking!.ask!.hint.slice(1) + ', then Enter.'); return true; }
         const t = h.asking!;
         this.closeHub(false);
         t.ask!.run(input.value);
-      }
+        return true;
+      },
     });
     setTimeout(() => input.focus(), 0);
   }

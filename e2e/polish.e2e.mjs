@@ -6,8 +6,8 @@ export const tests = {
     const cards = await p.evaluate(() => [...document.querySelectorAll('#notation .nota span')].map(s => s.textContent));
     assert(cards.includes('integral') && cards.includes('definite integral'), `the integral cards: ${cards}`);
     await key('ArrowDown', 'Tab');
-    const v = await p.evaluate(() => document.getElementById('input').value);
-    assert(v === '2 + int_0^1  dx', `the definite integral went in: ${v}`);
+    const v = await p.evaluate(() => window.field('input').latex());
+    assert(/^2\+\\int_\{0\}\^\{1\}.*dx$/.test(v), `the definite integral went in: ${v}`);
     assert(await p.evaluate(() => document.getElementById('notation').hidden), 'the cards went away');
     await type('x^2'); await key('Enter');
     await until(s => s.eq === '2 + ∫_{0}^{1} x^2 dx', 'typed through the card');

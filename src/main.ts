@@ -1,3 +1,4 @@
+import { field } from './ui/mathfield';
 import './style.css';
 import { App } from './ui/app';
 import { toText } from './engine/print';
@@ -25,7 +26,7 @@ async function start() {
   clearMeasureCache();
   resetMetrics();
   const app = new App();
-  Object.assign(window, { algebrix: app, toText });
+  Object.assign(window, { algebrix: app, toText, field });
   document.fonts.addEventListener('loadingdone', () => { clearMeasureCache(); resetMetrics(); app.renderAll(null); });
 }
 start();

@@ -125,13 +125,13 @@ button { font: inherit; color: inherit; }
 .topbar { padding: 4px 16px 6px; }
 .field { position: relative; height: 44px; }
 #input {
-  position: absolute; inset: 0; width: 100%;
+  position: absolute; inset: 0; width: 100%; display: flex; align-items: center;
   border: 1px solid transparent; border-radius: 10px;
   background: var(--bg); color: var(--ink);
   font: 18px var(--math-font); padding: 0 14px; outline: none;
   transition: border-color .15s, background .15s;
 }
-#input::placeholder { color: var(--faint); font-family: var(--ui-font); font-size: 14px; }
+
 body[data-mode="write"] #input { border-color: var(--sel); background: var(--desk); box-shadow: 0 0 0 3px var(--sel-fill); }
 .original {
   position: absolute; inset: 0; display: flex; align-items: center; gap: 12px;
@@ -231,8 +231,8 @@ kbd {
 .op-sym { color: var(--ink); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .op-note { color: var(--faint); font-size: 12px; white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 .op.bad .op-note { color: var(--bad); }
-.op input { width: 170px; height: 34px; border: 1px solid var(--sel); border-radius: 8px; padding: 0 10px; font: 19px var(--math-font); background: var(--bg); color: var(--ink); outline: none; }
-.op.bad input { border-color: var(--bad); }
+.op .mf { display: inline-flex; align-items: center; min-width: 170px; max-width: 420px; min-height: 34px; border: 1px solid var(--sel); border-radius: 8px; padding: 0 10px; font: 19px var(--math-font); background: var(--bg); color: var(--ink); outline: none; }
+.op.bad .mf { border-color: var(--bad); }
 
 .hints {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px;
@@ -363,7 +363,7 @@ kbd.wide { padding: 0 7px; }
 .pal-name { font-size: 11px; color: var(--muted); }
 .chip.on { background: var(--sel-fill); box-shadow: inset 0 0 0 1.5px var(--sel); }
 .pal-ask { display: flex; align-items: center; gap: 10px; padding: 6px 4px 2px; font-size: 12.5px; color: var(--ink); }
-.pal-ask input { width: 90px; height: 32px; border: 1px solid var(--sel); border-radius: 8px; padding: 0 10px; font: 18px var(--math-font); background: var(--bg); color: var(--ink); outline: none; }
+.pal-ask .mf { display: inline-flex; align-items: center; min-width: 90px; max-width: 360px; min-height: 32px; border: 1px solid var(--sel); border-radius: 8px; padding: 0 10px; font: 18px var(--math-font); background: var(--bg); color: var(--ink); outline: none; }
 .op-note.bad { color: var(--bad); }
 
 /* a simplification on offer: dashed marks and a quiet prompt */
@@ -697,7 +697,8 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 @media (max-width: 820px) { .split { display: none !important; } }
 
 /* ---------- the typing box (at the bottom, above the hints) ---------- */
-body[data-mode="write"] .field { height: 52px; }
+body[data-mode="write"] .field { height: auto; min-height: 52px; }
+body[data-mode="write"] #input { position: relative; min-height: 52px; padding-top: 4px; padding-bottom: 4px; }
 .field { transition: height .15s var(--ease); }
 #input { padding-right: 150px; }
 body[data-mode="write"] #input { font-size: 21px; }
@@ -785,3 +786,19 @@ body[data-mode="write"] .input-keys { display: flex; }
 .pal-lead { margin-left: auto; display: flex; gap: 5px; padding-bottom: 4px; }
 .pal-lead .chip { height: 26px; font-size: 12px; }
 .pal .pal-tab { white-space: nowrap; }
+
+/* ---------- live math fields (ui/mathfield.ts, MathQuill underneath): typed math looks like the stage's ---------- */
+.mf { cursor: text; overflow: hidden; }
+.mf .mq-editable-field, .mf .mq-math-mode { border: 0 !important; box-shadow: none !important; outline: none; background: transparent; color: inherit; font-family: var(--math-font); font-size: inherit; flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.mf .mq-math-mode .mq-nonSymbola, .mf .mq-math-mode big, .mf .mq-math-mode .mq-large-operator, .mf .mq-math-mode .mq-paren, .mf .mq-math-mode .mq-operator-name { font-family: var(--math-font); }
+.mf .mq-math-mode var, .mf .mq-math-mode .mq-italic { font-family: var(--math-font); }
+.mf .mq-cursor { border-left: 1.5px solid var(--accent, var(--sel)) !important; margin-right: -1.5px; }
+.mf .mq-selection, .mf .mq-selection .mq-non-leaf, .mf .mq-selection .mq-scaled { background: var(--sel-fill) !important; color: inherit !important; }
+.mf .mq-math-mode .mq-empty { background: var(--sel-fill); outline: 1px dashed var(--faint); outline-offset: -1px; border-radius: 2px; }
+.mf .mq-math-mode .mq-root-block { padding: 2px 0; }
+.mf.mf-empty::before { content: attr(data-placeholder); position: absolute; color: var(--faint); font: 14px var(--ui-font); pointer-events: none; white-space: nowrap; }
+.op .mf.mf-empty::before, .pal-ask .mf.mf-empty::before { position: static; margin-right: -100%; font-size: 12.5px; }
+.mf .mq-textarea textarea { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.mf .mq-math-mode .mq-int > big { transform: none; font-size: 165%; vertical-align: -0.22em; margin-right: .05em; }
+.mf .mq-math-mode .mq-int > .mq-supsub > .mq-sub { margin-left: -0.2em; }
+.mf .mq-math-mode .mq-large-operator big { font-size: 150%; }

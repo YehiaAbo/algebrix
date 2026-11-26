@@ -24,7 +24,9 @@ import { Settings } from './settings';
 import { initMeter } from './fps';
 import { Step, Slot, Mode, $, MOVE_KEYS, LABEL_CHARS, DOMAIN_TEXT, Hub, livePreview, varHtml, escapeHtml, mathHtml, pretty, setHtml, onResize, aimBox } from './shared';
 import * as nav from './nav';
-import { notationFor } from './notation';
+import { notationAt } from './notation';
+import { field } from './mathfield';
+import { toLatex } from '../engine/latex';
 import * as sheet from './sheet';
 import { hasCalc } from '../engine/calcmoves';
 import { odeKind } from '../engine/ode';
@@ -61,7 +63,7 @@ export class App {
   peek: Eq | null = null;
   hub: Hub | null = null;
   /** the notation cards under the typing box, and the one picked */
-  nota: (NonNullable<ReturnType<typeof notationFor>> & { i: number }) | null = null;
+  nota: (NonNullable<ReturnType<typeof notationAt>> & { i: number }) | null = null;
   typingTimer = 0;
   writing: 'new' | 'edit' = 'edit';
   pending: { timer: number; run: () => void }[] = [];
@@ -101,7 +103,7 @@ export class App {
   /** Shift+P playing the steps back: where it stops, and the next beat */
   replaying: { to: number; timer: number } | null = null;
 
-  pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null, started: '', primes: 0 };
+  pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null, started: '', startedTex: '', primes: 0 };
   constructor() {
     this.stage = new Stage($('stage'));
     this.tree = new TreeView($('tree'), { size: 16, strip: true, pick: (c, id) => this.goStep(c, id), open: (c, id) => this.openTree(c, id) });
@@ -544,7 +546,7 @@ export class App {
     this.writing = 'edit';
     this.setMode('solve');
     if (!quiet) sound.commit();
-    $<HTMLInputElement>('input').blur();
+    field('input').blur();
     this.stage.clear();
     this.renderAll(null);
     if (!quiet) this.entrance();
@@ -1029,11 +1031,11 @@ export class App {
   /* ---------------- writing ---------------- */
 
   edit(blank: boolean) {
-    const input = $<HTMLInputElement>('input');
+    const input = field('input');
     this.writing = blank ? 'new' : 'edit';
     this.setMode('write');
     this.sel = null;
-    input.value = blank ? '' : toText(this.eq, true);
+    input.setLatex(blank ? '' : toLatex(this.eq));
     input.placeholder = blank && this.slots.length ? `Equation ${this.slots.length + 1}, like x - y = 1` : 'Type an equation, like x^2 + 5x + 6 = 0';
     input.focus();
     input.select();
@@ -1045,13 +1047,13 @@ export class App {
     if (!this.slots.length) return;
     this.preview = null;
     this.writing = 'edit';
-    $<HTMLInputElement>('input').blur();
+    field('input').blur();
     this.setMode('solve');
     this.renderAll(null);
   }
 
   onType() {
-    const src = $<HTMLInputElement>('input').value;
+    const src = field('input').value;
     clearTimeout(this.typingTimer);
     const err = $('input-error');
     err.textContent = '';

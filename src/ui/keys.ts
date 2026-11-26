@@ -6,59 +6,29 @@ import { sound } from './sound';
 import { cycleGraph } from './panels';
 import { $, MOVE_KEYS, OP_KEYS, escapeHtml } from './shared';
 import type { App } from './app';
-import { notationFor, insertNotation } from './notation';
+import { notationAt, noteTex } from './notation';
+import { mathField, field } from './mathfield';
 
 export function bind(this: App) {
-  const input = $<HTMLInputElement>('input');
-  input.addEventListener('input', () => { this.onType(); this.showNotation(); });
-  input.addEventListener('blur', () => this.closeNotation());
-  // quick inserts under the box, for what's awkward to type
-  const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt(', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x) = ', ''], ['d/dx', 'd/dx(', ''], ['lim', 'lim x->0 ', ''], ['∫', 'int ', ''], ['Σ', 'sum_{n=1}^∞ ', ''], ['∂', '∂/∂x(', ''], ['∇', '∇(', ''], ['⟨ ⟩', '⟨', 'vector']];
+  const input = mathField($('input'), { onKey: e => this.inputKey(e) });
+  input.el.addEventListener('input', () => { this.onType(); this.showNotation(); });
+  input.el.addEventListener('focusout', () => this.closeNotation());
+  // quick inserts under the box, for what's awkward to type: each types what you would type
+  const KEYS: [string, string, string][] = [['x²', '^2', 'power'], ['xₙ', '_', 'subscript'], ['√', 'sqrt', ''], ['a/b', '/', ''], ['|x|', '|', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['π', 'pi', ''], ['f(x) =', 'f(x)=', ''], ['d/dx', 'd/dx(', ''], ['lim', 'lim', ''], ['∫', 'int', ''], ['Σ', 'sum', ''], ['∂', '∂/∂x(', ''], ['∇', 'nabla(', ''], ['⟨ ⟩', '⟨', 'vector']];
   for (const [label, ins, hint] of KEYS) {
     const b = document.createElement('button');
     b.type = 'button';
     b.innerHTML = escapeHtml(label) + (hint ? `<small>${hint}</small>` : '');
     b.addEventListener('mousedown', ev => {
       ev.preventDefault();
-      const a = input.selectionStart ?? input.value.length, z = input.selectionEnd ?? a;
-      input.value = input.value.slice(0, a) + ins + input.value.slice(z);
-      input.setSelectionRange(a + ins.length, a + ins.length);
-      this.onType();
+      if (ins === '⟨') input.splice(input.before().length, input.before().length, '\\left\\langle $\\right\\rangle ');
+      else input.typeText(ins);
     });
     $('input-keys').append(b);
   }
-  input.addEventListener('focus', () => { if (this.mode !== 'write') { this.writing = 'edit'; this.setMode('write'); this.sel = null; this.renderAll(null); } });
-  input.addEventListener('keydown', e => {
-    e.stopPropagation();
-    // the notation cards, while they're up: ↓ ↑ pick, Tab takes, Esc puts them away
-    const N = this.nota;
-    if (N && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); N.i = (N.i + (e.key === 'ArrowDown' ? 1 : -1) + N.items.length) % N.items.length; sound.tick(2); this.renderNotation(); return; }
-    if (N && e.key === 'Tab') { e.preventDefault(); this.takeNotation(N.i); return; }
-    if (N && e.key === 'Escape') { e.preventDefault(); this.closeNotation(); return; }
-    if (e.key === 'Enter') { e.preventDefault(); this.commit(input.value); }
-    if (e.key === 'Escape') { e.preventDefault(); this.cancelEdit(); }
-  });
-  const op = $<HTMLInputElement>('op-input');
-  op.addEventListener('input', () => this.onOpType());
-  op.addEventListener('keydown', e => {
-    e.stopPropagation();
-    if (e.key === 'Escape') { e.preventDefault(); this.closeOp(); }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (this.opKind === 'name') return this.commitName();
-      if (this.opKind === 'value') return this.commitValue();
-      if (this.opKind === 'divide') return this.commitDivide();
-      if (this.opKind === 'one') return this.commitOne();
-      if (this.opKind === 'as') return this.commitRewrite();
-      const r = this.opResult();
-      if (isErr(r)) { this.refuse(r.error); return; }
-      const ref = /#(\d)/.exec($<HTMLInputElement>('op-input').value);
-      this.closeOp();
-      if (ref) this.flyFrom(Number(ref[1]) - 1);
-      this.apply(r, 1.05);
-      if (ref) this.thenCollect();
-    }
-  });
+  input.el.addEventListener('focusin', () => { if (this.mode !== 'write') { this.writing = 'edit'; this.setMode('write'); this.sel = null; this.renderAll(null); } });
+  const op = mathField($('op-input'), { onKey: e => this.opKey(e) });
+  op.el.addEventListener('input', () => this.onOpType());
   $('original').addEventListener('click', () => this.edit(false));
   // the tree: a click on a step goes there (handled by the tree); anywhere else opens it big
   $('tree').addEventListener('mousedown', e => e.stopPropagation());
@@ -253,8 +223,8 @@ export function key(this: App, e: KeyboardEvent) {
 /* ---------- the notation cards under the typing box ---------- */
 
 export function showNotation(this: App) {
-  const input = $<HTMLInputElement>('input');
-  const got = notationFor(input.value, input.selectionStart ?? input.value.length);
+  const input = field('input');
+  const got = notationAt(input.before(), input.latex());
   const same = got && this.nota && got.items.map(n => n.name).join() === this.nota.items.map(n => n.name).join();
   this.nota = got ? { ...got, i: same ? this.nota!.i : 0 } : null;
   this.renderNotation();
@@ -268,14 +238,41 @@ export function closeNotation(this: App) {
 export function takeNotation(this: App, i: number) {
   const N = this.nota;
   if (!N) return;
-  const input = $<HTMLInputElement>('input');
-  const r = insertNotation(input.value, N, N.items[i]);
-  input.value = r.text;
-  input.setSelectionRange(r.caret, r.caret);
   this.nota = null;
   this.renderNotation();
   sound.tick(3);
-  this.onType();
+  field('input').splice(N.from, N.to, noteTex(N.items[i]));
+}
+
+/** a key in the equation box: true when it is taken here (the editor never sees it) */
+export function inputKey(this: App, e: KeyboardEvent): boolean {
+  // the notation cards, while they're up: ↓ ↑ pick, Tab takes, Esc puts them away
+  const N = this.nota;
+  if (N && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { N.i = (N.i + (e.key === 'ArrowDown' ? 1 : -1) + N.items.length) % N.items.length; sound.tick(2); this.renderNotation(); return true; }
+  if (N && e.key === 'Tab') { this.takeNotation(N.i); return true; }
+  if (N && e.key === 'Escape') { this.closeNotation(); return true; }
+  if (e.key === 'Enter') { this.commit(field('input').value); return true; }
+  if (e.key === 'Escape') { this.cancelEdit(); return true; }
+  return false;
+}
+
+/** a key in the both-sides box (and b, p, ÷ …, rewrite as) */
+export function opKey(this: App, e: KeyboardEvent): boolean {
+  if (e.key === 'Escape') { this.closeOp(); return true; }
+  if (e.key !== 'Enter') return false;
+  if (this.opKind === 'name') { this.commitName(); return true; }
+  if (this.opKind === 'value') { this.commitValue(); return true; }
+  if (this.opKind === 'divide') { this.commitDivide(); return true; }
+  if (this.opKind === 'one') { this.commitOne(); return true; }
+  if (this.opKind === 'as') { this.commitRewrite(); return true; }
+  const r = this.opResult();
+  if (isErr(r)) { this.refuse(r.error); return true; }
+  const ref = /#(\d)/.exec(field('op-input').value);
+  this.closeOp();
+  if (ref) this.flyFrom(Number(ref[1]) - 1);
+  this.apply(r, 1.05);
+  if (ref) this.thenCollect();
+  return true;
 }
 
 export function renderNotation(this: App) {
@@ -286,12 +283,8 @@ export function renderNotation(this: App) {
   host.innerHTML = N.items.map((n, i) => `<button type="button" class="nota${i === N.i ? ' on' : ''}" data-i="${i}"><b>${escapeHtml(n.look)}</b><span>${escapeHtml(n.name)}</span></button>`).join('')
     + '<span class="nota-tip"><kbd>↓</kbd><kbd>↑</kbd> pick <kbd>Tab</kbd> take</span>';
   host.querySelectorAll<HTMLButtonElement>('.nota').forEach(b => b.addEventListener('mousedown', ev => { ev.preventDefault(); this.takeNotation(Number(b.dataset.i)); }));
-  // under the word being typed
-  const input = $<HTMLInputElement>('input');
-  const ctx = document.createElement('canvas').getContext('2d')!;
-  const cs = getComputedStyle(input);
-  ctx.font = `${cs.fontSize} ${cs.fontFamily}`;
-  const x = parseFloat(cs.paddingLeft) + ctx.measureText(input.value.slice(0, N.from)).width - input.scrollLeft;
-  host.style.left = `${Math.max(0, Math.min(x - 8, input.clientWidth - host.offsetWidth))}px`;
+  // under the word being typed: where the cursor is
+  const box = $('input'), caret = box.querySelector('.mq-cursor') ?? box;
+  const x = caret.getBoundingClientRect().left - box.getBoundingClientRect().left - 40;
+  host.style.left = `${Math.max(0, Math.min(x, box.clientWidth - host.offsetWidth))}px`;
 }
-

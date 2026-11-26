@@ -4,6 +4,9 @@
 
 /** one card: what it looks like, what it is, the words that find it, and what it types
  *  ($ is where the caret lands) */
+import { toLatex } from '../engine/latex';
+import { parseEquation } from '../engine/parse';
+
 export interface Notation { look: string; name: string; words: string; insert: string }
 
 export const NOTATION: Notation[] = [
@@ -63,4 +66,30 @@ export function insertNotation(src: string, at: { from: number; to: number }, n:
   const ins = n.insert.replace('$', '');
   const c = n.insert.indexOf('$');
   return { text: src.slice(0, at.from) + ins + src.slice(at.to), caret: at.from + (c < 0 ? ins.length : c) };
+}
+
+/* ---------- in the live math editor, where the text is LaTeX ---------- */
+
+/** what a card types in the editor, as LaTeX with $ for the cursor */
+export function noteTex(n: Notation): string {
+  const FRAGMENTS: Record<string, string> = { '^($)': '^{$}', '_$': '_{$}', '!$': '!$', '<= $': '\\le $', '>= $': '\\ge $' };
+  if (FRAGMENTS[n.insert]) return FRAGMENTS[n.insert];
+  try { return toLatex(parseEquation(n.insert.replace('$', '□'), true)).replace('□', '$'); } catch { return n.insert; }
+}
+
+/** the cards for where the cursor is in the editor: after 2+ plain letters (deriv, abs, gre…), or
+ *  in a ∫, Σ, ∏, lim or √ just made from its word and still empty, which the cards can replace.
+ *  from and to are what a card replaces, in the LaTeX */
+export function notationAt(before: string, latex: string): { from: number; to: number; items: Notation[] } | null {
+  const after = latex.slice(before.length);
+  const made = /\\(int|sum|prod|lim|sqrt)(?:_\{\s*(?:n=)?|\{\s*)$/.exec(before);
+  const close = made && /^\s*\}(?:\^\{\s*\})?/.exec(after);
+  if (made && close) {
+    const got = notationFor(made[1], made[1].length);
+    return got && { from: before.length - made[0].length, to: before.length + close[0].length, items: got.items };
+  }
+  const m = /(?:^|[^\\a-zA-Z])([a-zA-Z]{2,})$/.exec(before);
+  if (!m) return null;
+  const got = notationFor(m[1], m[1].length);
+  return got && { from: before.length - m[1].length, to: before.length, items: got.items };
 }

@@ -87,7 +87,7 @@ export const tests = {
   },
 
   async 'a vector equation splits into one equation per entry'({ key, type, until }) {
-    await key('i'); await type('∇(x^2 + y^2 - 2x) = (0, 0)'); await key('Enter');
+    await key('i'); await type('nabla(x^2 + y^2 - 2x) = (0, 0)'); await key('Enter');
     await until(s => s.eq.startsWith('∇'), 'typed, with ( , ) as a vector');
     await key('e'); await until(s => s.slots === 2 && s.eq === '2x − 2 = 0', 'gradient worked out, then split', 10000);
   },

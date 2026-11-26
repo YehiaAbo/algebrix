@@ -18,6 +18,7 @@ import { sound } from './sound';
 import { here } from './tree';
 import { $ } from './shared';
 import type { App } from './app';
+import { field } from './mathfield';
 
 
 /** the letter b offers first: u for a piece, t for a number (a parameter), the next free one after */
@@ -49,7 +50,7 @@ export function openName(this: App, asFunction = false) {
   this.opKind = 'name';
   this.closeHub(false);
   this.setMode('op');
-  const input = $<HTMLInputElement>('op-input');
+  const input = field('op-input');
   input.value = asFunction ? fnSuggestion(P, new Set(this.lettersInUse())) : freshLetter(new Set(this.lettersInUse()), symbols(P).length === 0);
   $('op').hidden = false;
   $('op').classList.add('naming');
@@ -61,7 +62,7 @@ export function openName(this: App, asFunction = false) {
 }
 
 export function nameResult(this: App): Named | { error: string } {
-  const text = $<HTMLInputElement>('op-input').value;
+  const text = field('op-input').value;
   const others = this.slots.flatMap((_, j) => (j === this.cur ? [] : symbols(this.eqOf(j))));
   return nameIt(this.eq, this.sel, text, others);
 }
@@ -112,7 +113,7 @@ export function openValue(this: App) {
   this.valueOf = v;
   this.closeHub(false);
   this.setMode('op');
-  const input = $<HTMLInputElement>('op-input');
+  const input = field('op-input');
   input.value = guess ? '0' : '';
   $('op').hidden = false;
   this.place($('op'));
@@ -123,7 +124,7 @@ export function openValue(this: App) {
 }
 
 export function commitValue(this: App) {
-  const text = $<HTMLInputElement>('op-input').value;
+  const text = field('op-input').value;
   if (this.valueCheck) {
     const t = tryValue(this.eq, this.valueOf!, text);
     if ('error' in t) return this.refuse(t.error);
@@ -156,7 +157,7 @@ export function openDivide(this: App) {
   this.divideAt = id;
   this.closeHub(false);
   this.setMode('op');
-  const input = $<HTMLInputElement>('op-input');
+  const input = field('op-input');
   input.value = factorGuess(find(this.eq, id)!);
   $('op').hidden = false;
   this.place($('op'));
@@ -167,7 +168,7 @@ export function openDivide(this: App) {
 }
 
 export function divideResult(this: App): MoveResult {
-  const text = $<HTMLInputElement>('op-input').value.trim();
+  const text = field('op-input').value.trim();
   const target = this.divideAt ? find(this.eq, this.divideAt) : null;
   if (!target) return { error: 'Aim at a polynomial first.' };
   let d: Node;
@@ -194,7 +195,7 @@ export function openRewrite(this: App) {
   this.asAt = target.id;
   this.closeHub(false);
   this.setMode('op');
-  const input = $<HTMLInputElement>('op-input');
+  const input = field('op-input');
   // start from how it is written now: edit it into the form you want, as on paper
   input.value = toText(target);
   $('op').hidden = false;
@@ -206,7 +207,7 @@ export function openRewrite(this: App) {
 }
 
 export function asResult(this: App): MoveResult {
-  return rewriteAs(this.eq, this.asAt, $<HTMLInputElement>('op-input').value);
+  return rewriteAs(this.eq, this.asAt, field('op-input').value);
 }
 
 export function commitRewrite(this: App) {
@@ -223,7 +224,7 @@ export function openOne(this: App) {
   this.oneAt = this.sel;
   this.closeHub(false);
   this.setMode('op');
-  const input = $<HTMLInputElement>('op-input');
+  const input = field('op-input');
   input.value = '';
   $('op').hidden = false;
   this.place($('op'));
@@ -233,7 +234,7 @@ export function openOne(this: App) {
 }
 
 export function oneResult(this: App): MoveResult {
-  const text = $<HTMLInputElement>('op-input').value.trim();
+  const text = field('op-input').value.trim();
   if (!text) return { error: 'Type what goes on top and below: e^(-x), sqrt(x) - 1, …' };
   return timesOne(this.eq, this.oneAt, text);
 }
@@ -273,7 +274,7 @@ export function onNameType(this: App) {
     note.textContent = 'error' in r ? r.error : `new equation: ${brief(r.def.lhs)} = ${brief(r.def.rhs)} · Enter`;
     this.peek = 'error' in r ? null : r.step.eq;
   } else {
-    const text = $<HTMLInputElement>('op-input').value;
+    const text = field('op-input').value;
     // "t = 0" names its own letter, so the box only shows "t =" before a bare value
     symEl.textContent = /[=→>]/.test(text) ? 'put in' : `${this.valueOf} =`;
     if (this.valueCheck) {

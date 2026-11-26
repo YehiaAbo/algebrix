@@ -202,7 +202,7 @@ export const tests = {
     await load('6x + 9 = 3');
     await hold('Tab', 'q');
     await until(() => true, '');
-    const guess = await p.evaluate(() => document.querySelector('#op-input').value);
+    const guess = await p.evaluate(() => window.field('op-input').value);
     assert(guess === '3', `the guess is the common factor: ${guess}`);
     await key('Enter');
     await until(s => s.eq === '3(2x + 3) = 3', '3 taken out');
@@ -390,7 +390,7 @@ export const tests = {
     await load('y = int_0^1 (x^5 - 1)/ln x dx');
     await aim('∫_{0}^{1} (x^5 − 1)/ln(x) dx');
     await key('f', 'b');
-    const offered = await p.evaluate(() => document.getElementById('op-input').value);
+    const offered = await p.evaluate(() => window.field('op-input').value);
     assert(offered === 'I(5)', `f then b offers I(5): ${offered}`);
     await key('Enter');
     await until(s => s.eq === 'y = I(5)' && s.slots === 2, 'the piece is I(5), and I(t) = … is equation 2');
@@ -469,7 +469,7 @@ export const tests = {
     await key('1');
     await key('f'); await wait(150);
     await type("V''(2)"); await key('Enter');
-    await until(s => s.slots === 3 && s.eq.startsWith('V′′(2) = '), 'V″(2) asked for');
+    await until(s => s.slots === 3 && /^V(′′|″)\(2\) = /.test(s.eq), 'V″(2) asked for');
   },
 
   async 'Shift ↑ ↓ move a piece through the notation: over the bar, off a log, round the bounds'(h) {
@@ -510,7 +510,7 @@ export const tests = {
     await dig(h, '12');
     await hold('Tab', 'q');
     await until(() => true, '');
-    const guess = await p.evaluate(() => document.querySelector('#op-input').value);
+    const guess = await p.evaluate(() => window.field('op-input').value);
     assert(guess === '2', `the guess is the smallest prime: ${guess}`);
     await p.keyboard.press('Control+a');
     await type('3');
@@ -524,8 +524,8 @@ export const tests = {
     await dig(h, 'x^2 − 1');
     await hold('Tab', '=');
     await until(() => true, '');
-    const start = await p.evaluate(() => document.querySelector('#op-input').value);
-    assert(start === 'x^2 − 1', `starts from how it is written: ${start}`);
+    const start = await p.evaluate(() => window.field('op-input').value);
+    assert(start.replace(/\s/g, '') === 'x^2-1', `starts from how it is written: ${start}`);
     await p.keyboard.press('Control+a');
     await type('(x-1)^2');
     const bad = await p.evaluate(() => document.querySelector('#op').classList.contains('bad'));

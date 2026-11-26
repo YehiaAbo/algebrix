@@ -17,7 +17,7 @@ export const tests = {
     await load('int 2x cos(x^2) dx');
     await dig(h, 'x^2');
     await key('b');
-    const offered = await p.evaluate(() => document.querySelector('#op-input').value);
+    const offered = await p.evaluate(() => window.field('op-input').value);
     assert(offered === 'u', `b offers u for a piece: ${offered}`);
     await key('Enter');
     await until(s => s.slots === 2 && s.eq === '∫ 2x cos(u) dx', 'x² named u here, u = x² as equation 2');
@@ -38,7 +38,7 @@ export const tests = {
     await load('int_0^1 (x^2 - 1)/ln(x) dx');
     await dig(h, '2');
     await key('b');
-    const offered = await p.evaluate(() => document.querySelector('#op-input').value);
+    const offered = await p.evaluate(() => window.field('op-input').value);
     assert(offered === 't', `b offers t for a number: ${offered}`);
     await key('Enter');
     await until(s => s.slots === 2 && s.eq === '∫_{0}^{1} (x^t − 1)/ln(x) dx', 'the 2 is t now, t = 2 beside it');

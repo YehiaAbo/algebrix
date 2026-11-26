@@ -9,6 +9,7 @@ import { parseExpr } from '../engine/parse';
 import { absOf, coefOf } from '../engine/terms';
 import { $, OP_SHOW } from './shared';
 import type { App } from './app';
+import { field } from './mathfield';
 
 /** What you most likely want to apply, given what is aimed: the thing that cancels it. */
 export function prefill(this: App, op: string): string {
@@ -41,19 +42,21 @@ export function openOp(this: App, op: string) {
   this.closeHub(false);
   this.setMode('op');
   const box = $('op');
-  const input = $<HTMLInputElement>('op-input');
+  const input = field('op-input');
   const fill = this.prefill(op);
   input.value = op === '*' ? '*' + fill : op + fill;
   box.hidden = false;
   this.place(box);
   input.focus();
-  input.setSelectionRange(1, input.value.length);
+  // the value after + − × ÷ ^ is chosen, so typing replaces it
+  const l = input.latex(), m = /^(?:\\div|\\cdot|[-+]|\^\{)\s*/.exec(l);
+  if (m) input.selectRange(m[0].length, l.length - (m[0].startsWith('^') ? 1 : 0));
   this.onOpType();
   this.renderHints();
 }
 
 export function opResult(this: App): MoveResult {
-  const v = $<HTMLInputElement>('op-input').value.trim();
+  const v = field('op-input').value.trim();
   if (v.length <= 1) return { error: 'Type what to apply, like 7 or 3x.' };
   const w = wrapOf(v);
   if (w) return 'error' in w ? w : checked(this.eq, wrapBoth(this.eq, w.f, w.arg));
@@ -83,7 +86,7 @@ function wrapOf(v: string): { f: Wrap; arg?: ReturnType<typeof parseExpr> } | { 
 export function onOpType(this: App) {
   if (this.opKind !== 'both') return this.onNameType();
   const r = this.opResult();
-  const v = $<HTMLInputElement>('op-input').value.trim();
+  const v = field('op-input').value.trim();
   const op = ({ '−': '-', '×': '*', '·': '*', '÷': '/' } as Record<string, string>)[v[0]] ?? v[0];
   $('op-sym').textContent = !isErr(r) && wrapOf(v) ? r.label : OP_SHOW[op] ? `${OP_SHOW[op]} both sides` : 'both sides';
   $('op').classList.toggle('bad', isErr(r) && v.length > 1);
@@ -97,7 +100,7 @@ export function closeOp(this: App) {
   $('op').classList.remove('naming', 'bad');
   this.giveBackRoom();
   this.opKind = 'both';
-  $<HTMLInputElement>('op-input').blur();
+  field('op-input').blur();
   const had = !!this.peek;
   this.peek = null;
   this.setMode('solve');

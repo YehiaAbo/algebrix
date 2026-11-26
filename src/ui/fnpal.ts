@@ -14,6 +14,7 @@ import { sound } from './sound';
 import { $, escapeHtml } from './shared';
 import { cardMath } from './hub';
 import type { App } from './app';
+import { mathField, field } from './mathfield';
 
 /** tab and item being browsed; moved = the person browsed with the arrows */
 
@@ -31,7 +32,7 @@ export function openPal(this: App, sticky: boolean) {
   this.flush();
   const inv = inverseOf(this.peelSide());
   const tab = inv ? this.palTabs().findIndex(t => t.items.some(x => !x.tpl && x.f === inv.f)) : -1;
-  this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null, started: '', primes: 0 };
+  this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null, started: '', startedTex: '', primes: 0 };
   this.chordUsed = false;
   this.setMode('fnpal');
   sound.labels();
@@ -78,10 +79,10 @@ export function renderPal(this: App) {
     const typed = P.ask === TYPED, mine = isYours(P.ask);
     ask.className = 'pal-ask' + (typed ? ' typed' : mine ? ' yours' : '');
     ask.innerHTML = typed
-      ? `<span>type</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a function of each side" placeholder="f(4)   f(x² + 1)   ln   e^_   f⁻¹"><span id="pal-note" class="op-note">a name, _ for each side, or f(3) for a value</span>`
+      ? `<span>type</span><span id="pal-input" aria-label="a function of each side" data-placeholder="f(4)   f(x² + 1)   ln   e^_   f⁻¹"></span><span id="pal-note" class="op-note">a name, _ for each side, or f(3) for a value</span>`
       : mine
-      ? `<span>${P.ask.tpl}(</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="a value for ${P.ask.tpl}"><span>)</span><span id="pal-note" class="op-note">${YOURS_NOTE(P.ask.tpl!)}</span>`
-      : `<span>${P.ask.label}: ${P.ask.ask} =</span><input id="pal-input" spellcheck="false" autocomplete="off" aria-label="${P.ask.ask}"><span id="pal-note" class="op-note">a number or anything algebraic (a, k + 1, 1/x), Enter applies</span>`;
+      ? `<span>${P.ask.tpl}(</span><span id="pal-input" aria-label="a value for ${P.ask.tpl}"></span><span>)</span><span id="pal-note" class="op-note">${YOURS_NOTE(P.ask.tpl!)}</span>`
+      : `<span>${P.ask.label}: ${P.ask.ask} =</span><span id="pal-input" aria-label="${P.ask.ask}"></span><span id="pal-note" class="op-note">a number or anything algebraic (a, k + 1, 1/x), Enter applies</span>`;
     if (first) host.prepend(ask); else host.append(ask);
   }
   const tip = document.createElement('div');
@@ -95,9 +96,9 @@ export function renderPal(this: App) {
   const idleBox = document.getElementById('pal-idle');
   idleBox?.addEventListener('focus', () => this.choose(TYPED));
   if (P.ask) {
-    const input = $<HTMLInputElement>('pal-input');
-    input.addEventListener('keydown', e => this.askKey(e));
-    input.addEventListener('input', () => this.askPreview());
+    const box = $('pal-input');
+    const input = mathField(box, { onKey: e => this.askKey(e), placeholder: box.dataset.placeholder });
+    input.el.addEventListener('input', () => this.askPreview());
     input.focus();
   }
 }
@@ -222,7 +223,7 @@ export function choose(this: App, w: WrapItem) {
 }
 
 export function askArg(this: App): Node | { error: string } {
-  const v = $<HTMLInputElement>('pal-input').value.trim();
+  const v = field('pal-input').value.trim();
   if (this.pal.ask === TYPED) return fnTemplate(v);
   // yours with nothing typed: that function of both sides
   if (isYours(this.pal.ask) && !v) return fnTemplate(this.pal.ask!.tpl!);
@@ -242,39 +243,40 @@ export function askPreview(this: App) {
   if (isYours(this.pal.ask)) $('pal-note').textContent = YOURS_NOTE(this.pal.ask!.tpl!);
   const a = this.askArg();
   const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
-  $('pal-note').textContent = isErr(r) ? (this.pal.ask === TYPED && !$<HTMLInputElement>('pal-input').value.trim() ? 'a name, or _ for each side' : r.error) : r.label + ': Enter applies';
-  $('pal-note').classList.toggle('bad', isErr(r) && !!$<HTMLInputElement>('pal-input').value.trim());
+  $('pal-note').textContent = isErr(r) ? (this.pal.ask === TYPED && !field('pal-input').value.trim() ? 'a name, or _ for each side' : r.error) : r.label + ': Enter applies';
+  $('pal-note').classList.toggle('bad', isErr(r) && !!field('pal-input').value.trim());
   this.peek = !isErr(r) ? r.eq : null;
   this.renderMain({ quick: true });
 }
 
-export function askKey(this: App, e: KeyboardEvent) {
-  e.stopPropagation();
+/** a key in the menu's box: true when it is taken here (the editor never sees it) */
+export function askKey(this: App, e: KeyboardEvent): boolean {
   // the box started as V( for you: typing V( or V′( yourself goes on from there instead of doubling it
-  const inp = e.target as HTMLInputElement;
+  const F = field('pal-input');
   const st = this.pal.started;
-  if (st && inp.value === st && inp.selectionStart === st.length) {
-    if (e.key === '(') { e.preventDefault(); return; }
+  if (st && F.latex() === this.pal.startedTex) {
+    if (e.key === '(') return true;
     if (e.key === "'" || e.key === '′') {
       // you are spelling the name: V then '' is V″, whichever V-form the box offered first
-      e.preventDefault();
       this.pal.primes++;
-      inp.value = this.pal.started = `${st.replace(/[′″‴]*\($/, '')}${'′'.repeat(this.pal.primes)}(`;
-      inp.setSelectionRange(inp.value.length, inp.value.length);
-      return this.askPreview();
+      F.value = this.pal.started = `${st.replace(/[′″‴]*\($/, '')}${'′'.repeat(this.pal.primes)}(`;
+      this.pal.startedTex = F.latex();
+      this.askPreview();
+      return true;
     }
   }
-  if (e.key === 'Escape') { e.preventDefault(); this.pal.ask = null; this.setMode('fnpal'); this.peek = null; this.renderMain({ quick: true }); this.renderPal(); return; }
-  if (e.key === 'Enter') {
-    e.preventDefault();
+  if (e.key === 'Escape') { this.pal.ask = null; this.setMode('fnpal'); this.peek = null; this.renderMain({ quick: true }); this.renderPal(); return true; }
+  if (e.key !== 'Enter') return false;
+  {
     const value = this.valueAsked();
-    if (value) { const r = valueInto(value.F, value.text, this.eq); if ('error' in r) return this.refuse(r.error); this.closePal(false); return this.addValueOf(value.F, r.eq, value.text, r.here); }
+    if (value) { const r = valueInto(value.F, value.text, this.eq); if ('error' in r) this.refuse(r.error); else { this.closePal(false); this.addValueOf(value.F, r.eq, value.text, r.here); } return true; }
     const a = this.askArg();
     const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
-    if (isErr(r)) { this.refuse(r.error); return; }
+    if (isErr(r)) { this.refuse(r.error); return true; }
     this.closePal(false);
     this.applyTidy(r, 0.9);
   }
+  return true;
 }
 
 export function closePal(this: App, animateBack = false) {
@@ -317,7 +319,7 @@ export function invTarget(this: App): string | null {
 
 /** what was typed to put into one of yours: a value in its own box, or f(3) in the = box */
 export function valueAsked(this: App): { F: string; text: string } | null {
-  const w = this.pal.ask, v = $<HTMLInputElement>('pal-input').value.trim();
+  const w = this.pal.ask, v = field('pal-input').value.trim();
   if (isYours(w) && v) return { F: w!.tpl!, text: v };
   if (w !== TYPED) return null;
   // the closing bracket can wait: f(4 is f(4)
@@ -406,10 +408,10 @@ export function addValueOf(this: App, F: string, r: Eq, text: string, fromHere =
 /** into the menu's box, with this already typed (f( when you press the letter of your f) */
 export function typeInPal(this: App, start: string) {
   this.choose(TYPED);
-  const input = $<HTMLInputElement>('pal-input');
+  const input = field('pal-input');
   input.value = this.pal.started = start;
+  this.pal.startedTex = input.latex();
   this.pal.primes = 0;
-  input.setSelectionRange(start.length, start.length);
   this.askPreview();
 }
 
