@@ -38,6 +38,9 @@ export function addStep(s: Sheet, r: MoveOk, opts: { link?: Link | null; out?: {
   const back = slot.at > 0 && !opts.link ? path.findIndex(st => key(st.eq) === k) : -1;
   if (back >= 0 && back < slot.at) {
     const st = slot.steps[back];
+    // the same equation, but its pieces as this move left them: 2·2 with the two 2s swapped looks
+    // the same as before, yet the stage must slide the 2 you pushed, not the ones it had then
+    st.eq = r.eq;
     st.back = (st.back ?? 0) + 1;
     slot.at = back;
     if (opts.out) opts.out.back = st.back;
@@ -46,6 +49,7 @@ export function addStep(s: Sheet, r: MoveOk, opts: { link?: Link | null; out?: {
   for (const line of linesOf(slot)) {
     const next = line[slot.at + 1];
     if (next && key(next.eq) === k && path.every((st, i) => line[i].id === st.id)) {
+      next.eq = r.eq;
       switchLine(slot, line);
       slot.at++;
       if (opts.out) opts.out.again = true;

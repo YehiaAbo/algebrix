@@ -41,4 +41,35 @@ export const tests = {
     await key('Escape'); await aim('2x'); await key('Shift+ArrowRight');
     await until(s => s.eq.startsWith('8 + 2x'), '2x slid right');
   },
+
+  async 'm pressed again and again keeps holding what moved: a group, a whole side (user 2026-11-27)'({ load, aim, p, key, until, assert }) {
+    const held = () => p.evaluate(() => { const a = window.algebrix; let got = a.sel; const f = n => { if (!n || typeof n !== 'object') return; if (n.id === a.sel) got = window.toText(n); for (const v of Object.values(n)) Array.isArray(v) ? v.forEach(f) : f(v); }; f(a.eq); return got; });
+    await load('-96x + f(x) + 7 = 0');
+    await aim('−96x');
+    await p.keyboard.down('Control'); await key('ArrowRight'); await p.keyboard.up('Control');
+    await until(s => s.aim === '−96x + f(x)', 'the group');
+    for (let i = 0; i < 5; i++) {
+      await key('m'); await p.waitForTimeout(120);
+      const h = await held();
+      assert(h === (i % 2 ? '−96x + f(x)' : '96x − f(x)'), `press ${i + 1}: holding ${h}`);
+    }
+    await load('f(x) - 96x = 0');
+    await p.evaluate(() => window.algebrix.select(window.algebrix.eq.lhs.id));
+    for (let i = 0; i < 4; i++) {
+      await key('m'); await p.waitForTimeout(120);
+      const h = await held();
+      assert(h === (i % 2 ? 'f(x) − 96x' : '−f(x) + 96x'), `whole side, press ${i + 1}: holding ${h}`);
+    }
+  },
+
+  async 'Shift slides the very 2 you aimed among equal 2s (user 2026-11-27)'({ load, p, key, assert }) {
+    await load('2*2*2*2*3x = y');
+    const pick = i => p.evaluate(i => window.algebrix.select(window.algebrix.eq.lhs.factors[i].id), i);
+    const x = () => p.evaluate(() => window.algebrix.stage.box(window.algebrix.sel).x);
+    await pick(2);
+    for (const [k, more] of [['Shift+ArrowLeft', false], ['Shift+ArrowLeft', false], ['Shift+ArrowRight', true], ['Shift+ArrowRight', true], ['Shift+ArrowRight', true]]) {
+      const a = await x(); await key(k); await p.waitForTimeout(150); const b = await x();
+      assert(more ? b > a + 5 : b < a - 5, `${k}: the aimed 2 went from ${a} to ${b}`);
+    }
+  },
 };

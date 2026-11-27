@@ -279,6 +279,18 @@ export function moveAny(e: Eq, sel: string | null): MoveResult {
   return isErr(r) ? r : checked(e, r);
 }
 
+/** a whole side moved across stays aimed: what it became on the other side is held as one group
+ *  (the app melts the group into the sum and keeps the aim on exactly those terms) */
+function holdSide(e: Eq, side: Node, a: MoveOk): MoveResult {
+  const n = side.k === 'add' ? side.terms.length : 1;
+  const s = e.lhs === side ? 'rhs' : 'lhs', there = a.eq[s];
+  if (n === 1 || there.k !== 'add') return { ...a, select: there.id };
+  if (there.terms.length === n) return { ...a, select: there.id };
+  const g = add(there.terms.slice(-n));
+  const eq2 = { ...a.eq, [s]: { ...there, terms: [...there.terms.slice(0, -n), g] } };
+  return { ...a, eq: eq2, select: g.id };
+}
+
 function moveAnyRaw(e: Eq, sel: string | null): MoveResult {
   if (!sel || sel === 'eq') return { error: 'Aim at a piece first (Space), then m moves it across the =.' };
   const path = findPath(e, sel);
@@ -286,7 +298,7 @@ function moveAnyRaw(e: Eq, sel: string | null): MoveResult {
   const node = path[path.length - 1], parent = path[path.length - 2], root = path[1];
   // m is always "move it across", a whole side too (x² = … leaves 0 there); f + i undoes an outer function
   const a = moveAcross(e, sel);
-  if (!isErr(a)) return a;
+  if (!isErr(a)) return a.select || node !== root ? a : holdSide(e, root, a);
   if (parent === root && root.k === 'mul') return divideBoth(e, sel);
   if (root.k === 'frac' && (node === root.den || parent === root.den)) return multiplyBoth(e, sel);
   if (parent === root && root.k === 'pow' && node === root.exp) return peel(e, root.id);
