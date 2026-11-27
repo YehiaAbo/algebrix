@@ -686,6 +686,7 @@ export class Graph {
   /** the caption under the graph, written only when it changes (render runs every frame of a morph) */
   private html = '';
   private set caption(v: string) { if (v !== this.html) { this.html = v; this.note.innerHTML = v; } }
+  private get caption(): string { return this.html; }
   private set captionText(v: string) { this.caption = v.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
   private grid(X: (x: number) => number, Y: (y: number) => number, ux: (p: number) => number, uy: (p: number) => number, xl: string, yl: string) {
     const { W, H } = this, pw = this.canvas.width, ph = this.canvas.height;

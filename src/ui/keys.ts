@@ -140,7 +140,17 @@ export function toggleSound(this: App) {
 }
 
 export function key(this: App, e: KeyboardEvent) {
-  if (this.mode === 'write' || this.mode === 'op' || this.mode === 'fnask') return;
+  if (this.mode === 'write' || this.mode === 'op' || this.mode === 'fnask') {
+    // the box has the keys while it has focus; one that lost it (a click on the tree, a resize)
+    // must never leave the app stuck: Esc closes it, anything else brings the focus back
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+    e.preventDefault();
+    if (e.key === 'Escape') return this.closeModes();
+    const f = field(this.mode === 'write' ? 'input' : this.mode === 'op' ? 'op-input' : 'pal-input');
+    f?.focus();
+    if (f && e.key.length === 1 && !e.ctrlKey && !e.metaKey) f.typeText(e.key);
+    return;
+  }
   if (this.tour.menuOpen) return this.tour.menuKey(e);
   if (this.library.isOpen) return this.library.key(e);
   if (this.settings.isOpen) return this.settings.key(e);

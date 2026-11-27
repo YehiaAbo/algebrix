@@ -45,6 +45,7 @@ import * as persistPart from './persist';
 import * as calcPart from './calc';
 import * as generalPart from './general';
 import * as replayPart from './replay';
+import { mathLabel } from './mathlabel';
 
 export type { Slot };
 
@@ -469,6 +470,7 @@ export class App {
     host.classList.toggle('msg', !!this.message);
     host.classList.toggle('bad', !!this.message?.bad);
     setHtml(host, this.message ? escapeHtml(this.message.text) : this.hintsHtml());
+    host.querySelectorAll<HTMLElement>('.ml:not([data-done])').forEach(el => { el.dataset.done = '1'; el.replaceChildren(mathLabel(el.textContent ?? '', 12)); });
   }
 
   /** the hint bar for the mode we are in */
@@ -495,7 +497,7 @@ export class App {
       parts.push(`<span class="hint"><kbd class="wide">Space</kbd> aim</span><span class="hint"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> walk</span>`);
     } else {
       const m = moveAny(this.eq, this.sel);
-      if (!isErr(m)) parts.push(`<span class="hint"><kbd>m</kbd> ${escapeHtml(pretty(m.label))}</span>`);
+      if (!isErr(m)) parts.push(`<span class="hint"><kbd>m</kbd> <span class="ml">${escapeHtml(pretty(m.label))}</span></span>`);
       for (const k of MOVE_KEYS.slice(1)) {
         if (k.name !== 'any' && !isErr(applyMove(k.name, this.eq, this.sel))) parts.push(`<span class="hint"><kbd>${k.key}</kbd> ${k.verb}</span>`);
       }
@@ -503,7 +505,7 @@ export class App {
       // (↑ ↓ label from the move itself: checking it here would integrate numerically on every aim)
       for (const [name, arrow] of [['slideL', '←'], ['slideR', '→'], ['lift', '↑'], ['drop', '↓']] as const) {
         const r = name === 'lift' || name === 'drop' ? previewMove(name, this.eq, this.sel) : applyMove(name, this.eq, this.sel);
-        if (!isErr(r) && r.label !== 'reorder') parts.push(`<span class="hint"><kbd class="wide">⇧${arrow}</kbd> ${escapeHtml(pretty(r.label))}</span>`);
+        if (!isErr(r) && r.label !== 'reorder') parts.push(`<span class="hint"><kbd class="wide">⇧${arrow}</kbd> <span class="ml">${escapeHtml(pretty(r.label))}</span></span>`);
       }
     }
     parts.push(`<span class="hint"><kbd>=</kbd><kbd>-</kbd><kbd>.</kbd><kbd>/</kbd> both sides</span><span class="hint"><kbd>Tab</kbd> algebra</span><span class="hint"><kbd>C</kbd> calculus</span><span class="hint"><kbd>e</kbd> solve</span><span class="hint"><kbd>f</kbd> functions</span>`);
@@ -1131,7 +1133,7 @@ export class App {
     $('stage').querySelectorAll('.bubble').forEach(x => x.remove());
     const b = document.createElement('div');
     b.className = 'bubble' + (bad ? ' bad' : '');
-    b.textContent = pretty(text);
+    b.append(mathLabel(pretty(text), 13));
     b.style.left = `${r.x + r.w / 2}px`;
     b.style.top = `${r.y - 14}px`;
     $('stage').append(b);

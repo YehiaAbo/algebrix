@@ -9,7 +9,8 @@
     "test": "vitest run",
     "e2e": "node e2e/run.mjs",
     "bank": "node playtest/bank.mjs",
-    "stress": "node stress/stress.mjs"
+    "stress": "node stress/stress.mjs",
+    "chaos": "node stress/chaos.mjs"
   },
   "devDependencies": {
     "@fast-check/vitest": "^0.5.0",

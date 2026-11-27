@@ -49,12 +49,14 @@ export function renderPal(this: App) {
   const pe = peel(this.eq, this.sel);
   // the input box is always the first thing in the menu: type f(4), f(x² + 1), ln, e^_ …
   const mine = formHere(this.eq) ?? [...DEFS.keys()].find(n => !n.endsWith('⁻¹'));
-  if (P.ask !== TYPED) {
-    const idle = document.createElement('div');
-    idle.className = 'pal-ask typed idle';
-    idle.innerHTML = `<input id="pal-idle" spellcheck="false" autocomplete="off" aria-label="type a function or a value" placeholder="${mine ? `${mine}(4)   ${mine}(x² + 1)   ` : ''}ln   e^_   _^2 + 1"><span class="op-note">${mine ? `press <kbd>${mine[0]}</kbd> to type ${mine}(…), or <kbd>=</kbd>` : '<kbd>=</kbd> to type'}</span>`;
-    host.append(idle);
-  }
+  // one box, the same before and after you click it: examples as math on the right while it's
+  // empty, what it would make (as math) once you type
+  const box = document.createElement('div');
+  const typing = P.ask === TYPED;
+  box.className = 'pal-type' + (typing ? '' : ' idle');
+  box.innerHTML = `<span class="pal-glyph">ƒ</span>${typing ? '<span id="pal-input" aria-label="a function or a value"></span>' : `<span id="pal-idle" class="pal-ph" tabindex="0" role="textbox" aria-label="type a function or a value">type a function or a value<kbd>=</kbd>${mine ? `<span class="or">or</span><kbd>${mine[0]}</kbd>` : ''}</span>`}<span id="${typing ? 'pal-note' : 'pal-eg'}" class="pal-note"></span>`;
+  host.append(box);
+  this.palExamples(box.querySelector('.pal-note')!, mine ?? null);
   // the tabs share their row with i, b and - (one row less, so the menu fits beside the equation)
   const aimed = !!this.sel && this.sel !== 'eq';
   const tabs = document.createElement('div');
@@ -72,18 +74,14 @@ export function renderPal(this: App) {
   row.innerHTML = TABS[P.tab].items.map((w, j) => `<button class="chip${!w.tpl && inv?.f === w.f ? ' rec' : ''}${P.moved && j === P.i ? ' on' : ''}" data-k="${w.key}" data-i="${j}">${w.key ? `<kbd>${w.key}</kbd>` : ''}<span class="fx">${w.show}</span><span class="pal-name">${w.label}</span></button>`).join('');
   host.append(row);
   this.fillPal(row, TABS[P.tab].items);
-  if (P.ask) {
+  if (P.ask && P.ask !== TYPED) {
     const ask = document.createElement('div');
-    const first = P.ask === TYPED;
-    ask.className = 'pal-ask';
-    const typed = P.ask === TYPED, mine = isYours(P.ask);
-    ask.className = 'pal-ask' + (typed ? ' typed' : mine ? ' yours' : '');
-    ask.innerHTML = typed
-      ? `<span>type</span><span id="pal-input" aria-label="a function of each side" data-placeholder="f(4)   f(x² + 1)   ln   e^_   f⁻¹"></span><span id="pal-note" class="op-note">a name, _ for each side, or f(3) for a value</span>`
-      : mine
+    const yours = isYours(P.ask);
+    ask.className = 'pal-ask' + (yours ? ' yours' : '');
+    ask.innerHTML = yours
       ? `<span>${P.ask.tpl}(</span><span id="pal-input" aria-label="a value for ${P.ask.tpl}"></span><span>)</span><span id="pal-note" class="op-note">${YOURS_NOTE(P.ask.tpl!)}</span>`
       : `<span>${P.ask.label}: ${P.ask.ask} =</span><span id="pal-input" aria-label="${P.ask.ask}"></span><span id="pal-note" class="op-note">a number or anything algebraic (a, k + 1, 1/x), Enter applies</span>`;
-    if (first) host.prepend(ask); else host.append(ask);
+    host.append(ask);
   }
   const tip = document.createElement('div');
   tip.className = 'forms-tip';
@@ -95,12 +93,46 @@ export function renderPal(this: App) {
   this.place(host);
   const idleBox = document.getElementById('pal-idle');
   idleBox?.addEventListener('focus', () => this.choose(TYPED));
+  idleBox?.addEventListener('mousedown', e => { e.preventDefault(); this.choose(TYPED); });
   if (P.ask) {
     const box = $('pal-input');
-    const input = mathField(box, { onKey: e => this.askKey(e), placeholder: box.dataset.placeholder });
+    const input = mathField(box, { onKey: e => this.askKey(e), placeholder: P.ask === TYPED ? 'type a function or a value' : box.dataset.placeholder });
     input.el.addEventListener('input', () => this.askPreview());
     input.focus();
   }
+}
+
+/** what the box takes, as math you can click: your function at a number and at an expression,
+ *  its inverse, then functions of each side (ln, e^□, □² + 1) */
+export function palExamples(this: App, host: HTMLElement, mine: string | null) {
+  const egs: [string, string][] = [
+    ...(mine ? [[`${mine}(4)`, `${mine}(4)`], [`${mine}(x^2 + 1)`, `${mine}(x^2+1)`]] as [string, string][] : []),
+    ['ln(□)', 'ln'], ['e^□', 'e^_'], ['□^2 + 1', '_^2+1'],
+  ];
+  host.replaceChildren(...egs.map(([show, type]) => {
+    const b = document.createElement('button');
+    b.className = 'pal-eg';
+    b.title = `type ${type}`;
+    try { b.append(cardMath(parseExpr(show), 14, 120)); } catch { b.textContent = show; }
+    b.addEventListener('mousedown', e => {
+      e.preventDefault();
+      if (this.pal.ask !== TYPED) this.choose(TYPED);
+      const F = field('pal-input');
+      F.setLatex(''); F.typeText(type); F.focus();
+      this.askPreview();
+    });
+    return b;
+  }));
+}
+
+/** the note beside a box: what Enter would make, drawn as math, or why not in words */
+function noteMath(app: App, made: Eq | null, text: string, bad = false) {
+  const note = $('pal-note');
+  note.classList.toggle('bad', bad);
+  note.removeAttribute('aria-label');
+  if (!made) { note.textContent = text; return; }
+  note.setAttribute('aria-label', `${toText(made)} ${text}`);
+  note.replaceChildren(cardMath(made, 14, 260), Object.assign(document.createElement('span'), { className: 'pal-then', textContent: text }));
 }
 
 /** what each function would make, as math on its card (Tab's previews): ones already worked out
@@ -233,18 +265,20 @@ export function askArg(this: App): Node | { error: string } {
 
 export function askPreview(this: App) {
   const value = this.valueAsked();
+  const typed = field('pal-input').value.trim();
   if (value) {
     const r = valueInto(value.F, value.text, this.eq);
-    $('pal-note').textContent = 'error' in r ? r.error : `${toText(r.eq)}${worth(r.eq)}: Enter adds it`;
-    $('pal-note').classList.toggle('bad', 'error' in r);
+    if ('error' in r) noteMath(this, null, r.error, true);
+    else { const w = worth(r.eq).trim(); noteMath(this, r.eq, `${w ? w + ' · ' : ''}Enter adds it`); }
     if (this.peek) { this.peek = null; this.renderMain({ quick: true }); }
     return;
   }
-  if (isYours(this.pal.ask)) $('pal-note').textContent = YOURS_NOTE(this.pal.ask!.tpl!);
   const a = this.askArg();
   const r = 'error' in a ? a : this.palResult(this.pal.ask!, a);
-  $('pal-note').textContent = isErr(r) ? (this.pal.ask === TYPED && !field('pal-input').value.trim() ? 'a name, or _ for each side' : r.error) : r.label + ': Enter applies';
-  $('pal-note').classList.toggle('bad', isErr(r) && !!field('pal-input').value.trim());
+  if (this.pal.ask === TYPED && !typed) this.palExamples($('pal-note'), formHere(this.eq) ?? [...DEFS.keys()].find(n => !n.endsWith('⁻¹')) ?? null);
+  else if (isYours(this.pal.ask) && !typed) noteMath(this, null, YOURS_NOTE(this.pal.ask!.tpl!));
+  else if (isErr(r)) noteMath(this, null, r.error, !!typed);
+  else noteMath(this, null, r.label + ': Enter applies');
   this.peek = !isErr(r) ? r.eq : null;
   this.renderMain({ quick: true });
 }

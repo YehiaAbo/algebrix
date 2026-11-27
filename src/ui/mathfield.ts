@@ -104,7 +104,12 @@ export function mathField(host: HTMLElement, opts: FieldOptions = {}): MathField
     ...OPTIONS,
     handlers: { edit: changed },
     overrideTypedText: (t: string) => { if (!opts.onKey?.({ key: t } as KeyboardEvent)) typeOnce(t); },
-    overrideKeystroke: (k: string, e: KeyboardEvent) => { if (!opts.onKey?.(e)) mq.keystroke(k, e); else e.preventDefault(); },
+    overrideKeystroke: (k: string, e: KeyboardEvent) => {
+      if (opts.onKey?.(e)) { e.preventDefault(); return; }
+      mq.keystroke(k, e);
+      // Tab steps out of a slot inside the box, never out of the box: focus leaving it would strand the keys
+      if (k === 'Tab' || k === 'Shift-Tab') e.preventDefault();
+    },
   });
   // keys typed here are the field's: the app's own single-letter keys must not see them
   host.addEventListener('keydown', e => e.stopPropagation());

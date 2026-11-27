@@ -16,6 +16,7 @@ import { appearsIn } from '../engine/general';
 import { CALC_GROUPS } from './calc';
 import { calcForms } from './calcforms';
 import type { App } from './app';
+import { mathLabel } from './mathlabel';
 import { mathField } from './mathfield';
 
 export function techniques(this: App): Tech[] {
@@ -298,10 +299,12 @@ function renderCalcHub(this: App, host: HTMLElement) {
     card.dataset.i = String(j);
     const name = document.createElement('span');
     name.className = 'form-name';
-    name.innerHTML = `<kbd>${t.key}</kbd>${escapeHtml(t.label)}${t.ask ? ' …' : ''}${t.shortcut ? '<span class="short" title="a chain of general moves, each one in the tree">chain</span>' : ''}`;
+    name.innerHTML = `<kbd>${t.key}</kbd>`;
+    name.append(mathLabel(t.label + (t.ask ? ' …' : ''), 12));
+    if (t.shortcut) name.insertAdjacentHTML('beforeend', '<span class="short" title="a chain of general moves, each one in the tree">chain</span>');
     card.append(name);
     const shows = t.ok ? techShows(t) : null;
-    if (shows) card.append(cardMath(shows.n, 15, 230), Object.assign(document.createElement('span'), { className: 'form-sub', textContent: shows.note }));
+    if (shows) { const sub = document.createElement('span'); sub.className = 'form-sub'; sub.append(mathLabel(shows.note, 11)); card.append(cardMath(shows.n, 15, 230), sub); }
     row.append(card);
   });
   host.append(row);
@@ -352,7 +355,8 @@ export function renderHub(this: App) {
   } else {
     const row = document.createElement('div');
     row.className = 'hub-row';
-    row.innerHTML = `<span class="hub-title">${h.calc ? 'Calculus' : 'Techniques'}</span>` + h.techs.map(t => `<button class="chip${t.ok ? '' : ' off'}" data-k="${t.key}"><kbd>${t.key}</kbd>${escapeHtml(t.label)}</button>`).join('');
+    row.innerHTML = `<span class="hub-title">${h.calc ? 'Calculus' : 'Techniques'}</span>` + h.techs.map(t => `<button class="chip${t.ok ? '' : ' off'}" data-k="${t.key}"><kbd>${t.key}</kbd></button>`).join('');
+    row.querySelectorAll<HTMLElement>('button[data-k]').forEach((b, j) => b.append(mathLabel(h.techs[j].label, 12)));
     host.append(row);
     if (h.forms.length) {
       const forms = document.createElement('div');
@@ -369,7 +373,8 @@ export function renderHub(this: App) {
         mini.style.height = lay.asc + lay.desc + 'px';
         const name = document.createElement('span');
         name.className = 'form-name';
-        name.innerHTML = `${form.chord ? `<kbd>${form.chord}</kbd>` : ''}${form.name}`;
+        name.innerHTML = form.chord ? `<kbd>${form.chord}</kbd>` : '';
+        name.append(mathLabel(form.name, 12));
         card.append(name, mini);
         forms.append(card);
         new Stage(mini).show(lay, 0, 0, null);

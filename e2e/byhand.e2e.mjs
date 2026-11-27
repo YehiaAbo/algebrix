@@ -248,7 +248,7 @@ export const tests = {
     await key('f'); await key('=');
     await type('e^_');
     await until(() => true, '');
-    const note = await p.evaluate(() => document.querySelector('#pal-note').textContent);
+    const note = await p.evaluate(() => (n => n.getAttribute('aria-label') || n.textContent)(document.querySelector('#pal-note')));
     assert(note.includes('Enter applies'), `the preview is live: ${note}`);
     await key('Enter');
     await until(s => s.eq === 'e^(ln(x − 1)) = e^2', 'e^_ on both sides');
@@ -268,7 +268,7 @@ export const tests = {
     await load('f(x) = 2x + 3');
     await key('f'); await key('1'); await type('4');
     await until(() => true, '');
-    const note = await p.evaluate(() => document.querySelector('#pal-note').textContent);
+    const note = await p.evaluate(() => (n => n.getAttribute('aria-label') || n.textContent)(document.querySelector('#pal-note')));
     assert(note.includes('= 11'), `the value shows while typing: ${note}`);
     await key('Enter');
     await until(s => s.slots === 2 && s.eq.startsWith('f(4) = '), 'f(4) is an equation of its own');
@@ -299,7 +299,7 @@ export const tests = {
     await load('f(x, y) = x^2 + 3y');
     await key('f'); await key('1'); await type('1, 2');
     await until(() => true, '');
-    const two = await p.evaluate(() => document.querySelector('#pal-note').textContent);
+    const two = await p.evaluate(() => (n => n.getAttribute('aria-label') || n.textContent)(document.querySelector('#pal-note')));
     assert(two.includes('= 7'), `f(x, y) takes two values in order: ${two}`);
     await key('Enter');
     await until(s => s.eq.startsWith('f(1, 2) = '), 'f(1, 2) as its own equation');
@@ -322,7 +322,7 @@ export const tests = {
 
   async 'the f menu box reads the function in front of you: I′(0), f″(3), f(1) on f(x) = 7, √ of −4 refused'(h) {
     const { load, key, type, until, p, assert } = h;
-    const note = () => p.evaluate(() => document.querySelector('#pal-note').textContent);
+    const note = () => p.evaluate(() => (n => n.getAttribute('aria-label') || n.textContent)(document.querySelector('#pal-note')));
     await load('I(t) = int_0^1 (x^t - 1)/ln x dx');
     await key('n'); await type("I'(t) = 1/(t + 1)"); await key('Enter');
     await key('f'); await key('='); await type("I'(0)");
