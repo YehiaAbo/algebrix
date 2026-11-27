@@ -206,6 +206,9 @@ machine the first tester; a screenshot or mockup is shown before any visible UI 
 
 Principles: one mechanism per idea; data in, data out (pure and unit-tested where possible); the UI
 layer only routes keys, holds state and draws. No framework. Feel first: nothing here may cost a frame.
+General by construction: a rule lives once, at the level where its property is decided (a node kind, a
+move, the check), and works for every equation that has that property. No code names a problem's
+numbers or shape; a fix that only covers the case that was reported is not done.
 
 ### 8.1 One menu system (Tab, C and f)
 
@@ -302,6 +305,45 @@ works, so [ ] { } b o keep working on it.
 (substitution, elimination, compare coefficients) and `engine/wrap.ts` (functions of both sides, peel);
 the f menu's list moves to `ui/menus/fn.ts`. Code moves only; no logic change in the same commit.
 
+### 8.7 Testing the way a person plays
+
+Today three tools test problems, and none plays like the person does. `npm run bank` calls the
+engine's solver (`e`) directly, so it measures the solver, not the hands. `playtest/play.mjs` replays
+key sessions that Claude writes one problem at a time: accurate but expensive, and Claude plays the
+tidy, ideal route. `npm run chaos` presses random keys: cheap, but with no maths intent.
+
+The target is one program, `npm run player`, that plays problems through the real app, with no
+model in the loop, so it can run thousands of problems for free:
+
+1. **Problems with checked answers.** `playtest/problems/*.txt` as now, filled in batches from the
+   best open sources (OpenStax, Active Calculus, APEX, MIT OCW, classic competition sets), each answer
+   confirmed with sympy before it goes in. A hard problem may carry a **route**: the idea in maths
+   words ("name √(n + √(n² − 1)) as …, then telescope"), never keys. Algebrix executes your reasoning;
+   it doesn't invent it. So the player is given the insight and tests whether the app can carry it out.
+2. **Only what a person can do.** The player sees the equation, the aim and what the open menu
+   offers, and acts by keys, typing and clicks: aim (arrows, Space labels, click), moves, the Tab, C and
+   f cards, the boxes, typing a fresh line. It searches best-first toward the goal (the letter alone, a
+   number, both sides equal) within a key budget (about three times the steps on paper). Two settings:
+   **hands** (no `e`, no chains: general moves only) and **shortcuts**. The search runs with drawing
+   off; the route it finds is then replayed with drawing on, so strays, errors and slow keys count too.
+   After the menu rebuild (8.1), the player reads the same `MenuSpec` cards the screen shows instead of
+   reading the DOM.
+3. **Weird play.** Around each route it found: undo and redo in the middle, aim from the other side,
+   retype a line, take a detour and come back, nine equations, the mouse instead of keys.
+4. **Your own play.** An opt-in recorder (off by default, in settings) keeps your key presses and the
+   equations they made, on your machine; you export a file when you want. Each trace becomes a
+   regression test (what a key did then it must still do), and how often you use each key and in what
+   order steers the player, so it plays more like you over time.
+5. **Triage by cause, not by problem.** Every failure gets a signature: what was aimed, what was
+   offered, what refused and why, or a parse error, a wrong answer, a slow key, a stray. Failures with
+   the same signature group together, and each group is labelled: **wrong maths** (first, always),
+   **general gap** (a general move is missing; many problems share it), **clumsy** (possible, over
+   budget), **typing**, **niche bug** (one rule, one case), **feel** (slow, stray, overlap). Claude
+   reads one example per group, not every failure, and each group becomes one line in
+   `playtest/CAUSES.md`.
+
+Cost: no tokens per run. Tokens go to scouting problems (in batches), and to one diagnosis per group.
+
 ## 9. Refactor plan (stage 2)
 
 Every slice keeps behaviour the same unless it says otherwise, and is done only when: `npm test`
@@ -313,6 +355,9 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 | 0 | Baseline: record tests, e2e, chaos, menu-open times, bundle size (below). | numbers in this file |
 | 1 | **Done.** `e2e/menus.e2e.mjs`: for each menu on a corpus, cards never overlap or get cut, every card is reachable by arrows, ↓ goes down a line, open under budget. Today's breaks are listed in its `KNOWN` set (issues 2 and 3, Tab's chips and f's i b - chips unreachable, slow Tab and C on I(t)); the list may only shrink. | each later slice takes entries off `KNOWN` |
 | 2 | `Checked` gate (8.3). | types enforce it; no behaviour change |
+| T1 | Player, first cut (8.7 points 1, 2, 5): hands and shortcuts settings on the current bank, triage report grouped by signature. | coverage numbers for the 366 problems, grouped causes |
+| T2 | Problem scouting: 500+ new problems with sympy-checked answers and routes for the competition ones. | bank grows, every answer checked outside Algebrix |
+| T3 | Recorder of your play (8.7 point 4) and weird play (point 3). | your traces replay as tests |
 | 3 | Engine context (8.4) and the `techniques.ts` split (8.6). | moves only |
 | 4 | `ui/menu/model.ts`: state, key reducer, `nextCard`, with unit tests. | pure tests pass |
 | 5 | `ui/menu/view.ts` + one CSS block; port **f** first (the one you like best). | f e2e tests pass unchanged |
@@ -321,7 +366,7 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 | 8 | One `Ask` box (8.2) and the `Mode` union. | box fields gone from App |
 | 9 | Fixed pieces (8.5). | issue 1 fixed |
 | 10 | Series UI: microdesign pass with screenshots for your review, then build it. | issue 4, your call |
-| 11 | Docs, CLAUDE.md, skills and memory brought up to date with the new shape. | a fresh thread can find any part from CLAUDE.md in one hop |
+| 11 | Docs, CLAUDE.md, skills (playtest rewritten around the player) and memory brought up to date with the new shape. | a fresh thread can find any part from CLAUDE.md in one hop |
 
 Baseline (2026-11-27, v77 at `375ab26`): unit 1041 passed / 1 skipped in 18.5 s; e2e 149 passed;
 build 789 KB (251 KB gzip); chaos (seed 1127, 30 × 50) holds, with 5 keys blocking 411 to 2242 ms
