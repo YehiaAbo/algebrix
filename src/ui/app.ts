@@ -46,6 +46,7 @@ import * as calcPart from './calc';
 import * as generalPart from './general';
 import * as replayPart from './replay';
 import { mathLabel } from './mathlabel';
+import { dropStruck } from '../engine/series';
 
 export type { Slot };
 
@@ -595,6 +596,8 @@ export class App {
     if (!out.back && out.again && !r.auto) this.say('Same as a step you already took, so you are back on it (the tree keeps one of each).');
     if (relOf(r.eq) === '≟' && isProved(r.eq)) { setTimeout(() => sound.solved(), 140); this.say('Both sides match. Proved ∎'); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); this.save(); return true; }
     if (answer) this.say(answer);
+    // crossed out: a beat to see the strokes, then what was crossed out goes (a step of its own)
+    if (r.rule === 'cross out what cancels') { const at = this.eq; this.later(ms(560), () => { if (this.eq !== at) return; const d = dropStruck(this.eq); if (d && !isErr(d)) this.apply(d, 1.2); }); }
     if (bad) { this.say(bad, true); this.renderRail(); }
     else if (now && now !== wasSolved) { setTimeout(() => sound.solved(), 140); this.say(`Solved for ${now}.`); $('stage').classList.add('solved'); setTimeout(() => $('stage').classList.remove('solved'), 900); }
     if (r.conditions?.length) this.say(`Noted on the left: ${r.conditions.join(', ')}.`);

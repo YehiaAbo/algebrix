@@ -12,6 +12,7 @@ import { isLeibniz, toLeibniz, toPrime, toDifferentials, letters } from './leibn
 import { gcd } from './terms';
 import { combineLogs } from './techniques';
 import { sumForms } from './sums';
+import { seriesForms } from './series';
 import { longDivide, partialFractions, rationalize, rationalizeTop, trigForms, completeSquare, Range, factorFully, primeFactors } from './polytools';
 
 export interface Form extends MoveOk { name: string; chord: string }
@@ -191,6 +192,8 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     push(f.name, replace(e, S!.id, f.node), newHints(), one, sel ? f.node.id : null);
     if (out.length > n && f.conditions) out[n].conditions = [...(out[n].conditions ?? []), ...f.conditions];
   }
+  // written out with ⋯: a term more or fewer at either end, back into Σ; a Σ to write out
+  for (const f of seriesForms(e, target.id)) push(f.label, f.eq, newHints(), one, f.select ?? null);
   return out;
 }
 

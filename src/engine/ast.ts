@@ -1,7 +1,8 @@
 // Expression tree with stable node ids. Ids survive moves so the renderer can
 // animate "the same 3x" from its old place to its new one.
 
-interface Base { id: string; from?: string }
+/** struck: crossed out, about to cancel with a partner (drawn with a line through; worth the same) */
+interface Base { id: string; from?: string; struck?: boolean }
 export interface Num extends Base { k: 'num'; v: number }
 export interface Sym extends Base { k: 'sym'; name: string }
 export interface Add extends Base { k: 'add'; terms: Node[] }
@@ -25,7 +26,8 @@ export interface Int extends Base { k: 'int'; v: string; arg: Node; lo?: Node; h
 /** [arg] from v = lo to v = hi: what an antiderivative is worth between two bounds */
 export interface At extends Base { k: 'at'; v: string; arg: Node; lo: Node; hi: Node }
 /** Σ arg for v = lo to hi (hi may be ∞), or ∏ when prod; v is bound inside */
-export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node; prod?: boolean }
+/** dots: written out, this Σ is the terms in the middle (or the rest, to ∞), drawn as ⋯ */
+export interface Sum extends Base { k: 'sum'; v: string; lo: Node; hi: Node; arg: Node; prod?: boolean; dots?: boolean }
 /** a vector ⟨a, b, c⟩ */
 export interface Vec extends Base { k: 'vec'; items: Node[] }
 /** ∇f: the vector of partial derivatives along vars. With op, ∇·F (divergence) or ∇×F (curl) of a field ⟨…⟩ */
@@ -271,6 +273,9 @@ export function replace<T extends Node>(root: T, id: string, repl: Node): T {
 
 /** Structural key, ignoring ids. Equal keys = identical expressions. */
 export function key(n: Node): string {
+  return n.struck ? '(struck ' + keyOf(n) + ')' : keyOf(n);
+}
+function keyOf(n: Node): string {
   switch (n.k) {
     case 'num': return String(n.v);
     case 'sym': return n.name;
@@ -288,7 +293,7 @@ export function key(n: Node): string {
     case 'lim': return '(lim ' + n.v + ' ' + key(n.to) + (n.side ?? '') + ' ' + key(n.arg) + ')';
     case 'int': return '(int ' + n.v + (n.lo && n.hi ? ' ' + key(n.lo) + ' ' + key(n.hi) : '') + ' ' + key(n.arg) + ')';
     case 'at': return '(at ' + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
-    case 'sum': return (n.prod ? '(prod ' : '(sum ') + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
+    case 'sum': return (n.prod ? '(prod' : '(sum') + (n.dots ? '… ' : ' ') + n.v + ' ' + key(n.lo) + ' ' + key(n.hi) + ' ' + key(n.arg) + ')';
     case 'eq': return '(' + (n.rel ?? '=') + ' ' + key(n.lhs) + ' ' + key(n.rhs) + ')';
   }
 }

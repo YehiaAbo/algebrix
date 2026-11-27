@@ -1,10 +1,10 @@
 // The calculus hub (C): derivatives a rule at a time, limits, both sides, critical points.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, relOf, key, Eq, Node, symbols, walk, int, num, lim, cloneFresh, eq as mkEq, grad, fieldOp } from '../engine/ast';
+import { find, relOf, key, Eq, Node, Sum, symbols, walk, int, num, lim, cloneFresh, eq as mkEq, grad, fieldOp, findPath, replace } from '../engine/ast';
 import { toText } from '../engine/print';
 import { parseExpr } from '../engine/parse';
 import { odeKind, separate, linearSteps, generalSolution } from '../engine/ode';
-import { isErr, MoveOk, checked } from '../engine/moves';
+import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
 import { expandAll } from '../engine/rewrite';
 import { simplify, newHints } from '../engine/simplify';
 import { frac } from '../engine/ast';
@@ -12,9 +12,10 @@ import { formsFor } from '../engine/forms';
 import { asPrime, hasDifferentials, integrateDifferentials, toDifferentials, letters, slopeVar } from '../engine/leibniz';
 import { tidy } from '../engine/techniques';
 import { derivStep, plugIn, lhopital, expLog, asQuotient, divideHighest, conjugateLim, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
-import { intStep, uSub, uCandidate, byParts, plugBounds, ratioTest, taylor, writeOut } from '../engine/integrate';
+import { intStep, uSub, uCandidate, byParts, plugBounds, ratioTest, taylor } from '../engine/integrate';
 import { bothVar, differentialsBoth, integrateBoth } from '../engine/general';
-import { knownSum } from '../engine/sums';
+import { knownSum, sumForms } from '../engine/sums';
+import { writeOutDots, moreTerms, fewerTerms, foldBack, crossOut, foldTerms } from '../engine/series';
 import { ms } from './prefs';
 import { sound } from './sound';
 import * as sheet from './sheet';
@@ -111,12 +112,39 @@ export function calcTechniques(this: App): Tech[] {
     add('Integrals', { lead: true, key: 'p', label: 'plug in the bounds', ok: !isErr(p), move: p, run: () => this.apply(plugBounds(this.eq, this.sel), 1.1) });
   }
 
-  // Series
-  if (has(eq, 'sum')) {
-    const k = knownSum(eq, this.sel), w = writeOut(eq, this.sel);
-    if (!isErr(w)) add('Series', { lead: true, key: 'x', label: 'write out the terms', ok: true, move: w, run: () => this.apply(writeOut(this.eq, this.sel), 1.1) });
-    add('Series', { lead: isErr(w), key: 'k', label: isErr(k) ? 'known sum' : k.label, ok: !isErr(k), move: k, run: () => this.apply(knownSum(this.eq, this.sel), 1.1) });
-    add('Series', { key: 'r', label: 'ratio test', ok: true, run: () => { this.say(ratioTest(this.eq, this.sel)); this.tour.check(); } });
+  // Series: everything Tab has for a Σ or ∏, and the written-out form with ⋯
+  const sel = this.sel;
+  const wo = writeOutDots(eq, sel), cross = crossOut(eq, sel);
+  const writtenHere = [moreTerms(eq, sel, 'start'), moreTerms(eq, sel, 'end')].some(r => !isErr(r)) || !isErr(fewerTerms(eq, sel, 'start'));
+  if (has(eq, 'sum') || !isErr(cross) || !isErr(foldTerms(eq, sel))) {
+    const k = knownSum(eq, sel);
+    const S0 = sumAt(eq, sel);
+    if (!isErr(wo) && S0 && !S0.dots) add('Series', { lead: true, key: 'x', label: S0.prod ? 'write the product out' : 'write the sum out', ok: true, move: wo, run: () => this.apply(writeOutDots(this.eq, this.sel), 1.1) });
+    if (writtenHere) {
+      for (const [key, end] of [['[', 'start'], [']', 'end']] as const) {
+        const r = moreTerms(eq, sel, end);
+        add('Series', { key, label: `one more term at the ${end}`, ok: !isErr(r), why: isErr(r) ? r.error : undefined, move: r, run: () => this.apply(moreTerms(this.eq, this.sel, end), 1.05) });
+      }
+      for (const [key, end] of [['{', 'start'], ['}', 'end']] as const) {
+        const r = fewerTerms(eq, sel, end);
+        if (!isErr(r)) add('Series', { key, label: `a term back into ⋯ at the ${end}`, ok: true, move: r, run: () => this.apply(fewerTerms(this.eq, this.sel, end), 0.95) });
+      }
+    }
+    const fb = foldBack(eq, sel);
+    if (!isErr(fb)) add('Series', { lead: writtenHere && isErr(cross), key: 'b', label: fb.label, ok: true, move: fb, run: () => this.apply(foldBack(this.eq, this.sel), 1.05) });
+    add('Series', { lead: !isErr(cross), key: 'o', label: 'cross out what cancels', ok: !isErr(cross), why: isErr(cross) ? cross.error : undefined, move: cross, run: () => this.apply(crossOut(this.eq, this.sel), 1.1) });
+    add('Series', { lead: isErr(wo) && isErr(cross), key: 'k', label: isErr(k) ? 'known sum' : k.label, ok: !isErr(k), why: isErr(k) ? k.error : undefined, move: k, run: () => this.apply(knownSum(this.eq, this.sel), 1.1) });
+    // the general rewrites (Tab has them too): split, constants out, terms out, shift, as a limit, logs
+    const SK: Record<string, string> = { 'split the sum': 's', 'split the product': 's', 'constant out': 'n', 'first term out': 'f', 'first factor out': 'f', 'last term out': 'l', 'last factor out': 'l', 'as a limit of partial sums': 'm', 'one log of a product': 'g', 'a sum of logs': 'g', 'one sum': 'j' };
+    const host = S0 && !S0.dots ? S0 : null;
+    if (host) for (const f of sumForms(host)) {
+      const key = SK[f.name] ?? (f.name.includes('+') ? 'h' : f.name.startsWith('shift') ? 'H' : '');
+      if (!key) continue;
+      const mk = (e2: Eq, sel2: string | null): MoveResult => { const S = sumAt(e2, sel2); const g = S && sumForms(S).find(x => x.name === f.name); return S && g ? checked(e2, { eq: replace(e2, S.id, g.node), label: g.name, hints: newHints(), factor: () => 1, select: g.node.id, rule: g.name, conditions: g.conditions }) : { error: 'No sum here.' }; };
+      const r = mk(eq, sel);
+      add('Series', { key, label: f.name, ok: !isErr(r), move: r, run: () => this.apply(mk(this.eq, this.sel), 1.05) });
+    }
+    if (has(eq, 'sum')) add('Series', { key: 'r', label: 'ratio test', ok: true, run: () => { this.say(ratioTest(this.eq, this.sel)); this.tour.check(); } });
   }
   if (fresh) add('Series', { key: 't', label: 'Taylor polynomial', shortcut: true, ok: true, run: () => { const t = taylor(this.eq, v!); if ('error' in t) return this.refuse(t.error); this.addWork(t.poly, `Taylor polynomial of degree 5 about ${v} = ${t.about}`); } });
 
@@ -277,3 +305,11 @@ export function finishCalculus(this: App) {
   this.play(steps as MoveOk[], then);
 }
 
+
+/** the Σ or ∏ the aim is on or in (else the first one) */
+function sumAt(e: Eq, sel: string | null): Sum | null {
+  const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
+  let S = path ? ([...path].reverse().find(n => n.k === 'sum') as Sum | undefined) : undefined;
+  if (!S) walk(e, n => { if (!S && n.k === 'sum' && !n.dots) S = n; });
+  return S ?? null;
+}

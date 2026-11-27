@@ -337,6 +337,9 @@ const WORTH = new Map<string, number>();
 function series(n: Sum, env: Env): number {
   const lo = evaluate(n.lo, env), hi = evaluate(n.hi, env);
   if (!Number.isInteger(lo) || !(Number.isInteger(hi) || hi === Infinity)) return NaN;
+  // a range that runs backwards counts back: Σ from a to b is S(b) − S(a − 1) for every a and b
+  // (∏: P(b)/P(a − 1)), so taking terms out of a Σ holds whatever whole number its letters are
+  if (hi < lo - 1) { const back = series({ ...n, lo: num(hi + 1), hi: num(lo - 1) }, env); return n.prod ? 1 / back : -back; }
   if (n.prod) return product(n, env, lo, hi);
   const a = (k: number) => evaluate(n.arg, { ...env, [n.v]: k });
   if (hi !== Infinity) {

@@ -17,6 +17,7 @@ import { CALC_GROUPS } from './calc';
 import { calcForms } from './calcforms';
 import type { App } from './app';
 import { mathLabel } from './mathlabel';
+import { crossOut } from '../engine/series';
 import { mathField } from './mathfield';
 
 export function techniques(this: App): Tech[] {
@@ -47,6 +48,8 @@ export function techniques(this: App): Tech[] {
   // an identity in x with unknown coefficients (1 = A(x + 2) + B(x + 1)): one equation per power
   const cv = relOf(eq) === '=' ? (aimVar && !isErr(compareCoefficients(eq, aimVar).first) ? aimVar : ['x', 't', ...vars].find(w => vars.includes(w) && !isErr(compareCoefficients(eq, w).first))) : undefined;
   if (cv) out.push({ key: 'e', label: `compare coefficients of ${cv}`, ok: true, run: () => this.compareKey(cv) });
+  // pieces that add to 0 (a factor over itself), and a telescoping ⋯: crossed out, then gone
+  if (!isErr(crossOut(eq, this.sel))) out.push({ key: 'o', label: 'cross out what cancels', ok: true, run: () => this.apply(crossOut(this.eq, this.sel), 1.1) });
   // the form you want, typed: it goes in only if it is equal
   if (aimed || relOf(eq) === 'expr') out.push({ key: '=', label: 'rewrite as…', ok: true, run: () => this.openRewrite() });
   // any piece times A/A: e⁻ˣ on top and below, a conjugate, a missing factor

@@ -290,12 +290,17 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
   placeAt(el, r);
   const st = el.style;
   st.setProperty('--s', g.s + 'px');
+  el.classList.toggle('dim', !!g.dim);
   if (g.kind === 'text') {
     if (el.textContent !== g.text) el.textContent = g.text!;
     st.fontSize = g.s + 'px';
     st.lineHeight = r.h + 'px';
     el.classList.toggle('it', !!g.italic && g.text !== '□');
     el.classList.toggle('hole', g.text === '□');
+  } else if (g.kind === 'bar' && g.strike) {
+    // drawn left to right, sweeping along the line with where it is
+    el.classList.add('strike');
+    st.animationDelay = `${Math.round(Math.max(0, g.x) * 0.5)}ms`;
   } else if (g.kind === 'eq') {
     (el as HTMLElement).dataset.rel = g.rel ?? '=';
   } else if (g.kind === 'sign') {

@@ -73,6 +73,8 @@ const ACTIONS = [
 
 const fails = [];
 const slow = [];
+let now = { src: '', log: [] };
+p.on('crash', () => { console.log(`\nPAGE CRASHED on ${now.src}\n  last keys: ${now.log.slice(-8).join(' | ')}`); process.exit(2); });
 for (let run = 0; run < RUNS; run++) {
   const src = pick(CORPUS);
   await p.setViewportSize({ width: 1280, height: 800 });
@@ -80,6 +82,7 @@ for (let run = 0; run < RUNS; run++) {
   await p.waitForTimeout(80);
   errors.length = 0;
   const log = [];
+  now = { src, log };
   for (let i = 0; i < STEPS; i++) {
     const [, act] = pick(ACTIONS);
     await block();

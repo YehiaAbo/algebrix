@@ -4,8 +4,9 @@ import { find, key, Node, symbols, walk, Eq } from '../engine/ast';
 import { isErr } from '../engine/moves';
 import type { Form } from '../engine/forms';
 import { derivStep, plugIn, lhopital, hasCalc } from '../engine/calcmoves';
-import { intStep, byParts, plugBounds, writeOut } from '../engine/integrate';
+import { intStep, byParts, plugBounds, } from '../engine/integrate';
 import { knownSum } from '../engine/sums';
+import { writeOutDots } from '../engine/series';
 /** The calculus rules that rewrite the piece you aimed (the next derivative rule, integrate, by
  *  parts, plug in, L'Hôpital, a known sum), as Tab forms: browse them with a live preview next to
  *  the algebra, since most of calculus is algebra on the pieces. C keeps the whole catalogue. */
@@ -28,6 +29,6 @@ export function calcForms(eq: Eq, sel: string | null): Form[] {
   }
   if (kinds.has('at')) push('p', plugBounds(eq, sel));
   if (kinds.has('lim')) { push('p', plugIn(eq, sel)); push('l', lhopital(eq, sel)); }
-  if (kinds.has('sum')) { push('k', knownSum(eq, sel)); push('x', writeOut(eq, sel)); }
+  if (kinds.has('sum')) { push('k', knownSum(eq, sel)); push('x', writeOutDots(eq, sel)); }
   return out;
 }

@@ -832,3 +832,7 @@ body[data-mode="write"] .input-keys { display: flex; }
 .mlabel .mini { display: inline-block; color: inherit; }
 .mlabel-sym { font: 1.25em var(--math-font); line-height: 1; }
 .bubble .mlabel .mini { color: inherit; }
+/* crossed out: the pieces go faint, a stroke is drawn through them, left to right */
+.g.dim { opacity: .38; transition: opacity calc(.25s * var(--pace, 1)) var(--ease); }
+.g.bar.strike { background: linear-gradient(to top right, transparent calc(50% - .05 * var(--s)), var(--bad) calc(50% - .035 * var(--s)), var(--bad) calc(50% + .035 * var(--s)), transparent calc(50% + .05 * var(--s))); border-radius: 0; animation: strike-draw calc(.3s * var(--pace, 1)) var(--ease) both; }
+@keyframes strike-draw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }

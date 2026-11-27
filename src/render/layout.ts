@@ -17,6 +17,9 @@ export interface Glyph {
   right?: boolean;
   /** a straight bar (absolute value) instead of a curved paren */
   straight?: boolean;
+  /** the line through something crossed out (a bar glyph), and the glyphs it crosses */
+  strike?: boolean;
+  dim?: boolean;
   x: number; y: number; w: number; h: number;
   /** font size (px) the glyph is drawn at */
   s: number;
@@ -121,7 +124,19 @@ function stack(a: Box, d: Box, s: number, id: string, me: string[], from?: strin
   return { w, asc: -numBase + a.asc, desc: denBase + d.desc, gs };
 }
 
+/** crossed out: the glyphs go faint and a stroke is drawn through them */
+function struck(b: Box, id: string, owners: string[], s: number): Box {
+  const pad = 0.06 * s;
+  const line: Glyph = { key: `x${id}`, kind: 'bar', strike: true, x: -pad, y: -b.asc, w: b.w + 2 * pad, h: b.asc + b.desc, s, owners };
+  return { ...b, gs: [...b.gs.map(g => ({ ...g, dim: true })), line] };
+}
+
 function L(n: Node, s: number, own: string[], c: Ctx): Box {
+  if (n.struck) return struck(L0({ ...n, struck: false }, s, own, c), n.id, [...own, n.id], s);
+  return L0(n, s, own, c);
+}
+
+function L0(n: Node, s: number, own: string[], c: Ctx): Box {
   const me = [...own, n.id];
   const from = n.from;
   switch (n.k) {
@@ -162,16 +177,20 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       const flat = n.terms.flatMap(t => (t.k === 'add' ? t.terms.map(u => ({ t: u, own: [...me, t.id] })) : [{ t, own: me }]));
       flat.forEach(({ t, own }, i) => {
         const tOwn = t.k === 'neg' ? [...own, t.id] : own;
-        const inner = absOf(t);
+        const inner = { ...absOf(t), struck: false };
         // a whole sum taken away keeps its brackets: − (a + b), and so does a negative: − (−2x), never − −2x
         const body = (inner.k === 'add' || isNeg(inner)) && isNeg(t) ? parens(L(inner, s, tOwn, c), s, inner.id, tOwn, inner.from) : L(inner, s, tOwn, c);
         const neg = isNeg(t);
+        const seg: (Box | number)[] = [];
         if (i === 0) {
-          if (neg) parts.push(sign(true, s, `sg${signKey(t)}`, [...own, t.id]), 0.04 * s);
+          if (neg) seg.push(sign(true, s, `sg${signKey(t)}`, [...own, t.id]), 0.04 * s);
         } else {
-          parts.push(0.2 * s, sign(neg, s, `sg${signKey(t)}`, [...own, t.id]), 0.2 * s);
+          parts.push(0.2 * s);
+          seg.push(sign(neg, s, `sg${signKey(t)}`, [...own, t.id]), 0.2 * s);
         }
-        parts.push(body);
+        seg.push(body);
+        // a term crossed out is crossed out with its sign, as on paper
+        parts.push(t.struck ? struck(row(seg), t.id, [...own, t.id], s) : row(seg));
       });
       return row(parts);
     }
@@ -276,6 +295,8 @@ function L(n: Node, s: number, own: string[], c: Ctx): Box {
       return row([sign, 0.04 * s, bare ? a : parens(a, s, n.id, me, from)]);
     }
     case 'sum': {
+      // written out: the terms in the middle (or the rest, to ∞) are ⋯
+      if (n.dots) return text('⋯', s, `D${n.id}`, me, false, from && `D${from}`);
       // Σ or ∏ as TeX sets them in display: 1.4 em tall on the axis, the top bound above and
       // "n = lo" below, both centred
       const top = 0.95 * s, bot = 0.45 * s, gw = (n.prod ? 1.177 : 1.343) * 0.9 * s;
