@@ -455,14 +455,17 @@ export function tryValue(e: Eq, v: string, text: string): { text: string; holds:
     if (!symbols(cur).includes(w)) return { error: `There is no ${w} here to put a value in for.` };
     cur = substitute(cur, w, a);
     env[w] = evaluate(a, {});
+    if (!symbols(a).length && !Number.isFinite(env[w])) return { error: `${toText(a)} isn’t a real number, so there is nothing to try for ${w}.` };
   }
   const left = symbols(cur);
   const shown = parts.map(([w, t]) => `${w} = ${t.trim()}`).join(', ');
   if (left.length) return { error: `${shown} still leaves ${left.join(', ')}: put in a value for ${left.length > 1 ? 'each' : 'it'} too (a = 1, b = 2).` };
   const ok = holds(e, env);
   const r = cur as Eq;
-  const side = (n: Node) => { const x = evaluate(n, {}); return Number.isFinite(x) ? String(Math.round(x * 1e6) / 1e6) : 'undefined'; };
-  return { text: `${shown}: ${side(r.lhs)} ${relOf(e)} ${side(r.rhs)}, ${ok === null ? 'undefined there' : ok ? 'true, it works' : 'false, it doesn’t'}`, holds: ok };
+  const side = (n: Node) => { const x = evaluate(n, {}); return Number.isFinite(x) ? String(Math.round(x * 1e6) / 1e6) : null; };
+  const [L, R] = [side(r.lhs), side(r.rhs)];
+  if (L === null || R === null) return { text: `${shown}: the ${L === null && R === null ? 'two sides have' : L === null ? 'left side has' : 'right side has'} no value there, so it is not a solution`, holds: null };
+  return { text: `${shown}: ${L} ${relOf(e)} ${R}, ${ok === null ? 'no value there' : ok ? 'true, it works' : 'false, it doesn’t'}`, holds: ok };
 }
 
 /** what was typed into p, as letter and value pairs: "0" is a value of v, "t = 0" names its letter */

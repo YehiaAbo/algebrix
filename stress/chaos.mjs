@@ -87,7 +87,8 @@ for (let run = 0; run < RUNS; run++) {
     const [, act] = pick(ACTIONS);
     await block();
     let what;
-    try { what = await act(); } catch (e) { what = 'driver: ' + e.message; }
+    if (process.env.TRACE && run >= Number(process.env.TRACE)) console.log(`  [${run}.${i}] ${JSON.stringify(await p.evaluate(() => ({ eq: window.toText(window.algebrix.eq), mode: window.algebrix.mode, sel: window.algebrix.sel, slots: window.algebrix.slots.map(s => window.toText(s.steps[s.at].eq)) })))}`);
+    try { what = await act(); if (process.env.TRACE && run >= Number(process.env.TRACE)) console.log('    did ' + what); } catch (e) { what = 'driver: ' + e.message; }
     log.push(what);
     await p.waitForTimeout(rnd() < 0.3 ? 0 : 50);
     const lt = await block();
