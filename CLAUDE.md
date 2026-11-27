@@ -1,15 +1,29 @@
 # Algebrix
 
-Keyboard-first math workbench. Spec: `docs/specs/2026-11-16-algebrix-prototype-design.md`.
+Keyboard-first math workbench. Read in this order, and only as far as the task needs:
+1. `docs/ARCHITECTURE.md`: the map (layers, life of a key press, every menu, where it hurts, the target
+   shape, the refactor plan, recipes for common changes). Start here for any code change.
+2. `docs/CORE.md`: what must always hold (north star, feel targets, core mechanics, the user's design rules).
+3. `docs/HISTORY.md`: why, by date. Only when a decision needs its background.
 
-- `src/engine/` pure algebra: AST with stable ids, parser, moves, equivalence checks. No DOM. Test-first (`npm test`). Calculus: calculus.ts is the kernel the safety net uses (plain differentiation, numeric limits); calcmoves.ts has the step-by-step rules, kept separate so each checks the other. general.ts has the general moves (name it, sub in, put in a value, calculus to both sides) and the shortcuts as chains of them; sums.ts the Σ/∏ rewrites and known sums. The rule (spec `docs/specs/2026-11-20-general-moves.md`): a technique must be doable with the general moves; a shortcut only plays them into the tree.
-- `src/render/` math layout + animated transitions keyed by node id.
-- `src/ui/` app.ts (state, rendering) plus nav.ts (arrow-key aiming, pure and unit-tested), sheet.ts (the equations and their steps: undo, redo, the limit; pure and unit-tested), tree.ts (the work tree: every equation's steps, forks and links, and where each goes; pure and unit-tested), treeview.ts (draws it: the strip across the top and the big view, v), and its parts as methods on App.prototype: hub.ts (Tab), calc.ts (C, the calculus hub), general.ts (b, p, sub in, the chains), fnpal.ts (f), ops.ts (both sides), solving.ts, keys.ts, persist.ts; shared.ts holds types and helpers. Also sound, graph, library (workspaces as cards), settings, prefs, tour.
-- Browser tests in `e2e/` (`npm run e2e`, or `npm run e2e -- tours` for one file): they start the dev server and drive the real app by keyboard and mouse in Chromium. Every tour is played end to end. Run them before shipping a UI change, and add one for each new UI behaviour.
-- `src/packs/` sound sets and looks; add one file and list it in `src/packs/index.ts`. Guide: `docs/EXTENDING.md`.
-- Never ship a move that is not covered by the numeric equivalence check.
-- No UI framework; keep animation code direct.
-- Skills in `.claude/skills/`: `playtest` (real problems played by keyboard; bank and causes in `playtest/`), `microdesign` (before building any visible behaviour), `design-review` (polish rounds), `edge-cases` (every feature and every reported fix: list the cases on every axis and run them in the real build before calling it done).
+Commands: `npm test` (unit, ~20 s) · `npm run build` (types + single-file build) · `npm run e2e`
+(`npm run e2e -- series` for one file) · `npm run chaos` (after a build; random play of the real app) ·
+`npm run bank` (book problems through `e`).
+
+Hard rules:
+- `src/engine/` is pure (no DOM) and test-first. Never ship a move that is not covered by the numeric
+  equivalence check (`checked()` in `engine/moves.ts`).
+- A technique must be doable with the general moves; a shortcut only plays them into the tree
+  (`docs/specs/2026-11-20-general-moves.md`).
+- Never break a core keyboard mechanic (`docs/CORE.md`). Feel is the first priority: no lag, every key
+  animates with `SMOOTH`, no plain fades.
+- No UI framework. Fix the cause where the property is decided, not the symptom where it showed up.
+- Done means: unit tests, build, e2e and chaos all pass, and the change was tried in the real build
+  (skill `edge-cases`). Every new UI behaviour gets an e2e test that presses the real keys.
+
+Skills in `.claude/skills/`: `microdesign` (before any visible behaviour), `edge-cases` (before calling
+anything done), `playtest` (book problems by keyboard; `playtest/`), `design-review` (polish rounds).
+Sound sets and looks: one file in `src/packs/` (`docs/EXTENDING.md`).
 
 # CLAUDE.md
 
