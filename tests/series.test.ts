@@ -103,3 +103,35 @@ describe('written terms spread in the sum (as the app keeps them)', () => {
     expect(dotsText(e)).toBe('S = 1 − 1/2 + 1/2 − 1/3 + ⋯ + 1/n − 1/(n + 1)');
   });
 });
+
+describe('typed with ⋯', () => {
+  const read = (src: string) => { try { return dotsText(parseEquation(src, true)); } catch (e) { return 'error: ' + (e as Error).message; } };
+  it('to ∞, to a last term, products, and patterns of every kind', () => {
+    expect(read('S = 1 + 1/4 + 1/9 + ...')).toBe('S = 1 + 1/4 + 1/9 + ⋯');
+    expect(read('S = 1 + 2 + ... + n')).toBe('S = 1 + 2 + ⋯ + n');
+    expect(read('S = 1/2 + 1/4 + 1/8 + ⋯ + 1/2^n')).toBe('S = 1/2 + 1/4 + 1/8 + ⋯ + 1/(2^n)');
+    expect(read('y = x + x^2 + x^3 + …')).toBe('y = x + x^2 + x^3 + ⋯');
+    expect(read('P = (1 - 1/4)(1 - 1/9) ⋯ (1 - 1/100^2)')).toMatch(/⋯/);
+    expect(read('S = 1 + 7 + 2 + ...')).toMatch(/^error: No pattern/);
+  });
+  it('the ⋯ is the rest of the Σ: folding gives the whole sum', () => {
+    const e = parseEquation('S = 1 + 2 + ... + n');
+    expect(toText(step(e, foldBack, e.rhs.id))).toBe('S = Σ_{k=1}^{n} k');
+    const f = parseEquation('S = 1 + 1/4 + 1/9 + ...');
+    expect(toText(step(f, foldBack, f.rhs.id))).toBe('S = Σ_{k=1}^{∞} 1/(k^2)');
+  });
+});
+
+describe('written out, in LaTeX and back (what i shows in the box reads back as the same)', () => {
+  it('telescoping terms in brackets, ∞, a product', async () => {
+    const { toLatex, fromLatex } = await import('../src/engine/latex');
+    const { ungroup } = await import('../src/engine/select');
+    for (const src of ['S = sum_{k=1}^{n} (1/k - 1/(k + 1))', 'S = sum_{k=1}^{∞} 1/k^2', 'P = prod_{k=1}^{n} (k+1)/k', 'S = sum_{k=1}^{n} (sqrt(k + 1) - sqrt(k))']) {
+      const hidden = src.includes('sqrt');
+      const e = ungroup(step(parseEquation(src), writeOutDots));
+      const tex = toLatex(e);
+      if (!hidden) expect(tex).toContain('\\cdots');
+      expect(toText(fromLatex(tex)), tex).toBe(toText(e));
+    }
+  });
+});

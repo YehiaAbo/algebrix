@@ -47,7 +47,9 @@ export function light(n: Node): Node {
 
 /** the term of S at index k (a whole number, or a node like n) */
 export function termOf(S: Sum, k: number | Node): Node {
-  const t = light(substitute(cloneFresh(S.arg), S.v, typeof k === 'number' ? num(k) : cloneFresh(k)));
+  const at = (n: Node) => light(substitute(cloneFresh(n), S.v, typeof k === 'number' ? num(k) : cloneFresh(k)));
+  // a factor of a product keeps its top and bottom (2/1 · 3/2 ⋯), so what cancels can be seen
+  const t = S.prod && S.arg.k === 'frac' ? frac(at(S.arg.num), at(S.arg.den)) : at(S.arg);
   // each piece that is only numbers is worked out (1/2², not 1/(2^2)); the pieces stay apart
   const done = (n: Node) => (symbols(n).length || hasSum(n) ? n : tidy(n));
   const parts = (n: Node, ...ps: Node[]) => withChildren(n, ps);
@@ -375,9 +377,13 @@ export function dropStruck(e: Eq): MoveResult | null {
 
 /** the general term of t₁, t₂, t₃ …: the trees are the same apart from numbers, and each number that
  *  changes changes the same amount every time (or is a fixed power apart: 2, 4, 8). k counts from 1. */
-export function patternOf(ts: Node[], v: string): Node | null {
-  if (ts.length < 3) return null;
-  // only numbers: the tops and the bottoms in lowest terms, each with a pattern of its own
+export function patternOf(ts: Node[], v: string, last?: Node): Node | null {
+  if (ts.length < (last ? 2 : 3)) return null;
+  return shapePattern(ts, v) ?? numberPattern(ts, v);
+}
+
+/** only numbers: the tops and the bottoms in lowest terms, each with a pattern of its own */
+function numberPattern(ts: Node[], v: string): Node | null {
   if (ts.every(t => !symbols(t).length)) {
     const qs = ts.map(t => ratio(evaluate(t, {})));
     if (qs.every(Boolean)) {
@@ -392,8 +398,17 @@ export function patternOf(ts: Node[], v: string): Node | null {
       }
     }
   }
-  // the shape: every tree the same with the numbers taken out
-  const shape = (n: Node): string => n.k === 'num' ? '#' : n.k === 'neg' && n.arg.k === 'num' ? '#' : `${n.k}${'name' in n ? (n as { name: string }).name : ''}(${children(n).map(shape).join(',')})`;
+  return null;
+}
+
+/** the shape: the tree with its numbers taken out */
+const shape = (n: Node): string => n.k === 'num' ? '#' : n.k === 'neg' && n.arg.k === 'num' ? '#' : `${n.k}${'name' in n ? (n as { name: string }).name : ''}(${children(n).map(shape).join(',')})`;
+
+function shapePattern(ts: Node[], v: string): Node | null {
+  // x is x¹, x/1 …: a term that is short of the last one's shape is read in it
+  const target = shape(ts[ts.length - 1]);
+  const lifts = (t: Node): Node[] => [t, { k: 'pow', id: '', base: t, exp: num(1) } as Node, frac(t, num(1)), frac({ k: 'pow', id: '', base: t, exp: num(1) } as Node, num(1)), mul([num(1), t])];
+  ts = ts.map(t => lifts(t).find(l => shape(l) === target) ?? t).map(t => (shape(t) === target ? t : liftTo(t, ts[ts.length - 1])));
   const sh = ts.map(shape);
   if (sh.some(s => s !== sh[0])) return alternating(ts, v);
   const nums = (n: Node, out: number[] = []): number[] => { if (n.k === 'num') out.push(n.v); else if (n.k === 'neg' && n.arg.k === 'num') out.push(-n.arg.v); else children(n).forEach(c => nums(c, out)); return out; };
@@ -433,7 +448,7 @@ function fit(xs: number[], K: Node): Node | null {
   }
   for (const p of [2, 3]) {
     const roots = xs.map(x => Math.round(Math.sign(x) * Math.abs(x) ** (1 / p)));
-    if (n >= 3 && roots.every((r, i) => r ** p === xs[i])) {
+    if (n >= 2 && roots.some((r, i) => r !== xs[i]) && roots.every((r, i) => r ** p === xs[i])) {
       const inner = fit(roots, K);
       if (inner && inner.k !== 'num') return tidy({ k: 'pow', id: '', base: inner, exp: num(p) } as Node);
     }
@@ -501,4 +516,65 @@ export function seriesForms(e: Eq, sel: string | null): MoveOk[] {
   if (path?.some(n => n.k === 'sum' && !n.dots)) take(writeOutDots(e, sel));
   else if (path && [...path].reverse().find(n => n.k === 'add' || n.k === 'mul')) take(foldTerms(e, sel));
   return out;
+}
+
+/** typed with ⋯ (1 + 1/4 + 1/9 + ⋯, 1 + 2 + ⋯ + n): the terms before it set the pattern (k from 1);
+ *  a term after it is the last one (its k is the top bound), none means on to ∞. A term may be
+ *  several pieces ((1 − 1/2) + (1/2 − 1/3) + ⋯ reads as pieces): two or three to a term are tried. */
+export function fromDots(h: Node): Node | { error: string } {
+  const ps = partsOf(h);
+  const at = ps.findIndex(t => t.k === 'sym' && t.name === '⋯');
+  if (ps.filter(t => t.k === 'sym' && t.name === '⋯').length > 1) return { error: 'One ⋯ in a sum, please.' };
+  const before = ps.slice(0, at), after = ps.slice(at + 1);
+  if (before.length < 2) return { error: 'Write at least two terms before ⋯, so the pattern shows (1 + 1/2 + 1/3 + ⋯).' };
+  const v = ['k', 'n', 'j', 'i', 'm'].find(c => !symbols(h).includes(c))!;
+  const prod = h.k === 'mul';
+  const chunk = (xs: Node[]) => (xs.length === 1 ? xs[0] : prod ? mul(xs) : add(xs));
+  let why = '';
+  for (const w of [1, 2, 3]) {
+    if (before.length % w || (after.length && after.length !== w) || before.length / w < (after.length ? 2 : 3)) continue;
+    const bs: Node[] = [];
+    for (let i = 0; i < before.length; i += w) bs.push(chunk(before.slice(i, i + w)));
+    const last = after.length ? chunk(after) : null;
+    // the last term shows the shape (4 and 9 next to 100² are 2² and 3²): read the first ones in it too
+    const cands = (last ? [patternOf(bs.map(t => liftTo(t, last)), v, last), patternOf(bs, v, last)] : [patternOf(bs, v)]).filter(Boolean) as Node[];
+    const g = last ? cands.find(c => indexOf(c, v, last)) : cands[0];
+    if (!g) { if (last && cands.length) why = `${toText(last)} isn't a term of the pattern ${toText(cands[0])} (k = 1, 2, 3 …).`; continue; }
+    const m = bs.length;
+    if (!last) return withParts(h, [...before, { ...sum(v, num(m + 1), sym('∞'), g, undefined, prod), dots: true }]);
+    const N = indexOf(g, v, last)!;
+    return withParts(h, [...before, { ...sum(v, num(m + 1), plus(N, -1), g, undefined, prod), dots: true }, ...after]);
+  }
+  if (after.length > 3) return { error: 'After ⋯, write just the last term (1 + 2 + ⋯ + n).' };
+  return { error: why || `No pattern I can read in ${before.map(t => toText(t)).join(prod ? ' · ' : ' + ')} …: write three terms, or a Σ.` };
+}
+
+/** t written in the shape of L where it can be: a number where L has a power is that power of its root */
+function liftTo(t: Node, L: Node): Node {
+  if (L.k === 'pow' && L.exp.k === 'num' && Number.isInteger(L.exp.v) && L.exp.v > 1 && t.k === 'num' && t.v > 0) {
+    const r = Math.round(t.v ** (1 / L.exp.v));
+    if (r ** L.exp.v === t.v) return { k: 'pow', id: t.id, base: num(r), exp: num(L.exp.v) } as Node;
+  }
+  if (t.k !== L.k) {
+    // 1 where the shape has a fraction is 1/1; x where it has a power is x¹
+    const up = L.k === 'frac' ? frac(t, num(1)) : L.k === 'pow' && L.exp.k === 'num' ? ({ k: 'pow', id: t.id, base: t, exp: num(1) } as Node) : null;
+    return up ? liftTo(up, L) : t;
+  }
+  const a = children(t), b = children(L);
+  return a.length && a.length === b.length ? withChildren(t, a.map((c, i) => liftTo(c, b[i]))) : t;
+}
+
+/** a written-out sum or product as you'd type it again: the pieces of each written term put back
+ *  together as that term (so it reads back with the same pattern), the ⋯ in its place */
+export function writtenParts(host: Node): { parts: Node[]; grouped: Set<Node> } | null {
+  const D = partsOf(host).find(t => t.k === 'sum' && t.dots) as Sum | undefined;
+  if (!D) return null;
+  const r = run(host, D);
+  const ps = partsOf(host), at = ps.indexOf(D);
+  const grouped = new Set<Node>();
+  const term = (k: Node) => { const t = termOf(D, k); if ((host.k === 'add' && t.k === 'add') || (host.k === 'mul' && t.k === 'mul')) grouped.add(t); return t; };
+  const before: Node[] = [], after: Node[] = [];
+  for (let j = r.before; j >= 1; j--) before.push(term(plus(D.lo, -j)));
+  for (let j = 1; j <= r.after; j++) after.push(term(plus(D.hi, j)));
+  return { parts: [...ps.slice(0, at - r.piecesBefore), ...before, D, ...after, ...ps.slice(at + r.piecesAfter + 1)], grouped };
 }

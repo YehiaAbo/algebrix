@@ -7,6 +7,9 @@
 //   already knows how to show.
 // fromLatex: the two together, LaTeX to an equation.
 // No DOM here.
+import { writtenParts } from './series';
+import { ungroup } from './select';
+import { toText } from './print';
 import { Node, Eq, FN_TEXT, isDiff2, isLeibniz2, logBase } from './ast';
 import { isNeg, absOf } from './terms';
 import { parseEquation } from './parse';
@@ -49,15 +52,31 @@ export function toLatex(n: Node): string {
       return cat(cat(L(n.lhs), r), L(n.rhs));
     }
     case 'neg': return '-' + wrapIf(n.arg, loose(n.arg) || (n.arg.k === 'num' && n.arg.v < 0));
-    case 'add':
+    case 'add': {
+      // written out with ⋯: each written term whole (bracketed when it is a difference), then \cdots
+      const w = writtenParts(n);
+      if (w) {
+        const tex = w.parts.map((t, i) => {
+          if (t.k === 'sum' && t.dots) return (i ? '+' : '') + '\\cdots';
+          if (w.grouped.has(t)) return (i ? '+' : '') + `\\left(${L(t)}\\right)`;
+          return (isNeg(t) ? '-' : i === 0 ? '' : '+') + wrapIf(absOf(t), (absOf(t).k === 'add' || isNeg(absOf(t))) && isNeg(t));
+        }).join('');
+        // only if it reads back as the same terms (2 − √3 hides the pattern of √(k + 1) − √k): else the Σ
+        let back = '';
+        try { back = toText(ungroup(fromLatex(tex).lhs)); } catch { back = ''; }
+        if (back === toText(ungroup(n))) return tex;
+      }
       return n.terms.flatMap(t => (t.k === 'add' ? t.terms : [t])).map((t, i) => {
         const inner = absOf(t);
         const body = wrapIf(inner, (inner.k === 'add' || isNeg(inner)) && isNeg(t));
         return (isNeg(t) ? '-' : i === 0 ? '' : '+') + body;
       }).join('');
+    }
     case 'mul': {
+      const asTex = (dots: boolean) => {
       let out = '';
       n.factors.forEach((f, i) => {
+        if (dots && f.k === 'sum' && f.dots) { out += '\\cdots '; return; }
         if (i === 0 && f.k === 'num' && Math.abs(f.v) === 1 && n.factors.length > 1 && n.factors[1].k !== 'num' && n.factors[1].k !== 'frac') { if (f.v < 0) out += '-'; return; }
         // ∫ … dx, Σ, lim with more after them: brackets, or what follows would join them
         const s = wrapIf(f, f.k === 'add' || (i > 0 && isNeg(f)) || (i < n.factors.length - 1 && (f.k === 'int' || f.k === 'sum' || f.k === 'lim' || f.k === 'deriv')));
@@ -69,6 +88,15 @@ export function toLatex(n: Node): string {
         out += (dot ? '\\cdot ' : gap) + s;
       });
       return out;
+      };
+      // a written-out product shows ⋯ only if it reads back as the same factors
+      if (n.factors.some(f => f.k === 'sum' && f.dots)) {
+        const tex = asTex(true);
+        let back = '';
+        try { back = toText(ungroup(fromLatex(tex).lhs)); } catch { back = ''; }
+        if (back === toText(ungroup(n))) return tex;
+      }
+      return asTex(false);
     }
     case 'frac': {
       const lb = logBase(n);
@@ -141,7 +169,7 @@ function lex(src: string): Tok[] {
 const WORDS = ['sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'sinh', 'cosh', 'tanh', 'ln', 'log', 'exp', 'arcsin', 'arccos', 'arctan', 'lim'];
 const CMD_TEXT: Record<string, string> = {
   infty: '∞', to: '->', rightarrow: '->', le: '<=', leq: '<=', ge: '>=', geq: '>=', ne: '!=', neq: '!=',
-  cdot: '*', times: '*', div: '/', partial: '∂', nabla: '∇', int: 'int', iint: 'int int', iiint: 'int int int', sum: 'sum', prod: 'prod',
+  cdots: ' … ', ldots: ' … ', dots: ' … ', cdot: '*', times: '*', div: '/', partial: '∂', nabla: '∇', int: 'int', iint: 'int int', iiint: 'int int int', sum: 'sum', prod: 'prod',
   langle: '⟨', rangle: '⟩', lt: '<', gt: '>', square: '□', '{': '{', '}': '}', '%': '%', '#': '#',
   ' ': ' ', ',': ' ', ';': ' ', ':': ' ', '!': '', quad: ' ', qquad: ' ',
 };

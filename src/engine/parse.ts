@@ -1,7 +1,8 @@
 // Parses what people type ("7y + 3x = 20", "(x+1)/2 = 3x^2") and pasted LaTeX
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
-import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp, key as keyOf } from './ast';
+import { fromDots } from './series';
+import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp, key as keyOf, children as childrenOf, withChildren as withKids } from './ast';
 
 /** f, g, h, and any function you named (b, then I(t)) read as calls when a bracket follows */
 /** a letter this equation defines as a function (I in I(t) = …), while it is being read */
@@ -73,6 +74,9 @@ function tokenize(src: string): Tok[] {
     if (c === '⟨' || c === '⟩' || c === ',') { out.push({ t: 'op', v: c }); i++; continue; }
     // □: a hole the live preview puts where something is still to come
     if (c === '□') { out.push({ t: 'id', v: '□' }); i++; continue; }
+    // … ⋯ \cdots: the terms carry on in the pattern of the ones before (to ∞, or to the term after)
+    const dots = /^(?:\.\.\.|…|⋯|\\[lc]?dots(?![a-zA-Z]))/.exec(rest);
+    if (dots) { out.push({ t: 'id', v: '⋯' }); i += dots[0].length; continue; }
     // d²y/dx² (or d^2y/dx^2, \frac{d^2y}{dx^2}): the second derivative, before d² could read as d squared
     const leib2 = prevLetter ? null : /^(?:d(?:\^\{?2\}?|²) ?([a-zA-Z]) ?\/ ?d([a-zA-Z])(?:\^\{?2\}?|²)|\\frac\{d(?:\^\{?2\}?|²) ?([a-zA-Z])\}\{d([a-zA-Z])(?:\^\{?2\}?|²)\})(?![a-zA-Z0-9])/.exec(rest);
     if (leib2) { out.push({ t: 'id', v: `leib2:${leib2[1] ?? leib2[3]}:${leib2[2] ?? leib2[4]}` }); i += leib2[0].length; continue; }
@@ -516,6 +520,9 @@ function twice<T>(read: (greedyBars: boolean) => T): T {
 }
 
 export function parseExpr(src: string): Node {
+  return expandDots(parseExprRaw(src));
+}
+function parseExprRaw(src: string): Node {
   const toks = tokenize(src);
   return twice(greedy => {
     const p = new Parser(toks, greedy);
@@ -523,7 +530,7 @@ export function parseExpr(src: string): Node {
     const e = p.expr();
     if (p.peek()) throw new ParseError(`Unexpected “${(p.peek() as Tok).v}”.`);
     return e;
-  });
+  }) as Node;
 }
 
 const RELS = ['=', '<', '>', '≤', '≥'];
@@ -585,6 +592,24 @@ export function parseEquation(src: string, allowExpr = false): Eq {
   // I′(t) = … is about the slope of I, not a new function: a primed name never defines
   const ps = lhs.k === 'call' ? (lhs.arg.k === 'vec' ? lhs.arg.items : [lhs.arg]) : [];
   const letters = ps.every(a => a.k === 'sym') && new Set(ps.map(a => (a as { name: string }).name)).size === ps.length;
+  if (hasDots(lhs) || hasDots(rhs)) return eq(expandDots(lhs), expandDots(rhs), rel);
   if (rel === '=' && lhs.k === 'call' && ps.length && letters && !/[′″‴]$/.test(lhs.name) && definesAnew(lhs.name, ps.map(a => (a as { name: string }).name).join(','), rhs)) return eq(lhs, rhs, 'def');
   return eq(lhs, rhs, rel);
+}
+
+const hasDots = (n: Node) => { let h = false; walkNode(n, m => { if (m.k === 'sym' && m.name === '⋯') h = true; }); return h; };
+function walkNode(n: Node, f: (m: Node) => void) { f(n); for (const c of childrenOf(n)) walkNode(c, f); }
+/** a sum or product with ⋯ in it, as a Σ or ∏ written out: the terms typed, then the rest */
+function expandDots(n: Node): Node {
+  if (!hasDots(n)) return n;
+  const seq = n.k === 'add' || n.k === 'mul';
+  const kids = childrenOf(n).map(c => (seq && c.k === 'sym' && c.name === '⋯' ? c : expandDots(c)));
+  const m = kids.length ? withKids(n, kids) : n;
+  if (m.k !== 'add' && m.k !== 'mul') {
+    if (m.k === 'sym' && m.name === '⋯') throw new ParseError('⋯ goes between terms: 1 + 2 + 3 + … or 1 + 2 + … + n.');
+    return m;
+  }
+  const r = fromDots(m);
+  if ('error' in r) throw new ParseError(r.error);
+  return r;
 }
