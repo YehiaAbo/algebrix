@@ -254,3 +254,14 @@ every core key on stress/corpus.txt; add an equation there for each new class.
   (x² took a root, f(x) tried f⁻¹): m now always moves across (f + i undoes). **K53** menus were
   clamped onto the equation in short windows: they sit above or below it, and the equation glides
   aside to make room. Guards: tests/mconsistent.test.ts, e2e/polish.
+
+**Round v77 (11-27, competition sums).** **K54** Shift among equal pieces (2·2·2) slid the wrong 2: a
+round trip to an earlier step kept that step's old pieces; it now takes the move's own. **K55** m on an
+aimed group lost the aim once the group was a whole side: the moved terms are held as a group (or the
+0 left behind). **K56** telescoping only saw a plain a − b: now any spread of shifted copies (½g(k) −
+g(k + 1) + ½g(k + 2)), nested splits (((a − b)/4)/3ⁿ), and products of shifted factors to any powers
+((k − 1)(k + 1)/k²). **K57** a geometric Σ inside ∫₀¹ was checked with t anywhere (|r| ≥ 1, so "could
+not check"): letters an outer definite ∫ runs over are left to it. **K58** Tab = rewrite reused a
+bigger piece holding an n it had already used (duplicate ids, refused): only untouched pieces are
+reused. **K59** the C hub's strokes stayed on a fraction bar element after undo: the class follows
+the glyph. Guards: tests/hardseries.test.ts, tests/series.test.ts, e2e/series.

@@ -94,7 +94,7 @@ export const tests = {
     await dig(h, 'sqrt(x + 2)');
     await key('m');
     await until(() => true, '');
-    const one = await p.evaluate(() => [...document.querySelectorAll('.bubble')].map(b => b.textContent));
+    const one = await p.evaluate(() => [...document.querySelectorAll('.bubble')].map(b => { const c = b.cloneNode(true); c.querySelectorAll('.mlabel').forEach(m => m.replaceWith(m.dataset.text)); return c.textContent; }));
     assert(one.length === 1 && one[0].includes('√(x + 2)'), `the name shows √: ${one}`);
     await key('m', 'm', 'm');
     const n = await p.evaluate(() => document.querySelectorAll('.bubble').length);
@@ -134,7 +134,7 @@ export const tests = {
     await load('int x e^x dx');
     await dig(h, '∫ xe^x dx');
     await key('Tab');
-    const names = await p.evaluate(() => [...document.querySelectorAll('#forms .form-name, #forms .chip')].map(e => e.textContent).join(' | '));
+    const names = await p.evaluate(() => [...document.querySelectorAll('#forms .form-name, #forms .chip')].map(e => { const c = e.cloneNode(true); c.querySelectorAll('.mlabel').forEach(m => m.replaceWith(m.dataset.text)); return c.textContent; }).join(' | '));
     assert(names.includes('u = x') && names.includes('u = e^x'), `both choices of u: ${names}`);
     await key('ArrowRight', 'Tab');
     await until(s => s.eq === 'xe^x − ∫ e^x dx', 'by parts with u = x');

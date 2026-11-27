@@ -55,6 +55,9 @@ export function mathLabel(text: string, size = 13): DocumentFragment {
     if (typeof p === 'string') { f.append(p); continue; }
     const span = document.createElement('span');
     span.className = 'mlabel';
+    // what it says, for screen readers and for reading the label back as text
+    span.setAttribute('aria-label', (p.sym ?? '') + p.math);
+    span.dataset.text = (p.sym ?? '') + p.math;
     if (p.sym) span.append(Object.assign(document.createElement('span'), { className: 'mlabel-sym', textContent: p.sym }));
     try { span.append(cardMath(parseEquation(p.math, true), size, 360)); } catch { span.append(p.math); }
     f.append(span);

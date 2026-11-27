@@ -30,6 +30,8 @@ export function palTabs(this: App): { name: string; items: WrapItem[] }[] {
 
 export function openPal(this: App, sticky: boolean) {
   this.flush();
+  // a move's name from before goes: the menu opens over clear space
+  document.querySelectorAll('#stage .bubble').forEach(b => b.remove());
   const inv = inverseOf(this.peelSide());
   const tab = inv ? this.palTabs().findIndex(t => t.items.some(x => !x.tpl && x.f === inv.f)) : -1;
   this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null, started: '', startedTex: '', primes: 0 };

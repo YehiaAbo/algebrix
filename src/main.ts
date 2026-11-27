@@ -27,6 +27,16 @@ async function start() {
   resetMetrics();
   const app = new App();
   Object.assign(window, { algebrix: app, toText, field });
-  document.fonts.addEventListener('loadingdone', () => { clearMeasureCache(); resetMetrics(); app.renderAll(null); });
+  // a font arriving (a maths label in a new size) re-measures everything, but never cuts a move's
+  // animation short: it waits for it to end
+  document.fonts.addEventListener('loadingdone', () => {
+    clearMeasureCache(); resetMetrics();
+    const when = () => {
+      const running = document.getElementById('stage')!.getAnimations({ subtree: true }).filter(a => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity);
+      if (!running.length) return app.renderAll(null);
+      Promise.all(running.map(a => a.finished.catch(() => undefined))).then(when);
+    };
+    when();
+  });
 }
 start();

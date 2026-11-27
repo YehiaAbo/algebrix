@@ -46,3 +46,10 @@ partial fractions: 1 · complex fractions: 2
 | H10 | Stewart 3.9 style (by hand) | x² + y² = 25, x = 3, y = 4, dx/dt = 2: dy/dt | −3/2 | ✓ 11-22 | K32 fixed |
 | H11 | classic | dy/dx + 2 = 0 | y = −2x + C | ✓ 11-22 | K33 ⚠ fixed |
 | H12 | classic (by hand) | 6 inequalities: (x−2)/(x+3) ≥ 0, abs(2x−1) < 5, x² − 4x > 5, 1/x < 2, x³ > 4x, abs(x−3) ≥ 2 | book answers | ✓ 11-22 | e only (C3) |
+| H13 | Putnam-style (by hand) | Σ_{n=1}^{2026} 1/√(n + √(n² − 1)) | (√2027 + √2026 − 1)/√2 | ✓ 11-27 | Tab denested, rationalized, C k (steps of 2) |
+| H14 | competition (by hand) | Σ_{n≥1} sin³(3ⁿ)/3ⁿ | sin(3)/4 | ✓ 11-27 | Tab power reduction, C k; K56 |
+| H15 | competition (by hand) | Σ_{n≥1} (−1)^(n+1)/(n·C(2n, n)) | (2/√5) ln φ | ✓ 11-27 | Tab = Beta integral, Shift ← (Σ ∫ swap), C k, C ∫, plug in; K57 K58 |
+| H16 | classic (by hand) | ∏_{k=2}^{n} (1 − 1/k²) | (n + 1)/(2n) | ✓ 11-27 | Tab one fraction, factored, C k; K56 |
+| H17 | classic (by hand) | Σ_{k=1}^{n} 1/(k(k + 1)(k + 2)) | 1/4 − 1/(2(n + 1)(n + 2)) | ✓ 11-27 | partial fractions, C k; K56 |
+| H18 | classic (by hand) | Σ_{k=1}^{n} k·k! | (n + 1)! − 1 | ✓ 11-27 | Tab = (k + 1)! − k!, C k |
+| H19 | classic (by hand) | Σ_{k≥1} tan⁻¹(1/(k² + k + 1)) | π/4 | ✓ 11-27 | Tab = tan⁻¹(k + 1) − tan⁻¹ k, C k |

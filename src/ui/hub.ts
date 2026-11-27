@@ -77,6 +77,8 @@ export function techniques(this: App): Tech[] {
 
 export function openHub(this: App, sticky: boolean, calc = false) {
   this.flush();
+  // a move's name from before goes: the menu opens over clear space
+  document.querySelectorAll('#stage .bubble').forEach(b => b.remove());
   const techs = calc ? this.calcTechniques() : this.techniques();
   // the calculus rules for the aimed piece come first; a key another form or technique needs stays theirs
   const algebra = calc ? [] : formsFor(this.eq, this.sel);

@@ -102,6 +102,7 @@ for (let run = 0; run < RUNS; run++) {
   for (let i = 0; i < 4; i++) await p.keyboard.press('Escape');
   await p.waitForTimeout(80);
   const end = await look();
+  if (process.env.MEM) console.log(`run ${run}: heap ${await p.evaluate(() => Math.round(performance.memory.usedJSHeapSize / 1e6))} MB, nodes ${await p.evaluate(() => document.getElementsByTagName('*').length)}`);
   if (end.mode !== 'solve') fails.push(`${src} (run ${run}): Esc ×4 left mode ${end.mode}\n    last keys: ${log.slice(-6).join(' | ')}`);
 }
 await b.close();

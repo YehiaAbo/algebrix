@@ -206,10 +206,11 @@ export const tests = {
       const hit = await p.evaluate(() => {
         const m = document.getElementById('forms').getBoundingClientRect();
         const gs = [...document.querySelectorAll('#stage .g')].filter(g => !g.closest('#forms')).map(g => g.getBoundingClientRect());
-        return gs.some(g => g.left < m.right && g.right > m.left && g.top < m.bottom && g.bottom > m.top);
+        const o = gs.filter(g => g.left < m.right && g.right > m.left && g.top < m.bottom && g.bottom > m.top);
+        return o.length ? JSON.stringify({ m: [m.top, m.bottom, m.left, m.right].map(Math.round), o: o.map(g => [g.top, g.bottom, g.left, g.right].map(Math.round)) }) : null;
       });
       await p.keyboard.up(k); await key('Escape'); await wait(300);
-      assert(!hit, `the ${k} menu covers part of the equation`);
+      assert(!hit, `the ${k} menu covers part of the equation ${hit}`);
     }
     await p.setViewportSize({ width: 1280, height: 800 });
   },

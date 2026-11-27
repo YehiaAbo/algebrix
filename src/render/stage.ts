@@ -297,10 +297,11 @@ function place(el: HTMLElement | SVGSVGElement, g: Glyph) {
     st.lineHeight = r.h + 'px';
     el.classList.toggle('it', !!g.italic && g.text !== '□');
     el.classList.toggle('hole', g.text === '□');
-  } else if (g.kind === 'bar' && g.strike) {
-    // drawn left to right, sweeping along the line with where it is
-    el.classList.add('strike');
-    st.animationDelay = `${Math.round(Math.max(0, g.x) * 0.5)}ms`;
+  } else if (g.kind === 'bar') {
+    // a stroke is drawn left to right, sweeping along the line with where it is; an element that was
+    // one and is now a fraction bar (after undo) is a plain bar again
+    el.classList.toggle('strike', !!g.strike);
+    st.animationDelay = g.strike ? `${Math.round(Math.max(0, g.x) * 0.5)}ms` : '';
   } else if (g.kind === 'eq') {
     (el as HTMLElement).dataset.rel = g.rel ?? '=';
   } else if (g.kind === 'sign') {
