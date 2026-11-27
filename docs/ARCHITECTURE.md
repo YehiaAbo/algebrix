@@ -311,7 +311,7 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 | # | Slice | Done when |
 |---|---|---|
 | 0 | Baseline: record tests, e2e, chaos, menu-open times, bundle size (below). | numbers in this file |
-| 1 | Menu contract tests first: for each menu on a corpus, no two cards overlap, every card reachable by arrows, open under budget. They fail today on the written-out sum (issues 2, 3). | tests exist and fail for the known reasons only |
+| 1 | **Done.** `e2e/menus.e2e.mjs`: for each menu on a corpus, cards never overlap or get cut, every card is reachable by arrows, ↓ goes down a line, open under budget. Today's breaks are listed in its `KNOWN` set (issues 2 and 3, Tab's chips and f's i b - chips unreachable, slow Tab and C on I(t)); the list may only shrink. | each later slice takes entries off `KNOWN` |
 | 2 | `Checked` gate (8.3). | types enforce it; no behaviour change |
 | 3 | Engine context (8.4) and the `techniques.ts` split (8.6). | moves only |
 | 4 | `ui/menu/model.ts`: state, key reducer, `nextCard`, with unit tests. | pure tests pass |
@@ -323,9 +323,10 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 | 10 | Series UI: microdesign pass with screenshots for your review, then build it. | issue 4, your call |
 | 11 | Docs, CLAUDE.md, skills and memory brought up to date with the new shape. | a fresh thread can find any part from CLAUDE.md in one hop |
 
-Baseline (2026-11-27, v77 at `375ab26`): unit 1041 passed / 1 skipped in 18.5 s; e2e all pass;
-build 789 KB (251 KB gzip). Menu open time, keydown to drawn: Tab 5 to 20 ms on simple equations,
-**153 ms** on `I(t) = ∫₀¹ (xᵗ − 1)/ln x dx`; C 3 to 16 ms; f 3 to 10 ms.
+Baseline (2026-11-27, v77 at `375ab26`): unit 1041 passed / 1 skipped in 18.5 s; e2e 149 passed;
+build 789 KB (251 KB gzip); chaos (seed 1127, 30 × 50) holds, with 5 keys blocking 411 to 2242 ms
+(Tab x on a messy fraction, keys on I(t), typing into a box on d/dx …). Menu open time, keydown to
+drawn, first open: Tab and C 4 to 65 ms, **about 170 ms** on `I(t) = ∫₀¹ (xᵗ − 1)/ln x dx`; f 5 to 60 ms.
 
 ## 10. Recipes
 
