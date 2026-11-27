@@ -222,6 +222,11 @@ function conv(ts: Tok[]): string {
       push(`((${a})/(${b}))`);
       continue;
     }
+    if (c === 'binom' || c === 'dbinom' || c === 'tbinom') {
+      const a = slot(group(i + 1)), b = slot(group(i + 2)); i += 2;
+      push(` C(${a}, ${b}) `);
+      continue;
+    }
     if (c === 'sqrt') {
       // \sqrt[n]{x}: an nth root
       let idx: string | null = null;

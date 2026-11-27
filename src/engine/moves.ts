@@ -242,6 +242,15 @@ const isConstNum = (n: Node) => !hasSymbols(n) && Number.isFinite(evaluate(n, {}
 function slideOut(W: Node, holder: Node, c: Node, rest: Node | null): Slid | null {
   const keep = rest ?? num(1);
   if (isOp(W) && W.arg === holder) {
+    // Σ ∫ and ∫ Σ (and ∫∫, ΣΣ) change places: the inner one comes out, what was beside it goes in
+    const outer = (n: Node) => (n.k === 'sum' && !n.prod) || (n.k === 'int' && !!n.lo && !!n.hi);
+    if (outer(W) && outer(c)) {
+      const C = c as Extract<Node, { k: 'int' | 'sum' }>, Wo = W as Extract<Node, { k: 'int' | 'sum' }>;
+      if ([C.lo, C.hi].some(b => b && symbols(b).includes(Wo.v))) return { error: `The ends of the inner ${C.k === 'sum' ? 'Σ' : '∫'} hold ${Wo.v}, so the two can't change places as they are.` };
+      if (rest && symbols(rest).includes(C.v)) return null;
+      const both = `${Wo.k === 'sum' ? 'Σ' : '∫'} and ${C.k === 'sum' ? 'Σ' : '∫'} change places`;
+      return { node: { ...C, arg: { ...Wo, arg: rest ? mul([rest, C.arg]) : C.arg } as Node } as Node, label: both };
+    }
     if (!rest) return null;
     if (symbols(c).includes(W.v)) return { error: `${toText(c)} depends on ${W.v}, so it can't come out of ${opName(W)}.` };
     return { node: mul([c, { ...W, arg: rest } as Node]), label: `${toText(c)} out of ${SIGN[W.k]}` };

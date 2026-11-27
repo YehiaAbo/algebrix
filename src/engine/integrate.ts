@@ -79,6 +79,15 @@ function arcRule(kind: 'atan' | 'asin', k: number, m: number, V: () => Node, v: 
   return { F: tidy(F), label: kind === 'atan' ? `∫ 1/(${shown(k)} + ${m === 1 ? '' : shown(m)}${v}²) = tan⁻¹` : `∫ 1/√(${shown(k)} − ${m === 1 ? '' : shown(m)}${v}²) = sin⁻¹` };
 }
 
+/** ∫ 1/(k − m X²) = ln|(√k + √m X)/(√k − √m X)|/(2√(km)): 1/(k − mX²) split into 1/(√k − √m X) and
+ *  1/(√k + √m X), each a log */
+function lnRule(k: number, m: number, X: Node, shown: string): { F: Node; label: string } {
+  const rk = () => rootOf(k), mX = () => (m === 1 ? cloneFresh(X) : times(rootOf(m), cloneFresh(X)));
+  const F = frac(fn('ln', fn('abs', frac(add([rk(), mX()]), add([rk(), neg(mX())])))), times(num(2), rootOf(k * m)));
+  const c = (x: number) => (Number.isInteger(x) ? String(x) : toText(ratNode(x) ?? num(x)));
+  return { F: tidy(F), label: `∫ 1/(${c(k)} − ${m === 1 ? '' : c(m)}${shown}²) = ln|(√k + u)/(√k − u)|/(2√k)` };
+}
+
 /** the antiderivatives you'd just write down: xⁿ, 1/x, eˣ, sin, cos, sec², 1/(1+x²)…, with a
  *  linear inside (reverse chain), constant multiples and sums of them */
 export function quick(u: Node, v: string): { F: Node; label: string; conditions?: string[] } | null {
@@ -160,6 +169,9 @@ export function quick(u: Node, v: string): { F: Node; label: string; conditions?
     else if (d.k === 'sqrt') q = powerOf(d.arg, -0.5);
     else if (quadK(d, v, 1)) { const { k, m } = quadK(d, v, 1)!; q = arcRule('atan', k, m, V, v); }
     else if (quadShift(d, v, 1)) { const { k, m, h } = quadShift(d, v, 1)!; q = arcRule('atan', k, m, () => tidy(add([V(), h])), `(${toText(tidy(add([V(), h])))})`); q.label += ', the square completed'; }
+    // k − x² below (the roots real, but maybe not whole): the two halves of its partial fractions, as one log
+    else if (quadK(d, v, -1)) { const { k, m } = quadK(d, v, -1)!; q = lnRule(k, m, V(), v); }
+    else if (quadShift(d, v, -1)) { const { k, m, h } = quadShift(d, v, -1)!; const X = tidy(add([V(), h])); q = lnRule(k, m, X, `(${toText(X)})`); q.label += ', the square completed'; }
     else q = powerOf(d, -1);
     return q && { F: times(...c, q.F), label: q.label };
   }
@@ -828,9 +840,13 @@ export function geometric(e: Eq, sel: string | null): MoveResult {
   const rv = evaluate(r, env);
   if (!symbols(r).length && Math.abs(rv) >= 1) return { error: `The ratio is ${toText(r)}, and |r| ≥ 1, so it diverges.` };
   const cond = `|${toText(r)}| < 1`;
+  // a letter an integral around it runs over (∫₀¹ Σ (−t)ⁿ dt) takes the values of that range, so the
+  // check is of the whole as it stands, not of the ratio at any value
+  const bound = new Set((findPath(e, S.id) ?? []).filter(P => P.k === 'int' && P.lo).map(P => (P as { v: string }).v));
+  const free = symbols(r).filter(w => !bound.has(w));
   return checked(e, {
-    eq: replace(e, S.id, next), label: `geometric series, r = ${toText(r)}`, hints: newHints(), factor: one, select: null, rule: 'geometric series', conditions: symbols(r).length ? [cond] : [],
-    check: symbols(r).length ? env2 => (Math.abs(evaluate(r, env2)) < 0.9 ? [[evaluate(replace(e, S.id, next), env2), evaluate(e, env2)]] : [[NaN, NaN]]) : undefined,
+    eq: replace(e, S.id, next), label: `geometric series, r = ${toText(r)}`, hints: newHints(), factor: one, select: null, rule: 'geometric series', conditions: free.length ? [cond] : [],
+    check: free.length ? env2 => (Math.abs(evaluate(r, env2)) < 0.9 ? [[evaluate(replace(e, S.id, next), env2), evaluate(e, env2)]] : [[NaN, NaN]]) : undefined,
   });
 }
 

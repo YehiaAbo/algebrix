@@ -151,6 +151,7 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   at('one factor out', () => target.k === 'pow' && target.exp.k === 'num' && Number.isInteger(target.exp.v) && target.exp.v >= 2 ? mul([cloneFresh(target.base), target.exp.v === 2 ? cloneFresh(target.base) : pow(cloneFresh(target.base), num(target.exp.v - 1))]) : null);
   at('powers combined', h => (target.k === 'pow' && target.base.k === 'pow' ? pow(target.base.base, simplify(mul([target.exp, target.base.exp]), h), target.id) : null));
   at('as roots', () => asRoots(target));
+  at('denested', h => denest(target, h));
   // after the named rules, so a rule that also simplifies (ln 2^x → x ln 2) keeps its own name and key
   at('simplified', h => { const r = simplify(target, h); return key(r) === key(target) ? null : r; });
   at('long division', () => longDivide(target));
@@ -319,3 +320,37 @@ function intLinear(I: Extract<Node, { k: 'int' }>): { name: string; node: Node }
   if (cs.length && vs.length) out.push({ name: 'constant out', node: mul([...cs.map(c => cloneFresh(c)), again(vs.length === 1 ? cloneFresh(vs[0]) : mul(vs.map(v => cloneFresh(v))))]) });
   return out;
 }
+
+/** √(a ± √b) = √x ± √y with x + y = a, 4xy = b: when a² − b is a perfect square (√(n + √(n² − 1))
+ *  = √((n + 1)/2) + √((n − 1)/2), √(3 + 2√2) = √2 + 1) */
+function denest(n: Node, h: Hints): Node | null {
+  if (n.k !== 'sqrt' || n.arg.k !== 'add' || n.arg.terms.length !== 2) return null;
+  const rootOf = (t: Node): { c: Node; b: Node; sign: 1 | -1 } | null => {
+    const neg_ = t.k === 'neg' ? t.arg : null;
+    const u = neg_ ?? t;
+    const sign: 1 | -1 = neg_ ? -1 : 1;
+    if (u.k === 'sqrt') return { c: num(1), b: u.arg, sign };
+    if (u.k === 'mul') {
+      const r = u.factors.filter(f => f.k === 'sqrt');
+      if (r.length !== 1) return null;
+      const rest = u.factors.filter(f => f !== r[0]);
+      const c = rest.length === 1 ? rest[0] : mul(rest.map(cloneFresh));
+      if (c.k === 'num' && c.v < 0) return { c: num(-c.v), b: (r[0] as Extract<Node, { k: 'sqrt' }>).arg, sign: (-sign) as 1 | -1 };
+      return { c, b: (r[0] as Extract<Node, { k: 'sqrt' }>).arg, sign };
+    }
+    return null;
+  };
+  const [t0, t1] = n.arg.terms;
+  const r1 = rootOf(t1), r = r1 ?? rootOf(t0);
+  if (!r) return null;
+  const A = r1 ? t0 : t1;
+  if (A.k === 'sqrt' || hasRoot(A)) return null;
+  const B = mul([pow(cloneFresh(r.c), num(2)), cloneFresh(r.b)]);
+  const D = simplify(expandAll(add([pow(cloneFresh(A), num(2)), negate(B)]), h), h);
+  const s = simplify(sqrt(D), h);
+  if (hasRoot(s)) return null;
+  const x = simplify(frac(add([cloneFresh(A), cloneFresh(s)]), num(2)), h), y = simplify(frac(add([cloneFresh(A), negate(cloneFresh(s))]), num(2)), h);
+  const sx = simplify(sqrt(x), h), sy = simplify(sqrt(y), h);
+  return add([sx, r.sign < 0 ? negate(sy) : sy]);
+}
+const hasRoot = (n: Node) => { let f = false; walk(n, m => { if (m.k === 'sqrt' || (m.k === 'pow' && m.exp.k === 'num' && !Number.isInteger(m.exp.v))) f = true; }); return f; };

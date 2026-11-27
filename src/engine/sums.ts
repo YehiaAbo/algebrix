@@ -9,6 +9,7 @@ import { dependsOn, substitute, derivative } from './calculus';
 import { simplify, newHints } from './simplify';
 import { toText } from './print';
 import { geometric, pSeries } from './integrate';
+import { telescopeOf, spreadOf } from './series';
 
 const one = () => 1;
 const fresh = <T extends Node>(n: T): T => cloneFresh(n);
@@ -98,37 +99,57 @@ function powerOfIndex(a: Node, v: string): number | null {
   return null;
 }
 
-/** Σ (f(k) − f(k + 1)): f, read off the two terms (either order) */
-function telescope(S: Sum): { f: Node; sign: 1 | -1 } | null {
-  if (S.arg.k !== 'add' || S.arg.terms.length !== 2) return null;
-  const [A, B] = S.arg.terms;
-  const env: Env = {};
-  symbols(S.arg).filter(w => w !== S.v).forEach((w, i) => (env[w] = 0.37 + 0.2 * i));
-  const same = (x: Node, y: Node) => [2, 3, 5, 7].every(k => { const p = evaluate(x, { ...env, [S.v]: k }), q = evaluate(y, { ...env, [S.v]: k }); return Number.isFinite(p) && Math.abs(p - q) <= 1e-9 * (1 + Math.abs(p)); });
-  // A = f(k), B = −f(k + 1)
-  if (same(neg(fresh(B)), substitute(fresh(A), S.v, add([sym(S.v), num(1)])))) return { f: A, sign: 1 };
-  // A = −f(k + 1), B = f(k)
-  if (same(neg(fresh(A)), substitute(fresh(B), S.v, add([sym(S.v), num(1)])))) return { f: B, sign: 1 };
-  return null;
-}
-
 /** C + k on a Σ or ∏: the known value, when one fits */
 export function knownSum(e: Eq, sel: string | null): MoveResult {
   const S = target(e, sel);
   if (!S) return { error: 'No sum here.' };
   const v = S.v, a = S.arg;
   const done = (node: Node, label: string, conditions: string[] = []) => checked(e, { eq: replace(e, S.id, node), label, hints: newHints(), factor: one, select: null, rule: 'known sum', conditions });
+  // telescoping, any step d: Σ (g(k) − g(k + d)) leaves d terms at each end; ∏ g(k + d)/g(k) too
+  const tel = telescopeOf(S);
+  if (tel) {
+    const G = (k: Node) => tidy(substitute(fresh(tel.g), v, k));
+    const firsts = Array.from({ length: tel.d }, (_, j) => G(plus1(S.lo, j)));
+    const lasts = isInf(S.hi) ? Array.from({ length: tel.d }, () => lim(v, sym('∞'), fresh(tel.g))) : Array.from({ length: tel.d }, (_, j) => G(plus1(S.hi, j + 1)));
+    const one_ = (xs: Node[]) => (xs.length === 1 ? xs[0] : mul(xs));
+    if (!S.prod) return done(add([...firsts, ...lasts.map(x => tidy(neg(x)))]), tel.d === 1 ? 'telescoping: the middle terms cancel' : `telescoping in steps of ${tel.d}: ${tel.d} terms stay at each end`);
+    const [t, b] = tel.flip ? [firsts, lasts] : [lasts, firsts];
+    const bot = one_(b);
+    return done(bot.k === 'num' && bot.v === 1 ? one_(t) : frac(one_(t), bot), 'telescoping product: the middle factors cancel');
+  }
+  // spread over more pieces: c₁g(k + s₁) + c₂g(k + s₂) + … with the cs adding to 0 (in a ∏, factors
+  // g(k + s) to powers adding to 0); each shifted copy of g has the same middle, so only a few g's at
+  // each end stay
+  const sp = spreadOf(S);
+  if (sp) {
+    const ups: Node[] = [], downs: Node[] = [];
+    // in a ∏ the same factor's powers add up (n on top, n² underneath leaves n underneath); 1s go
+    const pows = new Map<string, [Node, number]>();
+    const put = (c: number, x: Node) => {
+      if (!S.prod) { ups.push(tidy(c === 1 ? x : c === -1 ? neg(x) : mul([num(c), x]))); return; }
+      if (x.k === 'num' && x.v === 1) return;
+      const k = key(x), was = pows.get(k);
+      pows.set(k, [was?.[0] ?? x, (was?.[1] ?? 0) + c]);
+    };
+    for (const { g, cs } of sp) {
+      const m = Math.min(...cs.map(([, s]) => s));
+      const G = (k: Node) => tidy(substitute(fresh(g), v, k));
+      for (const [c, s] of cs) {
+        for (let j = m; j < s; j++) put(-c, G(plus1(S.lo, j)));
+        if (!isInf(S.hi)) for (let j = m + 1; j <= s; j++) put(c, G(plus1(S.hi, j)));
+      }
+      const atInf = cs.reduce((t, [c, s]) => t + c * (s - m), 0);
+      if (isInf(S.hi) && atInf) put(atInf, lim(v, sym('∞'), fresh(g)));
+    }
+    for (const [x, c] of pows.values()) if (c) (c > 0 ? ups : downs).push(Math.abs(c) === 1 ? x : pow(x, num(Math.abs(c))));
+    const one_ = (xs: Node[]) => (!xs.length ? num(1) : xs.length === 1 ? xs[0] : mul(xs));
+    if (!S.prod) return done(ups.length ? add(ups) : num(0), 'telescoping: the shifted copies cancel in the middle');
+    return done(downs.length ? frac(one_(ups), one_(downs)) : one_(ups), 'telescoping product: the shifted copies cancel in the middle');
+  }
   if (S.prod) {
     if (!dependsOn(a, v) && !isInf(S.hi)) return done(tidy(pow(fresh(a), count(S))), `∏ c = c^(number of factors)`);
     if (a.k === 'sym' && a.name === v && isNum(S.lo, 1) && !isInf(S.hi)) return done(fn('fact', fresh(S.hi)), `∏ ${v} = n!`);
     return { error: 'No known product fits. Split it, take a factor out, or write it out (x).' };
-  }
-  // telescoping: Σ (f(k) − f(k+1)) = f(a) − f(b + 1), or f(a) − lim f at ∞
-  const t = telescope(S);
-  if (t) {
-    const first = termAt({ ...S, arg: t.f }, S.lo);
-    const last = isInf(S.hi) ? lim(v, sym('∞'), fresh(t.f)) : termAt({ ...S, arg: t.f }, plus1(S.hi, 1));
-    return done(add([first, neg(last)]), 'telescoping: the middle terms cancel');
   }
   if (!dependsOn(a, v) && !isInf(S.hi)) return done(tidy(mul([fresh(a), count(S)])), `Σ c = c·(number of terms)`);
   const p = powerOfIndex(a, v);

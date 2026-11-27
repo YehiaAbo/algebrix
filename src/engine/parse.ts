@@ -2,13 +2,14 @@
 // ("\frac{x+1}{2}=3x^{2}") into the tree. Juxtaposition binds tighter than "/",
 // like Desmos: 1/2x is 1/(2x).
 import { fromDots } from './series';
-import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp, key as keyOf, children as childrenOf, withChildren as withKids } from './ast';
+import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, eq, FnName, Rel, call, FUNC_NAMES, DEFS, deriv, lim, int, at, sum, symbols, partial, grad, vec, varOrder, fieldOp, key as keyOf, cloneFresh, children as childrenOf, withChildren as withKids } from './ast';
 
 /** f, g, h, and any function you named (b, then I(t)) read as calls when a bracket follows */
 /** a letter this equation defines as a function (I in I(t) = …), while it is being read */
 let DEFINING: string | null = null;
 const isFnName = (name: string): boolean => FUNC_NAMES.includes(name) || DEFS.has(name) || name === DEFINING || (name.endsWith('⁻¹') && isFnName(name.slice(0, -2)));
 import { negate, gcd, isNeg } from './terms';
+import { simplify, newHints } from './simplify';
 
 type Tok = ({ t: 'num'; v: string } | { t: 'id'; v: string } | { t: 'op'; v: string } | { t: 'cmd'; v: string }) & { space?: boolean };
 
@@ -48,7 +49,7 @@ const GREEK: Record<string, string> = {
 };
 
 function tokenize(src: string): Tok[] {
-  const s = plain(src);
+  const s = plain(src).replace(/\\?binom(?=\s*\()/g, 'C');
   const out: Tok[] = [];
   let i = 0;
   // integrals still waiting for their dx
@@ -298,6 +299,19 @@ class Parser {
         while (this.isOp(',')) { this.i++; as.push(this.expr()); }
         this.eat(')');
         return call(t.v, as.length > 1 ? vec(as) : as[0]);
+      }
+      // C(n, k) and binom(n, k): n choose k, as the factorials it is, n!/(k!(n − k)!)
+      if (t.v === 'C' && this.isOp('(')) {
+        const back = this.i;
+        this.i++;
+        const as = [this.expr()];
+        while (this.isOp(',')) { this.i++; as.push(this.expr()); }
+        if (as.length === 2 && this.isOp(')')) {
+          this.i++;
+          const [N, K] = as;
+          return frac(fn('fact', N), mul([fn('fact', K), fn('fact', simplify(add([cloneFresh(N), neg(cloneFresh(K))]), newHints()))]));
+        }
+        this.i = back;
       }
       return sym(t.v);
     }

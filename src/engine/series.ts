@@ -211,12 +211,81 @@ function conds(D: Sum): string[] {
 /* ---------- crossing out ---------- */
 
 /** f(k) − f(k + d) (or ∏ f(k + d)/f(k)): f, d and which way round, read off the two pieces */
+/** the terms a summand spreads into: (a − b)/c is a/c − b/c, c(a − b) is ca − cb, and nested too:
+ *  ((a − b)/4)/3ⁿ is a/(4·3ⁿ) − b/(4·3ⁿ). Null when it is one piece. */
+export function termsOf(n: Node): Node[] | null {
+  if (n.k === 'add') return n.terms.length >= 2 ? n.terms : null;
+  if (n.k === 'frac') { const p = termsOf(n.num); return p && p.map(t => tidy(frac(cloneFresh(t), cloneFresh(n.den)))); }
+  if (n.k === 'neg') { const p = termsOf(n.arg); return p && p.map(t => tidy(neg(cloneFresh(t)))); }
+  if (n.k === 'mul') {
+    for (let i = 0; i < n.factors.length; i++) {
+      const p = termsOf(n.factors[i]); if (!p) continue;
+      const rest = n.factors.filter((_, j) => j !== i);
+      return p.map(t => tidy(mul([...rest.map(cloneFresh), cloneFresh(t)])));
+    }
+  }
+  return null;
+}
+
+/** a nice number for a coefficient: whole, or a fraction with a small bottom */
+function nice(c: number): number | null {
+  for (let q = 1; q <= 24; q++) { const p = Math.round(c * q); if (Math.abs(p / q - c) < 1e-9 * (1 + Math.abs(c))) return p / q; }
+  return null;
+}
+
+/** a Σ whose terms are copies of a few gs at shifted places, c₁g(k + s₁) + c₂g(k + s₂) + …, with each
+ *  g's cs adding to 0 (partial fractions of 1/(k(k + 1)(k + 2)) are ½g(k) − g(k + 1) + ½g(k + 2), g =
+ *  1/k). A ∏ the same with factors and powers: (k − 1)(k + 1)/(k·k) is g(k − 1)g(k + 1)/g(k)², g = k.
+ *  Either telescopes, and only the ends stay. Null when the pieces aren't like that. */
+export interface Spread { g: Node; cs: [number, number][] }
+export function spreadOf(S: Sum): Spread[] | null {
+  let ps: [Node, number][];
+  if (!S.prod) { const ts = termsOf(S.arg); if (!ts) return null; ps = ts.map(t => [t, 1]); }
+  else {
+    ps = [];
+    const put = (n: Node, e: number) => {
+      if (n.k === 'mul') n.factors.forEach(f => put(f, e));
+      else if (n.k === 'frac') { put(n.num, e); put(n.den, -e); }
+      else if (n.k === 'pow' && n.exp.k === 'num' && Number.isInteger(n.exp.v) && dependsOn(n.base, S.v)) put(n.base, e * n.exp.v);
+      else if (dependsOn(n, S.v)) ps.push([n, e]);
+      else if (!(n.k === 'num' && n.v === 1)) ps.push([n, 0]);
+    };
+    put(S.arg, 1);
+    if (ps.some(([, e]) => e === 0)) return null;
+  }
+  if (ps.length < 2) return null;
+  const E = envs(S);
+  const val = (n: Node, k: number, env: Env) => evaluate(n, { ...env, [S.v]: k });
+  const ks = [3, 5, 8, 13];
+  const fams: Spread[] = [];
+  for (const [t, e] of ps) {
+    let hit = false;
+    for (const f of fams) {
+      for (let s = -4; s <= 4 && !hit; s++) {
+        // in a sum, a constant multiple; in a product, the very same factor
+        const c = S.prod ? 1 : nice(val(t, ks[0], E[0]) / val(f.g, ks[0] + s, E[0]));
+        if (c === null || !c) continue;
+        if (ks.every(k => E.every(env => close(val(t, k, env), c * val(f.g, k + s, env))))) { f.cs.push([c * e, s]); hit = true; }
+      }
+      if (hit) break;
+    }
+    if (!hit) fams.push({ g: t, cs: [[e, 0]] });
+  }
+  for (const f of fams) {
+    if (Math.abs(f.cs.reduce((a, [c]) => a + c, 0)) > 1e-12) return null;
+    if (new Set(f.cs.map(([, s]) => s)).size < 2) return null;
+  }
+  return fams;
+}
+
 export function telescopeOf(S: Sum): { g: Node; d: number; flip: boolean } | null {
   const E = envs(S).map(env => env);
   const at = (n: Node, k: number) => substitute(cloneFresh(n), S.v, add([sym(S.v), num(k)]));
   const eqv = (x: Node, y: Node) => [2, 3, 5, 7].every(k => E.every(env => close(evaluate(x, { ...env, [S.v]: k }), evaluate(y, { ...env, [S.v]: k }))));
-  if (!S.prod && S.arg.k === 'add' && S.arg.terms.length === 2) {
-    const [A, B] = S.arg.terms;
+  // (a − b)/c and c(a − b) are a/c − b/c and ca − cb: the two pieces are there all the same
+  const parts = termsOf(S.arg), two = parts && parts.length === 2 ? add(parts) : null;
+  if (!S.prod && two && two.k === 'add' && two.terms.length === 2) {
+    const [A, B] = two.terms;
     for (let d = 1; d <= 4; d++) {
       if (eqv(neg(cloneFresh(B)), at(A, d))) return { g: A, d, flip: false };
       if (eqv(neg(cloneFresh(A)), at(B, d))) return { g: B, d, flip: false };

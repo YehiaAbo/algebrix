@@ -358,6 +358,15 @@ export function trigForms(n: Node): TrigForm[] {
   if (s2) offer('Pythagorean', add([num(1), negate(F2('cos', s2))]));
   if (c2) offer('Pythagorean', add([num(1), negate(F2('sin', c2))]));
   const twice = (u: Node) => (u.k === 'mul' && u.factors[0].k === 'num' ? mul([num(2 * u.factors[0].v), ...u.factors.slice(1).map(cloneFresh)]) : mul([num(2), cloneFresh(u)]));
+  // cubes and the triple angle: sin³u = (3 sin u − sin 3u)/4, cos³u = (3 cos u + cos 3u)/4
+  const cube = (m: Node, f: 'sin' | 'cos') => (m.k === 'pow' && m.exp.k === 'num' && m.exp.v === 3 && isF(m.base, f) ? m.base.arg : null);
+  const thrice = (u: Node) => (u.k === 'mul' && u.factors[0].k === 'num' ? mul([num(3 * u.factors[0].v), ...u.factors.slice(1).map(cloneFresh)]) : mul([num(3), cloneFresh(u)]));
+  const s3 = cube(n, 'sin'), c3 = cube(n, 'cos');
+  if (s3) offer('power reduction', frac(add([mul([num(3), F('sin', s3)]), negate(fn('sin', thrice(s3)))]), num(4)));
+  if (c3) offer('power reduction', frac(add([mul([num(3), F('cos', c3)]), fn('cos', thrice(c3))]), num(4)));
+  const third = (u: Node): Node | null => (u.k === 'mul' && u.factors[0].k === 'num' && u.factors[0].v % 3 === 0 ? (u.factors[0].v === 3 ? (u.factors.length === 2 ? u.factors[1] : mul(u.factors.slice(1).map(cloneFresh))) : mul([num(u.factors[0].v / 3), ...u.factors.slice(1).map(cloneFresh)])) : null);
+  if (isF(n, 'sin') && third(n.arg)) { const u = third(n.arg)!; offer('triple angle', add([mul([num(3), F('sin', u)]), negate(mul([num(4), pow(F('sin', u), num(3))]))])); }
+  if (isF(n, 'cos') && third(n.arg)) { const u = third(n.arg)!; offer('triple angle', add([mul([num(4), pow(F('cos', u), num(3))]), negate(mul([num(3), F('cos', u)]))])); }
   if (s2) offer('power reduction', frac(add([num(1), negate(fn('cos', twice(s2)))]), num(2)));
   if (c2) offer('power reduction', frac(add([num(1), fn('cos', twice(c2))]), num(2)));
   if (n.k === 'mul' && n.factors.length === 3 && n.factors[0].k === 'num' && n.factors[0].v === 2 && isF(n.factors[1], 'sin') && isF(n.factors[2], 'cos') && key(n.factors[1].arg) === key(n.factors[2].arg)) {

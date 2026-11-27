@@ -680,7 +680,9 @@ export function rewriteAs(e: Eq, at: string | null, text: string): MoveResult {
   walk(target, m => { const k = key(m); pool.set(k, [...(pool.get(k) ?? []), m]); });
   const used = new Set<string>();
   const graft = (m: Node): Node => {
-    const hit = pool.get(key(m))?.find(c => !used.has(c.id));
+    // a piece none of which is in use yet (a bigger one holding an n already taken would repeat it)
+    const free = (c: Node) => { let ok = true; walk(c, d => { if (used.has(d.id)) ok = false; }); return ok; };
+    const hit = pool.get(key(m))?.find(free);
     if (hit) { walk(hit, c => { used.add(c.id); }); return hit; }
     return withChildren(m, children(m).map(graft));
   };
