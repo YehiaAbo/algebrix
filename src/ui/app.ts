@@ -3,7 +3,7 @@ import { isIdentity, isProved } from '../engine/goals';
 import { Domain } from '../engine/moves';
 import { parseEquation, ParseError, setRedefining } from '../engine/parse';
 import { toText } from '../engine/print';
-import { applyMove, previewMove, isErr, MoveOk, MoveResult, solvedFor } from '../engine/moves';
+import { applyMove, previewMove, isErr, CheckedResult, Checked, solvedFor } from '../engine/moves';
 import { formsFor } from '../engine/forms';
 import { substitute } from '../engine/calculus';
 import { simplify, newHints } from '../engine/simplify';
@@ -568,7 +568,7 @@ export class App {
     els.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: i * 14, easing: SMOOTH, fill: 'backwards' }));
   }
 
-  apply(r: MoveResult, pitch = 1, opts: { quietLabel?: boolean } = {}) {
+  apply(r: CheckedResult, pitch = 1, opts: { quietLabel?: boolean } = {}) {
     if (isErr(r)) { this.refuse(r.error); return false; }
     // a group that lands inside a sum (or product) of its own kind melts into it; remember its ends,
     // so the aim stays on exactly what moved instead of growing to the whole side
@@ -621,7 +621,7 @@ export class App {
   }
 
   /** play several steps one after another, like a short animation */
-  play(steps: MoveOk[], done?: () => void) {
+  play(steps: Checked[], done?: () => void) {
     if (!steps.length) return;
     let i = 0;
     const next = () => {

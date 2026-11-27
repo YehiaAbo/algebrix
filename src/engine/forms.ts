@@ -6,7 +6,7 @@ import { quick } from './integrate';
 import { negate } from './terms';
 import { simplify, newHints, Hints } from './simplify';
 import { distributeNode, expandAll, combineFractions, standardOrder, hasExpandable } from './rewrite';
-import { verify, MoveOk, MoveResult, relAfter, isErr, neverZero } from './moves';
+import { strictly, Checked, CheckedResult, MoveOk, relAfter, isErr, neverZero } from './moves';
 import { toText } from './print';
 import { isLeibniz, toLeibniz, toPrime, toDifferentials, letters } from './leibniz';
 import { gcd } from './terms';
@@ -15,7 +15,7 @@ import { sumForms } from './sums';
 import { seriesForms } from './series';
 import { longDivide, partialFractions, rationalize, rationalizeTop, trigForms, completeSquare, Range, factorFully, primeFactors } from './polytools';
 
-export interface Form extends MoveOk { name: string; chord: string }
+export interface Form extends Checked { name: string; chord: string }
 
 const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',
@@ -34,7 +34,7 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
   const seen = new Set<string>([sides(e)]);
   const push = (name: string, next: Eq, h: Hints, factor: (env: Env) => number = one, select: string | null = sel, range?: Range, pieces?: [Node, Node]) => {
     if (seen.has(sides(next))) return;
-    const f: Form = { name, chord: CHORDS[name] ?? (name.startsWith('clear') ? 'd' : ''), eq: next, label: name, hints: h, factor, select: select && find(next, select) ? select : null };
+    const f: MoveOk & { name: string; chord: string } = { name, chord: CHORDS[name] ?? (name.startsWith('clear') ? 'd' : ''), eq: next, label: name, hints: h, factor, select: select && find(next, select) ? select : null };
     if (range) {
       // true only on a range: say so, and check only there
       f.conditions = [range.text];
@@ -42,7 +42,8 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
       const [a, b] = pieces ?? [next, e];
       f.check = env => { const u = evaluate(range.u, env); return u >= range.lo && u <= range.hi ? [[evaluate(b, env), evaluate(a, env)]] : [[NaN, NaN]]; };
     }
-    if (verify(e, f)) return;
+    const passed = strictly(e, f);
+    if (!passed) return;
     // cancelling a bottom away (x²−1)/(x−1) → x + 1 keeps x − 1 ≠ 0 from the original
     const lost = lostBottoms(e, next);
     if (lost.length) f.conditions = [...(f.conditions ?? []), ...lost];
@@ -50,11 +51,11 @@ export function formsFor(e: Eq, sel: string | null): Form[] {
     if (typeof rel !== 'string') return;
     f.eq = eq(f.eq.lhs, f.eq.rhs, rel);
     seen.add(sides(next));
-    out.push(f);
+    out.push({ ...passed, name, chord: f.chord });
   };
 
   // the slope's other spellings: y′ ↔ dy/dx, and dy = … dx (already checked with dy = y′·dx)
-  const slope = (name: string, r: MoveResult) => {
+  const slope = (name: string, r: CheckedResult) => {
     if (isErr(r) || seen.has(sides(r.eq))) return;
     seen.add(sides(r.eq));
     out.push({ ...r, name, chord: CHORDS[name] });

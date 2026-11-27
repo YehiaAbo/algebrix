@@ -48,6 +48,19 @@ export function direction(r: MoveOk): '⇔' | '⇒' {
   return r.implies || (r.conditions ?? []).some(c => c.includes('add solutions')) ? '⇒' : '⇔';
 }
 export type MoveResult = MoveOk | { error: string };
+/** a move the safety net has passed. Only checked() makes one, and only a Checked move can become a
+ *  step of the work (sheet.addStep, App.apply): an unchecked move fails to compile instead of slipping in */
+declare const PASSED: unique symbol;
+export type Checked = MoveOk & { readonly [PASSED]: true };
+export type CheckedResult = Checked | { error: string };
+/** The one other way in, for steps that claim nothing the numbers could test: a definition you
+ *  introduce (b: I(t) = …, let u = x²; it is a choice, not a consequence) or an answer read off an
+ *  equation that stays as it is. Every use names which, so the bypasses can be listed with grep. */
+export function introduced(r: MoveOk, _what: 'a definition' | 'an answer'): Checked { return r as Checked; }
+
+/** the strict check alone: the numbers must agree, with no fallback for pieces that have no value and
+ *  nothing logged. For trying many candidates (Tab's forms), where a refusal just means "not offered". */
+export function strictly(before: Eq, r: MoveOk): Checked | null { return verify(before, r) ? null : r as Checked; }
 export const isErr = (r: MoveResult): r is { error: string } => 'error' in r;
 
 export type MoveName = 'move' | 'divide' | 'multiply' | 'distribute' | 'simplify' | 'factor' | 'slideL' | 'slideR' | 'swap' | 'lift' | 'drop';
@@ -724,7 +737,7 @@ function changed(before: Node, after: Node): [Node, Node] | null {
   return changed(kb[i], ka[i]);
 }
 
-export function checked(e: Eq, r: MoveResult): MoveResult {
+export function checked(e: Eq, r: MoveResult): CheckedResult {
   if (isErr(r)) return r;
   const rel = relAfter(e, r);
   if (typeof rel !== 'string') return rel;
@@ -750,7 +763,7 @@ export function checked(e: Eq, r: MoveResult): MoveResult {
     console.error('[algebrix] refused move', r.label, problem);
     return { error: r.ifRefused ?? 'The engine refused this: it would not keep the equation true.' };
   }
-  return r;
+  return r as Checked;
 }
 
 /** what a move would do, before the safety net checks it: cheap, for hints that only need the label */
@@ -758,12 +771,12 @@ export function previewMove(name: MoveName, e: Eq, sel: string | null): MoveResu
   return MOVES[name](e, sel);
 }
 
-export function applyMove(name: MoveName, e: Eq, sel: string | null): MoveResult {
+export function applyMove(name: MoveName, e: Eq, sel: string | null): CheckedResult {
   const r = checked(e, MOVES[name](e, sel));
   return isErr(r) ? r : { ...r, rule: r.rule ?? name };
 }
 
-export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): MoveResult {
+export function applyBothChecked(e: Eq, text: string, others: Eq[] = []): CheckedResult {
   return checked(e, applyBoth(e, text, others));
 }
 

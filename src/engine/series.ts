@@ -4,7 +4,7 @@
 // out is general too: in any sum, pieces that add to 0 are struck (in any product, a factor on top
 // that equals one underneath), and the ⋯ of a telescoping Σ is struck with the pieces it cancels.
 import { Node, Eq, Sum, Env, num, sym, add, neg, mul, frac, lim, sum, findPath, replace, evaluate, symbols, cloneFresh, walk, children, withChildren } from './ast';
-import { MoveResult, MoveOk, checked } from './moves';
+import { CheckedResult, Checked, MoveOk, checked } from './moves';
 import { substitute, dependsOn } from './calculus';
 import { simplify, newHints } from './simplify';
 import { toText } from './print';
@@ -146,11 +146,11 @@ function edgeWidth(host: Node, D: Sum, end: 'start' | 'end'): number {
   return got.length === w && same(got.length === 1 ? got[0] : host.k === 'add' ? add(got) : mul(got), t, E) ? w : 1;
 }
 
-const ok = (e: Eq, host: Node, next: Node, label: string, select: string | null = null, extra: Partial<MoveOk> = {}): MoveResult =>
+const ok = (e: Eq, host: Node, next: Node, label: string, select: string | null = null, extra: Partial<MoveOk> = {}): CheckedResult =>
   checked(e, { eq: replace(e, host.id, next), label, hints: newHints(), factor: one, select, rule: label, ...extra });
 
 /** Σ or ∏ written out with ⋯ */
-export function writeOutDots(e: Eq, sel: string | null): MoveResult {
+export function writeOutDots(e: Eq, sel: string | null): CheckedResult {
   const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
   let S = path ? ([...path].reverse().find(n => n.k === 'sum' && !n.dots) as Sum | undefined) : undefined;
   if (!S) walk(e, n => { if (!S && n.k === 'sum' && !n.dots) S = n; });
@@ -160,7 +160,7 @@ export function writeOutDots(e: Eq, sel: string | null): MoveResult {
 }
 
 /** one more term out of the ⋯, at its start or its end */
-export function moreTerms(e: Eq, sel: string | null, end: 'start' | 'end'): MoveResult {
+export function moreTerms(e: Eq, sel: string | null, end: 'start' | 'end'): CheckedResult {
   const w = written(e, sel);
   if (!w) return { error: 'Write a Σ out first (it shows ⋯).' };
   const { host, D } = w;
@@ -178,7 +178,7 @@ export function moreTerms(e: Eq, sel: string | null, end: 'start' | 'end'): Move
 }
 
 /** a term next to the ⋯ goes back into it */
-export function fewerTerms(e: Eq, sel: string | null, end: 'start' | 'end'): MoveResult {
+export function fewerTerms(e: Eq, sel: string | null, end: 'start' | 'end'): CheckedResult {
   const w = written(e, sel);
   if (!w) return { error: 'Write a Σ out first (it shows ⋯).' };
   const { host, D } = w;
@@ -192,7 +192,7 @@ export function fewerTerms(e: Eq, sel: string | null, end: 'start' | 'end'): Mov
 }
 
 /** all the terms next to the ⋯ that belong to it go back in: one Σ again */
-export function foldBack(e: Eq, sel: string | null): MoveResult {
+export function foldBack(e: Eq, sel: string | null): CheckedResult {
   const w = written(e, sel);
   if (!w) return foldTerms(e, sel);
   const { host, D } = w;
@@ -386,7 +386,7 @@ const mark = (n: Node, ids: Set<string>): Node => {
 };
 
 /** strike what cancels, in the aimed sum or product (or the one holding the ⋯) */
-export function crossOut(e: Eq, sel: string | null): MoveResult {
+export function crossOut(e: Eq, sel: string | null): CheckedResult {
   const w = written(e, sel);
   const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
   const host = w?.host ?? (path ? [...path].reverse().find(n => n.k === 'add' || n.k === 'mul') : null) ?? (() => { let h: Node | null = null; walk(e, n => { if (!h && (n.k === 'add' || n.k === 'mul')) h = n; }); return h; })();
@@ -396,11 +396,11 @@ export function crossOut(e: Eq, sel: string | null): MoveResult {
   if (!p) return { error: host.k === 'mul' ? 'Nothing on top matches anything underneath.' : 'No two pieces here add to 0.' };
   const ids = new Set(p.struck);
   if (p.dots) ids.add(p.dots.id);
-  return { eq: replace(e, host.id, mark(host, ids)) as Eq, label: 'cross out what cancels', hints: newHints(), factor: one, select: host.id, rule: 'cross out what cancels' };
+  return checked(e, { eq: replace(e, host.id, mark(host, ids)) as Eq, label: 'cross out what cancels', hints: newHints(), factor: one, select: host.id, rule: 'cross out what cancels' });
 }
 
 /** the struck pieces go (an auto step after crossing out); an infinite ⋯ leaves its limit */
-export function dropStruck(e: Eq): MoveResult | null {
+export function dropStruck(e: Eq): CheckedResult | null {
   let host: Node | null = null;
   walk(e, n => { if (!host && (n.k === 'add' || n.k === 'mul') && partsOf(n).some(t => t.struck || children(t).some(c => c.struck))) host = n; });
   if (!host) return null;
@@ -539,7 +539,7 @@ function alternating(ts: Node[], v: string): Node | null {
 }
 
 /** typed terms with a pattern (1 + 1/4 + 1/9 + …): one Σ again */
-export function foldTerms(e: Eq, sel: string | null): MoveResult {
+export function foldTerms(e: Eq, sel: string | null): CheckedResult {
   const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
   const host = (path ? [...path].reverse().find(n => n.k === 'add' || n.k === 'mul') : null) ?? null;
   if (!host) return { error: 'Aim at written-out terms (a sum or a product) to fold them into Σ.' };
@@ -570,9 +570,9 @@ export function indexOf(g: Node, v: string, t: Node, upTo = 100000): Node | null
 export { dependsOn };
 
 /** the Tab forms of a written-out Σ/∏ (or a Σ to write out, or terms to fold) */
-export function seriesForms(e: Eq, sel: string | null): MoveOk[] {
-  const out: MoveOk[] = [];
-  const take = (r: MoveResult) => { if (!('error' in r)) out.push(r); };
+export function seriesForms(e: Eq, sel: string | null): Checked[] {
+  const out: Checked[] = [];
+  const take = (r: CheckedResult) => { if (!('error' in r)) out.push(r); };
   if (written(e, sel)) {
     take(moreTerms(e, sel, 'start'));
     take(moreTerms(e, sel, 'end'));

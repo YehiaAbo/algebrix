@@ -4,7 +4,7 @@ import { find, relOf, key, Eq, Node, Sum, symbols, walk, int, num, lim, cloneFre
 import { toText } from '../engine/print';
 import { parseExpr } from '../engine/parse';
 import { odeKind, separate, linearSteps, generalSolution } from '../engine/ode';
-import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
+import { isErr, Checked, CheckedResult, checked } from '../engine/moves';
 import { expandAll } from '../engine/rewrite';
 import { simplify, newHints } from '../engine/simplify';
 import { frac } from '../engine/ast';
@@ -140,7 +140,7 @@ export function calcTechniques(this: App): Tech[] {
     if (host) for (const f of sumForms(host)) {
       const key = SK[f.name] ?? (f.name.includes('+') ? 'h' : f.name.startsWith('shift') ? 'H' : '');
       if (!key) continue;
-      const mk = (e2: Eq, sel2: string | null): MoveResult => { const S = sumAt(e2, sel2); const g = S && sumForms(S).find(x => x.name === f.name); return S && g ? checked(e2, { eq: replace(e2, S.id, g.node), label: g.name, hints: newHints(), factor: () => 1, select: g.node.id, rule: g.name, conditions: g.conditions }) : { error: 'No sum here.' }; };
+      const mk = (e2: Eq, sel2: string | null): CheckedResult => { const S = sumAt(e2, sel2); const g = S && sumForms(S).find(x => x.name === f.name); return S && g ? checked(e2, { eq: replace(e2, S.id, g.node), label: g.name, hints: newHints(), factor: () => 1, select: g.node.id, rule: g.name, conditions: g.conditions }) : { error: 'No sum here.' }; };
       const r = mk(eq, sel);
       add('Series', { key, label: f.name, ok: !isErr(r), move: r, run: () => this.apply(mk(this.eq, this.sel), 1.05) });
     }
@@ -262,7 +262,7 @@ export function finishCalculus(this: App) {
     if (rel === 'expr' || rel === 'def') {
       // the tidiest of simplified and expanded: 1/(x + 1)², not 1/(x² + 2x + 1); never a longer expansion
       const len = (e: Eq) => toText(e).length;
-      const cands: MoveOk[] = formsFor(this.eq, null).filter(x => x.name === 'simplified' || x.name === 'expanded');
+      const cands: Checked[] = formsFor(this.eq, null).filter(x => x.name === 'simplified' || x.name === 'expanded');
       // a quotient rule's answer: multiply out the top only, so e^x/(1 + e^x)² keeps its bottom
       const side = rel === 'def' ? 'rhs' : 'lhs', L = this.eq[side];
       if (L.k === 'frac') {
@@ -276,7 +276,7 @@ export function finishCalculus(this: App) {
         const top = checked(this.eq, { eq: side === 'lhs' ? mkEq(T, this.eq.rhs, this.eq.rel) : mkEq(this.eq.lhs, T, this.eq.rel), label: 'simplified', hints: h, factor: () => 1, select: null });
         if (!isErr(top) && key(top.eq) !== key(this.eq)) cands.push(top);
       }
-      const f = cands.sort((a, b) => len(a.eq) - len(b.eq))[0] as (MoveOk & { name?: string }) | undefined;
+      const f = cands.sort((a, b) => len(a.eq) - len(b.eq))[0] as (Checked & { name?: string }) | undefined;
       if (f && !(f.name === 'expanded' && len(f.eq) > len(this.eq))) return this.apply(f, 1.15);
       const t = tidy(this.eq);
       if (t && key(t.eq) !== key(this.eq)) this.applyTidy({ ...t, auto: true, label: 'simplify' }, 1.2);
@@ -298,11 +298,11 @@ export function finishCalculus(this: App) {
   // sub them in), each in the tree, and then e carries on in u
   const iu = steps.findIndex(st => st.rule === 'u-substitution');
   if (iu >= 0 && this.slots.length < 8) {
-    const go = () => { if (!this.uSubShortcut(() => this.finishCalculus())) this.play(steps.slice(iu) as MoveOk[], then); };
+    const go = () => { if (!this.uSubShortcut(() => this.finishCalculus())) this.play(steps.slice(iu) as Checked[], then); };
     if (iu === 0) return go();
-    return this.play(steps.slice(0, iu) as MoveOk[], go);
+    return this.play(steps.slice(0, iu) as Checked[], go);
   }
-  this.play(steps as MoveOk[], then);
+  this.play(steps as Checked[], then);
 }
 
 

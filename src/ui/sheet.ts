@@ -3,7 +3,7 @@
 // conditions add up, nine equations at most, nothing you tried is lost) are unit-tested on their own.
 import { Eq, symbols, isIneq, key } from '../engine/ast';
 import { solveInequality } from '../engine/inequality';
-import { direction, MoveOk, solvedFor } from '../engine/moves';
+import { direction, Checked, solvedFor } from '../engine/moves';
 import { Link, Slot, Step } from './shared';
 import { ensureIds, keepLine, linesOf, newId, switchLine } from './tree';
 
@@ -29,7 +29,7 @@ export function place(s: Sheet, eq: Eq, asNew: boolean, from?: Link): string | n
  *  answer written out. The steps after the current one leave the line you're on but stay in the
  *  tree; a move that gives the same as a step already taken from here goes back to that step
  *  (out.again) instead of copying it. link: the step in another equation the move used */
-export function addStep(s: Sheet, r: MoveOk, opts: { link?: Link | null; out?: { again: boolean; back?: number } } = {}): Step {
+export function addStep(s: Sheet, r: Checked, opts: { link?: Link | null; out?: { again: boolean; back?: number } } = {}): Step {
   const slot = s.slots[s.cur];
   ensureIds(slot);
   const path = slot.steps.slice(0, slot.at + 1), k = key(r.eq);

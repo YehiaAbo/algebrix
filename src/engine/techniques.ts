@@ -7,7 +7,7 @@ import { Rat, negate, isNeg, coefOf, gcd, rat, rmul, rdiv, radd, termInfo, build
 import { simplify, newHints, nonneg as isNonneg } from './simplify';
 import { expandAll, hasExpandable, findExpandable, factorCommon, factorize, polyOf, standardOrder } from './rewrite';
 import { toText } from './print';
-import { MoveOk, MoveResult, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked, neverZero } from './moves';
+import { MoveOk, MoveResult, CheckedResult, Checked, isErr, moveAcross, divideBoth, multiplyBoth, swapSides, checked, solvedFor, applyBothChecked, neverZero } from './moves';
 import { factorFully } from './polytools';
 import { logRules } from './forms';
 
@@ -273,7 +273,7 @@ export function peel(e: Eq, sel: string | null): MoveResult {
 }
 
 /** "Move it across": the engine picks the inverse operation from what is aimed. */
-export function moveAny(e: Eq, sel: string | null): MoveResult {
+export function moveAny(e: Eq, sel: string | null): CheckedResult {
   // every path goes through checked(), which also carries an inequality's sign (flipping it when needed)
   const r = moveAnyRaw(e, sel);
   return isErr(r) ? r : checked(e, r);
@@ -317,7 +317,7 @@ export function isSubject(e: Eq, n: Node): boolean {
   return !!other && subject(n, other) && !(n === e.rhs && subject(e.lhs, e.rhs));
 }
 
-export function tidy(e: Eq): MoveOk | null {
+export function tidy(e: Eq): Checked | null {
   const h = newHints();
   const next = eq(isSubject(e, e.lhs) ? e.lhs : simplify(e.lhs, h), isSubject(e, e.rhs) ? e.rhs : simplify(e.rhs, h));
   if (key(next) === key(e)) return null;
@@ -369,7 +369,7 @@ const toSub = (s: string) => s.replace(/[0-9]/g, d => '₀₁₂₃₄₅₆₇�
 
 /* ---------- isolate a variable: a short chain of moves ---------- */
 /** Multiply both sides by the LCD of the number denominators, then expand. */
-export function clearFractions(e: Eq, v?: string): MoveOk | null {
+export function clearFractions(e: Eq, v?: string): Checked | null {
   let L = 1, holds = !v;
   walk(e, n => {
     if (n.k === 'frac' && n.den.k === 'num' && Number.isInteger(n.den.v) && n.den.v > 1) {
@@ -387,7 +387,7 @@ export function clearFractions(e: Eq, v?: string): MoveOk | null {
 
 /** 1/(x − 1) + 1/(x + 1) = 1: × every bottom with the letter in it, so what is left has no fractions.
  *  Each bottom can't be 0, which is noted; an answer that makes one 0 is caught by the check. */
-export function clearLetterFractions(e: Eq, v: string): MoveOk | null {
+export function clearLetterFractions(e: Eq, v: string): Checked | null {
   if (relOf(e) !== '=') return null;
   const dens: Node[] = [];
   walk(e, n => { if (n.k === 'frac' && has(n.den, v) && !dens.some(d => key(d) === key(n.den))) dens.push(n.den); });
@@ -434,7 +434,7 @@ export function clearLetterFractions(e: Eq, v: string): MoveOk | null {
 /** Quadratic in v: everything to one side, then factor, else complete the square. */
 /** a cubic or higher (x³ = 4x): everything on one side, then factor, so it splits into cases.
  *  Null when it doesn't factor into pieces with the letter in them */
-function factorAll(e: Eq, v: string): MoveOk[] | null {
+function factorAll(e: Eq, v: string): Checked[] | null {
   const h = newHints();
   let zero = simplify(expandAll(add([e.lhs, negate(fresh(e.rhs))]), h), h);
   let P = polyOf(zero);
@@ -445,7 +445,7 @@ function factorAll(e: Eq, v: string): MoveOk[] | null {
   const hf = newHints();
   const f = factorFully(zero, hf);
   if (!f || f.k !== 'mul' || f.factors.filter(x => has(x, v)).length < 2) return null;
-  const out: MoveOk[] = [];
+  const out: Checked[] = [];
   let cur = e;
   if (!(e.rhs.k === 'num' && e.rhs.v === 0 && key(zero) === key(e.lhs))) {
     const r = checked(cur, { eq: eq(zero, num(0)), label: 'everything on one side', hints: h, factor: () => flip, select: null });
@@ -458,7 +458,7 @@ function factorAll(e: Eq, v: string): MoveOk[] | null {
   return out;
 }
 
-function quadratic(e: Eq, v: string): MoveOk[] | null {
+function quadratic(e: Eq, v: string): Checked[] | null {
   const h = newHints();
   let zero = simplify(expandAll(add([e.lhs, negate(fresh(e.rhs))]), h), h);
   let P = polyOf(zero);
@@ -466,7 +466,7 @@ function quadratic(e: Eq, v: string): MoveOk[] | null {
   let flip = 1;
   if (P.c[2].p < 0) { zero = simplify(expandAll(add([e.rhs, negate(fresh(e.lhs))]), h), h); P = polyOf(zero)!; flip = -1; }
   zero = standardOrder(zero) ?? zero;
-  const out: MoveOk[] = [];
+  const out: Checked[] = [];
   let cur = e;
   if (!(e.rhs.k === 'num' && e.rhs.v === 0 && key(zero) === key(e.lhs))) {
     const r = checked(cur, { eq: eq(zero, num(0)), label: 'everything on one side', hints: h, factor: () => flip, select: null });
@@ -540,14 +540,14 @@ function noNiceFactors(cur: Eq, v: string, c: Rat[]): string {
   return `${zero} has no nice factors, so there is no exact step to take. ${rs.length ? `It crosses zero at ${rs.join(' and ')} (the graph shows it).` : 'It never crosses zero.'}`;
 }
 
-export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
+export function isolate(e: Eq, v: string): Checked[] | { error: string } {
   if (!has(e, v)) return { error: `There is no ${v} in this equation.` };
   // |A| = |B| is two cases as it stands: A = B or A = −B
   const bars = (n: Node) => n.k === 'fn' && n.name === 'abs';
   if (relOf(e) === '=' && bars(e.lhs) && bars(e.rhs)) return [];
-  const steps: MoveOk[] = [];
+  const steps: Checked[] = [];
   let cur = e;
-  const take = (r: MoveOk) => { steps.push(r); cur = r.eq; };
+  const take = (r: Checked) => { steps.push(r); cur = r.eq; };
   // a tidy you couldn't see isn't a step of its own: it folds into the move before it
   const tidyUp = () => {
     const td = tidy(cur);
@@ -721,7 +721,7 @@ export function isolate(e: Eq, v: string): MoveOk[] | { error: string } {
 
 /** e²ˣ − eˣ − 6 = 0 is u² − u − 6 with u = eˣ, and x^(2/3) − 5x^(1/3) + 6 with u = x^(1/3):
  *  factor it as that quadratic (or cubic), keeping the power, so it splits into cases */
-export function powerQuadratic(e: Eq, v: string): MoveOk | null {
+export function powerQuadratic(e: Eq, v: string): Checked | null {
   if (relOf(e) !== '=') return null;
   const h = newHints();
   const zero = simplify(expandAll(add([fresh(e.lhs), negate(fresh(e.rhs))]), h), h);
@@ -767,7 +767,7 @@ function negAll(n: Node): Node {
 
 /* ---------- cases: |X| = B and A·B = 0 ---------- */
 
-export interface Cases { first: MoveOk; rest: Eq[]; why: string }
+export interface Cases { first: Checked; rest: Eq[]; why: string }
 
 /** Split an equation into several simpler ones, if it has that shape. */
 export function splitCases(e: Eq, v?: string): Cases | null {
@@ -943,7 +943,7 @@ export function splitAbs(e: Eq): { a: MoveOk; b: Eq } | { error: string } {
 
 /* ---------- a possible simplification, offered instead of done automatically ---------- */
 
-export interface Spot { node: string; marks: string[]; move: MoveOk }
+export interface Spot { node: string; marks: string[]; move: Checked }
 
 /** The smallest piece that would simplify, the parts that would change, and the move that does it. */
 const hasCalcNode = (n: Node) => { let f = false; walk(n, m => { if (['deriv', 'lim', 'int', 'at', 'sum', 'grad'].includes(m.k)) f = true; }); return f; };
@@ -1002,7 +1002,7 @@ const ratText = (x: number): string | null => {
   return null;
 };
 
-export function eliminate(e: Eq, other: Eq, j: number, v?: string): MoveResult {
+export function eliminate(e: Eq, other: Eq, j: number, v?: string): CheckedResult {
   const shared = symbols(e).filter(s => symbols(other).includes(s));
   // the variable that cancels most simply goes first: a ratio of 1, then whole numbers
   const cost = (name: string) => {
@@ -1078,8 +1078,8 @@ function polyCoeffs(n: Node, v: string): Node[] | null {
 /** Tab e, compare coefficients: an equation that holds for every v (1 = A(x + 2) + B(x + 1)) is
  *  one equation for each power of v (0 = A + B, 1 = 2A + B). The first replaces this one; the
  *  rest come back to go beside it. */
-export function compareCoefficients(e: Eq, v: string): { first: MoveResult; rest: Eq[] } {
-  const none = (error: string) => ({ first: { error } as MoveResult, rest: [] as Eq[] });
+export function compareCoefficients(e: Eq, v: string): { first: CheckedResult; rest: Eq[] } {
+  const none = (error: string) => ({ first: { error } as CheckedResult, rest: [] as Eq[] });
   if (relOf(e) !== '=') return none('Comparing coefficients needs an equation (=).');
   const L = polyCoeffs(e.lhs, v), R = polyCoeffs(e.rhs, v);
   if (!L || !R) return none(`Both sides need to be polynomials in ${v} to compare coefficients.`);

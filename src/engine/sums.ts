@@ -4,7 +4,7 @@
 // Σ k, Σ k², Σ k³, geometric, telescoping, Σ xⁿ/n!, Σ 1/n², and ∏ k = n!. Every one is checked by
 // value, with the letters in the bounds put to whole numbers.
 import { Node, Eq, Sum, num, sym, add, neg, mul, frac, pow, fn, lim, sum, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env } from './ast';
-import { MoveResult, checked, isErr } from './moves';
+import { CheckedResult, checked, isErr } from './moves';
 import { dependsOn, substitute, derivative } from './calculus';
 import { simplify, newHints } from './simplify';
 import { toText } from './print';
@@ -100,7 +100,7 @@ function powerOfIndex(a: Node, v: string): number | null {
 }
 
 /** C + k on a Σ or ∏: the known value, when one fits */
-export function knownSum(e: Eq, sel: string | null): MoveResult {
+export function knownSum(e: Eq, sel: string | null): CheckedResult {
   const S = target(e, sel);
   if (!S) return { error: 'No sum here.' };
   const v = S.v, a = S.arg;

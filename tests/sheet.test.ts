@@ -3,10 +3,11 @@ import { describe, it, expect } from 'vitest';
 import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { newHints } from '../src/engine/simplify';
-import { MoveOk } from '../src/engine/moves';
+import { MoveOk, Checked } from '../src/engine/moves';
 import { Sheet, place, addStep, undo, redo, removeCurrent, eqOf, MAX_EQUATIONS, areCases } from '../src/ui/sheet';
 
-const move = (src: string, extra: Partial<MoveOk> = {}): MoveOk => ({ eq: parseEquation(src), label: src, hints: newHints(), factor: () => 1, ...extra });
+// the sheet's bookkeeping is tested here, not the maths: these steps stand in for checked ones
+const move = (src: string, extra: Partial<MoveOk> = {}): Checked => ({ eq: parseEquation(src), label: src, hints: newHints(), factor: () => 1, ...extra }) as Checked;
 const start = (src: string): Sheet => { const s: Sheet = { slots: [], cur: 0 }; place(s, parseEquation(src), true); return s; };
 const now = (s: Sheet) => toText(eqOf(s, s.cur));
 

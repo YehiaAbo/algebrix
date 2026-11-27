@@ -7,7 +7,7 @@ import { polyOf } from '../engine/rewrite';
 import { setDomains, Domain } from '../engine/moves';
 import { toText } from '../engine/print';
 import { sameEverywhere } from '../engine/general';
-import { isErr, solvedFor, checked, MoveOk, MoveResult } from '../engine/moves';
+import { isErr, solvedFor, checked, Checked, CheckedResult, introduced } from '../engine/moves';
 import { newHints } from '../engine/simplify';
 import { absorbConstant, shareExponential, renameConstant } from '../engine/ode';
 import { negate } from '../engine/terms';
@@ -45,12 +45,12 @@ export function solveFor(this: App, v: string) {
     if (!linear) {
       const s = solveInequality(this.eq, v);
       if ('error' in s) { this.refuse(s.error); return; }
-      this.apply({ eq: this.eq, label: 'sign chart', hints: { absorbs: new Map(), flights: [] }, factor: () => 1, answer: s.text, rule: 'sign chart' }, 1.1);
+      this.apply(introduced({ eq: this.eq, label: 'sign chart', hints: { absorbs: new Map(), flights: [] }, factor: () => 1, answer: s.text, rule: 'sign chart' }, 'an answer'), 1.1);
       return;
     }
   }
   // v inside a function you defined (g(x) = 7): its definition goes in first, then solve as usual
-  const pre: MoveOk[] = [];
+  const pre: Checked[] = [];
   let cur = this.eq;
   for (let i = 0; i < 6; i++) {
     let c: Node | null = null;
@@ -78,9 +78,9 @@ export function afterSolve(this: App, v: string, why?: string) {
   if (solvedFor(this.eq) === v) {
     // 2C is just C; an exponential bottom over a sum reads better shared out: e^x/3 + Ce^(−2x)
     // and a sum reads from its plus term: C − x², not −x² + C
-    const steps: MoveOk[] = [];
+    const steps: Checked[] = [];
     let cur = this.eq;
-    const take = (r: MoveResult | null, label?: string) => { if (r && !isErr(r) && key(r.eq) !== key(cur)) { steps.push({ ...r, auto: true, ...(label ? { label } : {}) }); cur = r.eq; } };
+    const take = (r: CheckedResult | null, label?: string) => { if (r && !isErr(r) && key(r.eq) !== key(cur)) { steps.push({ ...r, auto: true, ...(label ? { label } : {}) }); cur = r.eq; } };
     if (!ownC(this)) take(renameConstant(cur));
     take(shareExponential(cur));
     take(tidy(cur), 'simplify');
@@ -88,7 +88,7 @@ export function afterSolve(this: App, v: string, why?: string) {
     // sin x = 1/2: π/6 is one solution; say all of them
     const peeled = this.steps.find(st => /^(sin|cos|tan)⁻¹ both sides$/.test(st.label));
     const every = peeled ? everyTrigSolution(peeled.eq, cur, v) : null;
-    if (every) { if (steps.length) steps[steps.length - 1].answer = every; else steps.push({ eq: cur, label: 'every solution', hints: newHints(), factor: () => 1, select: null, answer: every }); }
+    if (every) { if (steps.length) steps[steps.length - 1].answer = every; else steps.push(introduced({ eq: cur, label: 'every solution', hints: newHints(), factor: () => 1, select: null, answer: every }, 'an answer')); }
     if (steps.length) this.play(steps);
     return;
   }

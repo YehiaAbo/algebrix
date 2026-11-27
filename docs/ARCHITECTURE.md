@@ -44,7 +44,8 @@ Example: the aim is on `3` in `2x + 3 = 7` and the person presses `m`.
    a label ("move across"), `hints` (which glyphs merge into which, which fly where), `factor`
    (how lhs − rhs scaled), optional `conditions`, `select` (what to aim at after).
 3. The engine runs `checked(before, result)` (`engine/moves.ts`): the relation is recomputed and
-   `verify()` evaluates both equations at seeded sample points. A mismatch becomes `{ error }`.
+   `verify()` evaluates both equations at seeded sample points. A mismatch becomes `{ error }`. What
+   passes is typed `Checked`, the only kind of move `App.apply` and `sheet.addStep` accept.
 4. `App.apply(result)` (`ui/app.ts`): refusal → resist + low sound + reason in the bar. Otherwise
    `sheet.addStep` records the step (undo, redo, conditions, the work tree), `nav.aimAfter` moves the
    aim onto what changed, then `renderAll` draws.
@@ -168,6 +169,9 @@ Ranked by how much each slows down every future change. Each has evidence from t
    remember to call `checked()` (about 95 call sites). Forgetting once ships an unchecked move, which
    breaks the rule "never ship a move not covered by the numeric check". It also leads to checking
    the same move twice (menus compute it to preview, `run` recomputes and re-checks it).
+   *Fixed in slice 2:* making it a type found four steps that reached the work unchecked (cross out,
+   plug in when the limit is ∞, and two limit answers), now checked, and five naming steps, now
+   marked as definitions.
 5. **Hidden global state in the engine.** `DEFS`, `LETS`, `DOMAINS` and friends live in module scope and
    are synced by the UI. Results depend on what was synced last; caches need `defsSig`.
 6. **Files grouped by history, not by concept.** `techniques.ts` holds the f menu's UI list, solving,
@@ -280,11 +284,17 @@ interface Ask { prompt: string; prefill?: string; hint: string; preview(text: st
 type Mode = { k: 'solve' } | { k: 'write' } | { k: 'labels' } | { k: 'box'; ask: Ask } | { k: 'menu'; spec: MenuSpec; state: MenuState }
 ```
 
-### 8.3 One gate for the safety net
+### 8.3 One gate for the safety net (done, slice 2)
 
-`checked()` returns a branded type (`Checked`), and `sheet.addStep` and `App.apply` accept only that.
-An unchecked move then fails to compile instead of failing silently. A result is checked once; menus
-preview and apply the same object.
+`checked()` returns a branded type (`Checked`, `CheckedResult` with errors), and `sheet.addStep`,
+`App.apply` and `App.play` accept only that. An unchecked move fails to compile instead of slipping in.
+Engine functions that return a finished step are typed `CheckedResult`; raw builders that a caller
+checks (the `MOVES` table, `wrapBoth`, `applyFn`, `peel`, `substitute`) stay `MoveResult`.
+Two other producers, both in `engine/moves.ts` and easy to audit with grep:
+- `strictly(before, r)`: the numbers alone, no fallback and no log, for trying many candidates (Tab's forms).
+- `introduced(r, 'a definition' | 'an answer')`: steps that claim nothing the numbers could test (b's
+  definitions, an answer read off an unchanged equation). Seven uses today.
+Still to do (slice 7): menus preview and apply the same checked object instead of computing it twice.
 
 ### 8.4 Engine context in one place
 
@@ -354,7 +364,7 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 |---|---|---|
 | 0 | Baseline: record tests, e2e, chaos, menu-open times, bundle size (below). | numbers in this file |
 | 1 | **Done.** `e2e/menus.e2e.mjs`: for each menu on a corpus, cards never overlap or get cut, every card is reachable by arrows, ↓ goes down a line, open under budget. Today's breaks are listed in its `KNOWN` set (issues 2 and 3, Tab's chips and f's i b - chips unreachable, slow Tab and C on I(t)); the list may only shrink. | each later slice takes entries off `KNOWN` |
-| 2 | `Checked` gate (8.3). | types enforce it; no behaviour change |
+| 2 | **Done.** `Checked` gate (8.3). | types enforce it; four unchecked steps now checked |
 | T1 | Player, first cut (8.7 points 1, 2, 5): hands and shortcuts settings on the current bank, triage report grouped by signature. | coverage numbers for the 366 problems, grouped causes |
 | T2 | Problem scouting: 500+ new problems with sympy-checked answers and routes for the competition ones. | bank grows, every answer checked outside Algebrix |
 | T3 | Recorder of your play (8.7 point 4) and weird play (point 3). | your traces replay as tests |
@@ -378,8 +388,9 @@ drawn, first open: Tab and C 4 to 65 ms, **about 170 ms** on `I(t) = ∫₀¹ (x
 How to make the common changes. Each names the one place to touch; if a change needs more places
 than listed, the architecture is missing something: say so instead of patching around it.
 
-- **A new move on a key:** engine function returning `MoveResult` and ending in `checked()`, with a test
-  in `tests/`; then one entry in `MOVE_KEYS` (`ui/shared.ts`) or the key switch in `ui/keys.ts`.
+- **A new move on a key:** engine function returning `CheckedResult` and ending in `checked()`, with a
+  test in `tests/`; then one entry in `MOVE_KEYS` (`ui/shared.ts`) or the key switch in `ui/keys.ts`.
+  The compiler refuses a move that skips the check.
 - **A new form (Tab, browse with preview):** a `push(name, next, hints)` in `engine/forms.ts formsFor`,
   and a chord in its `CHORDS` table if it gets a key.
 - **A new calculus technique (C):** today an entry in `calcTechniques()` (`ui/calc.ts`) under its

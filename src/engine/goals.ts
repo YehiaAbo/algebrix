@@ -1,6 +1,6 @@
 // What a piece of work is for: an identity to prove, a function to unfold or invert.
 import { Node, Eq, eq, sym, neg, call, cloneFresh, find, findPath, key, walk, evaluate, symbols, replace, Env, children, withChildren, paramsOf, argsOf } from './ast';
-import { MoveResult, checked, sampleIn, solvedFor, domainOf } from './moves';
+import { CheckedResult, checked, sampleIn, solvedFor, domainOf } from './moves';
 import { isolate } from './techniques';
 import { newHints } from './simplify';
 import { toText } from './print';
@@ -34,7 +34,7 @@ function substituteSym(n: Node, name: string, by: Node): Node {
 }
 
 /** f(a) → the body of f with a in place of its variable */
-export function unfold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
+export function unfold(e: Eq, sel: string | null, defs = defsOf()): CheckedResult {
   const aimed = sel && sel !== 'eq' ? find(e, sel) : null;
   let target: Node | null = aimed?.k === 'call' ? aimed : null;
   if (!target) walk(e, n => { if (!target && n.k === 'call' && defs.has(n.name)) target = n; });
@@ -72,7 +72,7 @@ function match(body: Node, p: string, n: Node, got: { a?: Node }): boolean {
 
 /** fold, unfold backwards: a piece written out like a function you defined becomes that function
  *  of something (∫₀¹ (x⁵ − 1)/ln x dx with I(t) = ∫₀¹ (xᵗ − 1)/ln x dx is I(5)) */
-export function fold(e: Eq, sel: string | null, defs = defsOf()): MoveResult {
+export function fold(e: Eq, sel: string | null, defs = defsOf()): CheckedResult {
   // the aimed piece or the smallest piece around it that folds; nothing aimed: the first that folds
   const path = sel && sel !== 'eq' ? findPath(e, sel) : null;
   const cands: Node[] = [];

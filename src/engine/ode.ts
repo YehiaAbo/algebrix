@@ -5,7 +5,7 @@
 // putting it into the equation.
 import { Node, Eq, num, sym, add, mul, neg, frac, pow, sqrt, fn, int, deriv, eq, evaluate, symbols, relOf, Env, primed, cloneFresh, children, withChildren, key, walk, replace } from './ast';
 import { derivative, dependsOn, substitute } from './calculus';
-import { checked, MoveOk, MoveResult, isErr, neverZero } from './moves';
+import { checked, CheckedResult, Checked, isErr, neverZero } from './moves';
 import { simplify, newHints } from './simplify';
 import { finishCalc, times, plus } from './calcmoves';
 import { ratNode } from './integrate';
@@ -124,7 +124,7 @@ function slopeOf(e: Eq, v?: string): { R: Node; a: Node } | null {
 /* ---------- separable ---------- */
 
 /** y′ = g(x)h(y) ⇒ ∫ 1/h(y) dy = ∫ g(x) dx */
-export function separate(e: Eq, v?: string): MoveResult {
+export function separate(e: Eq, v?: string): CheckedResult {
   const u = unknown(e, v);
   if (!u || u.order !== 1) return { error: 'Separating needs a first-order equation with y′ in it.' };
   const s = slopeOf(e, v);
@@ -185,13 +185,13 @@ function integratingFactor(P: Node, x: string): Node | { error: string } {
 }
 
 /** the integrating factor method, as steps: (standard form), × μ, (μy)′ = μQ, μy = ∫ μQ dx */
-export function linearSteps(e: Eq, v?: string): MoveOk[] | { error: string } {
+export function linearSteps(e: Eq, v?: string): Checked[] | { error: string } {
   const f = linearForm(e, v);
   if ('error' in f) return f;
   const { y, x, a, P, Q } = f, yp = primed(y);
-  const out: MoveOk[] = [];
+  const out: Checked[] = [];
   let cur = e;
-  const push = (r: MoveResult) => { if (isErr(r)) return r; out.push(r); cur = r.eq; return null; };
+  const push = (r: CheckedResult) => { if (isErr(r)) return r; out.push(r); cur = r.eq; return null; };
   const F = cloneFresh;
   const std = eq(plus(sym(yp), S(mul([F(P), sym(y)]))), F(Q));
   if (toText(std) !== toText(e)) {
@@ -380,7 +380,7 @@ export function generalSolution(e: Eq, v?: string): Eq | { error: string } {
  * |y| = e^(g + C) → y = C e^g, and |y| = |x|·e^C → y = Cx: ±e^C (and the sign of |x|) is just
  * another constant, so the cases are one family. Checked with the new C put to that ± e^(old C).
  */
-export function absorbConstant(e: Eq, y: string): MoveResult {
+export function absorbConstant(e: Eq, y: string): CheckedResult {
   const no = { error: 'Needs |y| = … e^(… + C).' };
   const [a, b] = e.lhs.k === 'fn' && e.lhs.name === 'abs' ? [e.lhs, e.rhs] : [e.rhs, e.lhs];
   if (relOf(e) !== '=' || a.k !== 'fn' || a.name !== 'abs' || a.arg.k !== 'sym' || a.arg.name !== y) return no;
@@ -407,7 +407,7 @@ export function absorbConstant(e: Eq, y: string): MoveResult {
 }
 
 /** y = sqrt(2C − x²) → y = sqrt(C − x²): any number times C is just another constant */
-export function renameConstant(e: Eq): MoveResult {
+export function renameConstant(e: Eq): CheckedResult {
   if (symbols(e).filter(v => v === 'C').length !== 1) return { error: 'No constant to rename.' };
   let k: number | null = null, at: Node | null = null;
   walk(e, n => {
@@ -427,7 +427,7 @@ export function renameConstant(e: Eq): MoveResult {
 }
 
 /** y = (e^(3x)/3 + C)/e^(2x) → y = e^x/3 + Ce^(−2x): an exponential bottom shared out over the top */
-export function shareExponential(e: Eq): MoveResult {
+export function shareExponential(e: Eq): CheckedResult {
   const side = e.rhs.k === 'frac' ? 'rhs' : e.lhs.k === 'frac' ? 'lhs' : null;
   const f = side ? e[side] : null;
   if (!f || f.k !== 'frac' || f.num.k !== 'add') return { error: 'Nothing to share out.' };

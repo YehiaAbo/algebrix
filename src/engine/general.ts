@@ -4,7 +4,7 @@
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
 import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim, holds, CALC } from './ast';
-import { MoveOk, MoveResult, checked, isErr, solvedFor, applyBothChecked, applyMove, sampleIn } from './moves';
+import { CheckedResult, Checked, introduced, checked, isErr, solvedFor, applyBothChecked, applyMove, sampleIn } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
 import { solvedForm } from './techniques';
@@ -65,7 +65,7 @@ export function brief(n: Node): string {
   return n.k === 'int' ? 'the integral' : n.k === 'sum' ? (n.prod ? 'the product' : 'the sum') : n.k === 'lim' ? 'the limit' : n.k === 'frac' ? 'the fraction' : 'the piece';
 }
 
-export interface Named { step: MoveOk; def: Eq; letter: string | null; inPlace?: boolean; folded?: boolean; note?: string }
+export interface Named { step: Checked; def: Eq; letter: string | null; inPlace?: boolean; folded?: boolean; note?: string }
 
 /** b: let a new letter, a function of a letter, or an expression stand for the aimed piece.
  *  - `u`: u = x² becomes an equation of its own, and x² is u here (every copy of it). Aimed at a
@@ -108,10 +108,10 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
     const body = swapAll(P, at, () => sym(p));
     const def = eq(call(F, sym(p)), fresh(body), 'def');
     const many0 = at.length > 1 ? ` (all ${at.length} of them)` : '';
-    if (side) return { step: { eq: def, label: `${F} is a function of ${p}, at ${p} = ${t(V)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null, inPlace: true, note: `${t(V)}${many0} became ${p}; you want ${F}(${t(V)})` };
+    if (side) return { step: introduced({ eq: def, label: `${F} is a function of ${p}, at ${p} = ${t(V)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, 'a definition'), def, letter: null, inPlace: true, note: `${t(V)}${many0} became ${p}; you want ${F}(${t(V)})` };
     const next = replace(e, P.id, call(F, fresh(V))) as Eq;
     const many = at.length > 1 ? ` (all ${at.length} of them)` : '';
-    return { step: { eq: next, label: `let ${F}(${p}) = ${brief(body)}, at ${p} = ${t(V)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null, note: `${t(V)}${many} became ${p}` };
+    return { step: introduced({ eq: next, label: `let ${F}(${p}) = ${brief(body)}, at ${p} = ${t(V)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, 'a definition'), def, letter: null, note: `${t(V)}${many} became ${p}` };
   }
 
   // a function of a letter: I(t)
@@ -123,7 +123,7 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
     if (side && relOf(e) === '=' && !taken.includes(F) && !DEFS.has(F) && !symbols(P).includes(F)) {
       if (!pieceLetters.includes(p)) return { error: notFnOf(P, F, p) };
       const def = eq(call(F, sym(p)), fresh(P), 'def');
-      return { step: { eq: def, label: `${F} is a function of ${p}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null, inPlace: true };
+      return { step: introduced({ eq: def, label: `${F} is a function of ${p}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, 'a definition'), def, letter: null, inPlace: true };
     }
     if (used.has(F) || DEFS.has(F)) return { error: `${F} is already in use. Pick another name.` };
     if (!pieceLetters.includes(p)) return { error: notFnOf(P, F, p) };
@@ -131,7 +131,7 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
     const next = replace(e, P.id, I()) as Eq;
     const def = eq(I(), fresh(P), 'def');
     // nothing to check by number: putting the definition back gives exactly what was there
-    return { step: { eq: next, label: `let ${F}(${p}) = ${brief(P)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: null };
+    return { step: introduced({ eq: next, label: `let ${F}(${p}) = ${brief(P)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, 'a definition'), def, letter: null };
   }
 
   // a new letter
@@ -159,7 +159,7 @@ export function nameIt(e: Eq, sel: string | null, text: string, taken: string[] 
   const at = copiesOf(e, P).filter(m => !(P.k === 'sym' && boundAt(e, m, P.name)));
   if (P.k === 'sym' && !at.length) {
     const def = eq(fresh(P), fresh(E));
-    return { step: { eq: e, label: `let ${t(P)} = ${brief(E)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, def, letter: P.name };
+    return { step: introduced({ eq: e, label: `let ${t(P)} = ${brief(E)}`, hints: newHints(), factor: one, select: null, rule: 'name it' }, 'a definition'), def, letter: P.name };
   }
   let next = swapAll(e, at, () => fresh(E)) as Eq;
   const ties: Record<string, Node> = {};
@@ -206,7 +206,7 @@ function intIn(e: Eq, sel: string | null, v?: string): Int | null {
  *  - a differential (du = 2x dx) with an integral in x here: dx becomes du/(2x), so the integral is in u;
  *  - else a letter src is solved for (y = 3, u = x²) is replaced by what it equals, or, when that
  *    letter isn't here, every copy of what it equals becomes the letter (x² → u). */
-export function subIn(e: Eq, src: Eq, sel: string | null, name: string): MoveResult {
+export function subIn(e: Eq, src: Eq, sel: string | null, name: string): CheckedResult {
   if (relOf(src) !== '=' && relOf(src) !== 'def') return { error: `${name} isn't an equation, so it says nothing to sub in.` };
   const aimed = sel && sel !== 'eq' ? find(e, sel) : null;
   if (aimed && aimed.k !== 'eq') {
@@ -304,7 +304,7 @@ function boundAt(e: Eq, m: Node, v: string): boolean {
 
 /** ∫ f dX with a·dX = b·dW (from differentiating a name): dX = (b/a) dW, so ∫ f·(b/a) dW.
  *  Bounds move with the name when the new letter is named from the old (u = g(x): g(lo), g(hi)). */
-function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: string, named: { g?: Node; h?: Node } = {}): MoveResult {
+function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: string, named: { g?: Node; h?: Node } = {}): CheckedResult {
   const X = dX.slice(1), W = dW.slice(1);
   // src is linear in the two differentials: lhs − rhs = A·dX + B·dW
   const D = add([cloneFresh(src.lhs), neg(cloneFresh(src.rhs))]);
@@ -533,7 +533,7 @@ export function valueVar(e: Eq, sel: string | null): string | null {
 /* ---------- ∫ both sides ---------- */
 
 /** C + i on an equation: ∫ … dv of both sides. One constant comes in when the last integral is done. */
-export function integrateBoth(e: Eq, v: string): MoveResult {
+export function integrateBoth(e: Eq, v: string): CheckedResult {
   // a definition is an equation too (I(t) = …): what follows from it is an ordinary one
   if (relOf(e) === 'def') e = eq(e.lhs, e.rhs);
   if (relOf(e) !== '=') return { error: 'Integrate both sides of an equation (=).' };
@@ -564,7 +564,7 @@ export function bothVar(e: Eq, sel: string | null): string | null {
 
 /** d of both sides as differentials: u = x² gives du = 2x dx, x = sin θ gives dx = cos θ dθ,
  *  x² + y² = 1 gives 2x dx + 2y dy = 0. Every letter on a side brings its own d. */
-export function differentialsBoth(e: Eq): MoveResult {
+export function differentialsBoth(e: Eq): CheckedResult {
   if (relOf(e) !== '=' && relOf(e) !== 'def') return { error: 'Take the differential of both sides of an equation (=).' };
   if (symbols(e).some(isDiff)) return { error: 'This is already in differentials.' };
   const vars = (n: Node) => symbols(n).filter(w => w !== 'C' && !w.endsWith('′'));
@@ -596,10 +596,10 @@ export function differentialsBoth(e: Eq): MoveResult {
 /* ---------- shortcuts, as chains of the moves above ---------- */
 
 /** separate the variables: write it in differentials, divide by the y part, tidy */
-export function separateChain(e: Eq, y: string, x: string): MoveOk[] | { error: string } {
+export function separateChain(e: Eq, y: string, x: string): Checked[] | { error: string } {
   const d = toDifferentials(e);
   if (isErr(d)) return d;
-  const steps: MoveOk[] = [d];
+  const steps: Checked[] = [d];
   const dy = 'd' + y, dx = 'd' + x;
   const R = d.eq.lhs.k === 'sym' && d.eq.lhs.name === dy ? d.eq.rhs : d.eq.lhs;
   const without = simplify(frac(cloneFresh(R), sym(dx)), newHints());
@@ -618,7 +618,7 @@ export function separateChain(e: Eq, y: string, x: string): MoveOk[] | { error: 
 }
 
 /** try y = e^(rx): name y, work out the slopes, take e^(rx) out, divide it away (it is never 0) */
-export function characteristicChain(e: Eq, y: string): MoveOk[] | { error: string } {
+export function characteristicChain(e: Eq, y: string): Checked[] | { error: string } {
   let yId: string | null = null;
   walk(e, n => { if (!yId && n.k === 'sym' && n.name === y) yId = n.id; });
   if (!yId) return { error: `There is no ${y} on its own here to try e^(rx) for.` };
@@ -626,7 +626,7 @@ export function characteristicChain(e: Eq, y: string): MoveOk[] | { error: strin
   const r = symbols(e).includes('r') ? 'm' : 'r';
   const n = nameIt(e, yId, `e^(${r}${x})`);
   if ('error' in n) return n;
-  const steps: MoveOk[] = [n.step];
+  const steps: Checked[] = [n.step];
   let cur = n.step.eq;
   const fc = finishCalc(cur);
   if (fc.stuck) return { error: fc.stuck };
@@ -657,7 +657,7 @@ export function characteristicChain(e: Eq, y: string): MoveOk[] | { error: strin
 /** Tab m: the aimed piece times A/A, which is 1. On a fraction A goes on top and below, each
  *  multiplied out (1/(1 + eˣ) with e⁻ˣ is e⁻ˣ/(e⁻ˣ + 1), ready for u = e⁻ˣ + 1); on anything
  *  else the piece becomes (piece·A)/A. Rationalizing and the conjugate trick are this move. */
-export function timesOne(e: Eq, sel: string | null, text: string): MoveResult {
+export function timesOne(e: Eq, sel: string | null, text: string): CheckedResult {
   let A: Node;
   try { A = parseExpr(text); } catch (err) { return { error: (err as Error).message }; }
   const T = sel && sel !== 'eq' ? find(e, sel) : null;
@@ -672,7 +672,7 @@ export function timesOne(e: Eq, sel: string | null, text: string): MoveResult {
 
 /** Tab + =: the aimed piece rewritten as the form you type (x² − 1 as (x − 1)(x + 1)), kept only if
  *  it is equal. Pieces you wrote again keep their identity, so they stay put and the rest moves. */
-export function rewriteAs(e: Eq, at: string | null, text: string): MoveResult {
+export function rewriteAs(e: Eq, at: string | null, text: string): CheckedResult {
   const target = at && at !== 'eq' ? find(e, at) : relOf(e) === 'expr' ? e.lhs : null;
   if (!target) return { error: 'Aim at the piece to rewrite first (i types over the whole line).' };
   if (!text.trim()) return { error: `Type the form you want for ${toText(target)}.` };

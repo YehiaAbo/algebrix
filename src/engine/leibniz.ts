@@ -4,7 +4,7 @@
 // dy = y′·dx, so those steps are checked with dy put to exactly that.
 import { Node, Eq, Env, sym, num, frac, pow, mul, eq, find, replace, walk, symbols, evaluate, primed, isDiff, isLeibniz2, relOf, int } from './ast';
 import { simplify, newHints } from './simplify';
-import { checked, MoveOk, MoveResult } from './moves';
+import { checked, MoveOk, CheckedResult } from './moves';
 import { splitXY } from './ode';
 import { toText } from './print';
 
@@ -57,7 +57,7 @@ function bridge(before: Eq, next: Eq, y: string, x: string, factor: (env: Env) =
 }
 
 /** y′ (aimed) → dy/dx */
-export function toLeibniz(e: Eq, id: string): MoveResult {
+export function toLeibniz(e: Eq, id: string): CheckedResult {
   const n = find(e, id);
   const L = letters(e);
   if (!n || n.k !== 'sym' || !/^[a-zA-Zα-ω][′″]$/.test(n.name) || !L) return { error: 'Aim at a y′ to write it as dy/dx.' };
@@ -68,7 +68,7 @@ export function toLeibniz(e: Eq, id: string): MoveResult {
 }
 
 /** dy/dx (aimed) → y′ */
-export function toPrime(e: Eq, id: string): MoveResult {
+export function toPrime(e: Eq, id: string): CheckedResult {
   const n = find(e, id);
   if (n && isLeibniz2(n) && n.k === 'frac' && n.num.k === 'sym' && n.den.k === 'pow' && n.den.base.k === 'sym') {
     const y = n.num.name.slice(2), x = n.den.base.name.slice(1), p = sym(y + '″');
@@ -83,7 +83,7 @@ export function toPrime(e: Eq, id: string): MoveResult {
 }
 
 /** y′ = R or dy/dx = R → dy = R dx: the slope split into differentials */
-export function toDifferentials(e: Eq): MoveResult {
+export function toDifferentials(e: Eq): CheckedResult {
   const L = letters(e);
   if (!L || relOf(e) !== '=') return { error: 'Differentials need an equation with y′ or dy/dx in it.' };
   const yp = primed(L.y);
@@ -97,7 +97,7 @@ export function toDifferentials(e: Eq): MoveResult {
 }
 
 /** A(y) dy = B(x) dx → ∫ A dy = ∫ B dx, once each side holds only its own letter */
-export function integrateDifferentials(e: Eq): MoveResult {
+export function integrateDifferentials(e: Eq): CheckedResult {
   const L = letters(e);
   if (!L || relOf(e) !== '=' || !hasDifferentials(e)) return { error: 'Integrating both sides needs dy on one side and dx on the other.' };
   const dy = 'd' + L.y, dx = 'd' + L.x;

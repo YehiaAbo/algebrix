@@ -2,7 +2,7 @@
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { Node, find, findPath } from '../engine/ast';
 import { toText } from '../engine/print';
-import { applyBothChecked, isErr, MoveResult, checked } from '../engine/moves';
+import { applyBothChecked, isErr, CheckedResult, checked } from '../engine/moves';
 import { areCases } from './sheet';
 import { wrapBoth, Wrap, fnTemplate, applyFn } from '../engine/techniques';
 import { parseExpr } from '../engine/parse';
@@ -55,7 +55,7 @@ export function openOp(this: App, op: string) {
   this.renderHints();
 }
 
-export function opResult(this: App): MoveResult {
+export function opResult(this: App): CheckedResult {
   const v = field('op-input').value.trim();
   if (v.length <= 1) return { error: 'Type what to apply, like 7 or 3x.' };
   const w = wrapOf(v);

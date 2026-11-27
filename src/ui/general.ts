@@ -7,7 +7,7 @@ import { parseExpr } from '../engine/parse';
 import { divideOut, polyTarget, factorGuess } from '../engine/polytools';
 import { newHints } from '../engine/simplify';
 import { toText } from '../engine/print';
-import { isErr, MoveOk, MoveResult, checked } from '../engine/moves';
+import { isErr, Checked, CheckedResult, checked } from '../engine/moves';
 import { nameIt, subIn, putValue, tryValue, valueParts, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne, rewriteAs } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
@@ -167,7 +167,7 @@ export function openDivide(this: App) {
   this.renderHints();
 }
 
-export function divideResult(this: App): MoveResult {
+export function divideResult(this: App): CheckedResult {
   const text = field('op-input').value.trim();
   const target = this.divideAt ? find(this.eq, this.divideAt) : null;
   if (!target) return { error: 'Aim at a polynomial first.' };
@@ -206,7 +206,7 @@ export function openRewrite(this: App) {
   this.renderHints();
 }
 
-export function asResult(this: App): MoveResult {
+export function asResult(this: App): CheckedResult {
   return rewriteAs(this.eq, this.asAt, field('op-input').value);
 }
 
@@ -233,7 +233,7 @@ export function openOne(this: App) {
   this.renderHints();
 }
 
-export function oneResult(this: App): MoveResult {
+export function oneResult(this: App): CheckedResult {
   const text = field('op-input').value.trim();
   if (!text) return { error: 'Type what goes on top and below: e^(-x), sqrt(x) - 1, …' };
   return timesOne(this.eq, this.oneAt, text);
@@ -335,7 +335,7 @@ export function namedLetters(this: App): Record<string, Node> {
 
 
 /** a step in another equation, without going there (a shortcut working on two equations) */
-export function stepIn(this: App, j: number, r: MoveOk) {
+export function stepIn(this: App, j: number, r: Checked) {
   const keep = this.cur;
   this.cur = j;
   sheet.addStep(this, r, {});

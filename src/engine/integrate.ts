@@ -5,7 +5,7 @@
 import { Node, Eq, Int, At, Sum, num, sym, add, mul, neg, frac, pow, fn, call, int, at, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env, children, withChildren, sqrt as sqrtN, linkedTo, LETS } from './ast';
 import { toText } from './print';
 import { dependsOn, derivative, substitute } from './calculus';
-import { checked, MoveOk, MoveResult, isErr, indefiniteVars, sampleIn } from './moves';
+import { checked, MoveOk, CheckedResult, isErr, indefiniteVars, sampleIn } from './moves';
 import { newHints, simplify } from './simplify';
 import { times, plus, prettyDerivative, knownNumber } from './calcmoves';
 import { partialFractions, longDivide, slopeSplit } from './polytools';
@@ -262,7 +262,7 @@ function noFormula(u: Node, v: string): string | null {
 }
 
 /** C + i: one integration rule on one integral */
-export function intStep(e: Eq, sel: string | null): MoveResult {
+export function intStep(e: Eq, sel: string | null): CheckedResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
   const ftc = !T.lo && T.arg.k === 'deriv' && T.arg.v === T.v && !T.arg.partial;
@@ -366,7 +366,7 @@ const sqrtCut = (x: number): Node | null => { const s = ratNode(Math.round(x * x
 const letDef = (u: string, v: string) => (LETS.has(u) ? `${u} = ${toText(LETS.get(u)!)}` : LETS.has(v) ? `${v} = ${toText(LETS.get(v)!)}` : `${u} depends on ${v}`);
 
 /** replace the integral, add + C when it was the last indefinite one, and check */
-function finish(e: Eq, T: Int, next: Node, label: string, extra: Partial<MoveOk> = {}): MoveResult {
+function finish(e: Eq, T: Int, next: Node, label: string, extra: Partial<MoveOk> = {}): CheckedResult {
   let out = replace(e, T.id, next);
   if (!(T.lo && T.hi) && !indefiniteVars(out).length && !symbols(out).includes('C')) {
     const inL = !!findPath(e.lhs, T.id);
@@ -381,7 +381,7 @@ function finish(e: Eq, T: Int, next: Node, label: string, extra: Partial<MoveOk>
 
 /** C + u: find the inside g whose derivative is there too, and integrate in u = g instead.
  *  Aim at the inside to choose it. The side equation u = g comes back with the step. */
-export function uSub(e: Eq, sel: string | null): { move: MoveResult; side?: Eq; u?: string; g?: Node } {
+export function uSub(e: Eq, sel: string | null): { move: CheckedResult; side?: Eq; u?: string; g?: Node } {
   const T = target(e, sel, 'int');
   if (!T) return { move: { error: 'No integral here.' } };
   const v = T.v, f = T.arg;
@@ -557,7 +557,7 @@ function triangle(n: Node): Node {
   return T[`${m.name} ${m.arg.name}`]?.() ?? m;
 }
 
-export function backSub(e: Eq, u: string, g: Node): MoveResult {
+export function backSub(e: Eq, u: string, g: Node): CheckedResult {
   const inverse = g.k === 'fn' && ['asin', 'acos', 'atan'].includes(g.name);
   const raw = substitute(e, u, g) as Eq;
   const next = inverse ? (fresh(tidy(triangle(raw))) as Eq) : raw;
@@ -579,7 +579,7 @@ function spread(x: Node): Node {
 /** √(k − m x²), √(k + m x²) or √(m x² − k) (or that to a half power): x = a sin θ, a tan θ or
  *  a sec θ, so the root is a cos θ, a sec θ or a tan θ, and dx comes along. One step that plays
  *  what b (x = 3 sin θ), C k and sub in do by hand. Returns θ and what it is in x, for going back. */
-export function trigSub(e: Eq, sel: string | null): { move: MoveResult; u?: string; g?: Node } {
+export function trigSub(e: Eq, sel: string | null): { move: CheckedResult; u?: string; g?: Node } {
   const T = target(e, sel, 'int');
   if (!T) return { move: { error: 'No integral here.' } };
   const v = T.v, f = T.arg;
@@ -629,7 +629,7 @@ export function trigSub(e: Eq, sel: string | null): { move: MoveResult; u?: stri
 /** the identity a trig integral needs before a rule or u-substitution fits:
  *  tan = sin/cos (so sec x tan x is sin x/cos² x, a u = cos x), and an odd power keeps one
  *  factor back: sin³ x = (1 − cos² x) sin x, sin⁵ x cos² x = (1 − cos² x)² cos² x sin x */
-export function trigRewrite(e: Eq, sel: string | null): MoveResult {
+export function trigRewrite(e: Eq, sel: string | null): CheckedResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
   const v = T.v, f = T.arg;
@@ -740,7 +740,7 @@ const LIATE = (n: Node): number => {
 };
 
 /** C + b: ∫ u dv = uv − ∫ v du. u is the aimed factor, or the first by LIATE */
-export function byParts(e: Eq, sel: string | null): MoveResult {
+export function byParts(e: Eq, sel: string | null): CheckedResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
   const v = T.v;
@@ -774,7 +774,7 @@ export function byParts(e: Eq, sel: string | null): MoveResult {
 /* ---------- bounds ---------- */
 
 /** C + p on F|ₐᵇ: F(b) − F(a). An infinite bound becomes a limit. */
-export function plugBounds(e: Eq, sel: string | null): MoveResult {
+export function plugBounds(e: Eq, sel: string | null): CheckedResult {
   const A = target(e, sel, 'at') as At | null;
   if (!A) return { error: 'Nothing to plug the bounds into.' };
   const env: Env = {};
@@ -826,7 +826,7 @@ function ratio(a: Node, n: string): Node | null {
 }
 
 /** C + g on Σ a·rⁿ to ∞: first term/(1 − r), for |r| < 1 */
-export function geometric(e: Eq, sel: string | null): MoveResult {
+export function geometric(e: Eq, sel: string | null): CheckedResult {
   const S = target(e, sel, 'sum') as Sum | null;
   if (!S) return { error: 'No sum here.' };
   if (S.prod) return { error: 'That is a product, not a sum.' };
@@ -851,7 +851,7 @@ export function geometric(e: Eq, sel: string | null): MoveResult {
 }
 
 /** Σ c/nᵖ from n = 1 to ∞: π²/6 and π⁴/90 by name; else whether it converges (p > 1) or not */
-export function pSeries(e: Eq, sel: string | null): MoveResult {
+export function pSeries(e: Eq, sel: string | null): CheckedResult {
   const S = target(e, sel, 'sum') as Sum | null;
   if (!S || S.prod) return { error: 'No sum here.' };
   if (evaluate(S.hi, {}) !== Infinity || !isNum(S.lo, 1)) return { error: 'A p-series runs from 1 to ∞.' };
@@ -882,7 +882,7 @@ export function finiteTerms(S: Sum): number[] | string {
 }
 
 /** C + x: a finite Σ or ∏ written out, term by term */
-export function writeOut(e: Eq, sel: string | null): MoveResult {
+export function writeOut(e: Eq, sel: string | null): CheckedResult {
   const S = target(e, sel, 'sum') as Sum | null;
   if (!S) return { error: 'No sum or product here.' };
   const ks = finiteTerms(S);

@@ -4,7 +4,7 @@
 // in calculus.ts says what a derivative or limit is worth.
 import { Node, Eq, Deriv, Lim, num, sym, add, mul, neg, frac, pow, sqrt, fn, call, deriv, lim, eq, int, sum, find, findPath, replace, walk, cloneFresh, evaluate, symbols, relOf, primed, Env, children, withChildren, partial, vec, grad, varOrder, isVector, vectorValue, Grad, key } from './ast';
 import { dependsOn, derivative, limit2, substitute } from './calculus';
-import { checked, MoveOk, MoveResult, isErr, indefiniteVars } from './moves';
+import { checked, CheckedResult, Checked, isErr, indefiniteVars } from './moves';
 import { gcd } from './terms';
 import { newHints, simplify } from './simplify';
 import { intStep, uSub, byParts, plugBounds, geometric, writeOut, finiteTerms, backSub, ratNode, pSeries, trigRewrite, trigSub } from './integrate';
@@ -191,7 +191,7 @@ function derivTarget(e: Eq, sel: string | null): Deriv | null {
 }
 
 /** one rule on one derivative: C + d, or a step of e */
-export function derivStep(e: Eq, sel: string | null): MoveResult {
+export function derivStep(e: Eq, sel: string | null): CheckedResult {
   const D = derivTarget(e, sel);
   if (!D) return { error: 'No derivative here. C + d takes one.' };
   if (hasLim(D.arg)) return { error: 'Work out the limit inside first.' };
@@ -238,7 +238,7 @@ const fmt = (x: number) => (x === Infinity ? '∞' : x === -Infinity ? '−∞' 
 
 /** a limit as (x, y) → (a, b): put the point in where that works; else every path and every small
  *  circle nearing one value; else name two paths that disagree, and there is no limit */
-export function limit2Step(e: Eq, sel: string | null): MoveResult {
+export function limit2Step(e: Eq, sel: string | null): CheckedResult {
   const L = limTarget(e, sel);
   if (!L || !L.v.includes(',') || L.to.k !== 'vec') return { error: 'No two-letter limit here.' };
   if (hasDeriv(L.arg)) return { error: 'Work out the derivatives inside first (C + d).' };
@@ -261,9 +261,9 @@ export function limit2Step(e: Eq, sel: string | null): MoveResult {
     return checked(e, { eq: replace(e, L.id, snapped), label: `every path, and every small circle round (${toText(A)}, ${toText(B)}), nears ${toText(snapped)}`, hints: newHints(), factor: one, select: null, rule: 'squeeze' });
   }
   const v = (x: number) => (x === Infinity ? '∞' : x === -Infinity ? '−∞' : toText(ratNode(Math.round(x * 1e9) / 1e9) ?? num(+x.toPrecision(4))));
-  if (r.value === Infinity || r.value === -Infinity) return { eq: e, label: `it grows without bound`, hints: newHints(), factor: one, select: null, answer: `the limit is ${v(r.value)}: it grows without bound along every path` };
+  if (r.value === Infinity || r.value === -Infinity) return checked(e, { eq: e, label: `it grows without bound`, hints: newHints(), factor: one, select: null, answer: `the limit is ${v(r.value)}: it grows without bound along every path` });
   const p1 = r.paths[0], p2 = r.paths.find(p => !(Number.isFinite(p.value) && Number.isFinite(p1.value) && Math.abs(p.value - p1.value) <= 1e-6 * (1 + Math.abs(p1.value))) && Number.isFinite(p.value));
-  if (Number.isFinite(p1.value) && p2) return { eq: e, label: 'two paths disagree', hints: newHints(), factor: one, select: null, answer: `no limit: along ${p1.name} it nears ${v(p1.value)}, but along ${p2.name} it nears ${v(p2.value)}` };
+  if (Number.isFinite(p1.value) && p2) return checked(e, { eq: e, label: 'two paths disagree', hints: newHints(), factor: one, select: null, answer: `no limit: along ${p1.name} it nears ${v(p1.value)}, but along ${p2.name} it nears ${v(p2.value)}` });
   return { error: `No single value: the paths toward (${toText(A)}, ${toText(B)}) don't settle. Try polar form, x = r cos θ, y = r sin θ.` };
 }
 
@@ -281,7 +281,7 @@ function piecesAtInf(n: Node, v: string, to: Node): Node | null {
 }
 
 /** C + p: put the value in. Only where the function is continuous: the check makes sure. */
-export function plugIn(e: Eq, sel: string | null): MoveResult {
+export function plugIn(e: Eq, sel: string | null): CheckedResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
   if (L.v.includes(',')) return limit2Step(e, sel);
@@ -301,7 +301,7 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
     const val = symbols(L).length ? NaN : evaluate(L, {});
     const n = Math.abs(val) === Infinity ? (val > 0 ? sym('∞') : neg(sym('∞'))) : knownNumber(val);
     if (!n) return { error: `You can't plug in ${fmt(a)} here. Try L'Hôpital (C + l), or divide top and bottom by the highest power (C + h).` };
-    if (n.k !== 'num' && Math.abs(val) === Infinity) return { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}: it grows without bound`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' };
+    if (n.k !== 'num' && Math.abs(val) === Infinity) return checked(e, { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}: it grows without bound`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' });
     return checked(e, { eq: replace(e, L.id, n), label: `${L.v} → ${fmt(a)}`, hints: newHints(), factor: one, select: null, rule: 'limit at infinity' });
   }
   const body = plugged(L);
@@ -324,7 +324,7 @@ export function plugIn(e: Eq, sel: string | null): MoveResult {
 }
 
 /** Σ of a fraction of polynomials, its inside in partial fractions (so it can telescope) */
-function splitSummand(e: Eq, t: Node): MoveOk | null {
+function splitSummand(e: Eq, t: Node): Checked | null {
   if (t.k !== 'sum' || t.arg.k !== 'frac') return null;
   const p = partialFractions(t.arg);
   if (!p || key(p) === key(t.arg)) return null;
@@ -333,7 +333,7 @@ function splitSummand(e: Eq, t: Node): MoveOk | null {
 }
 
 /** a limit of a sum with fractions in it, written as one fraction */
-function oneFractionLim(e: Eq, id: string): MoveOk | null {
+function oneFractionLim(e: Eq, id: string): Checked | null {
   const L = find(e, id);
   if (!L || L.k !== 'lim' || L.arg.k !== 'add' || !L.arg.terms.some(x => x.k === 'frac' || (x.k === 'neg' && x.arg.k === 'frac'))) return null;
   const h = newHints();
@@ -344,7 +344,7 @@ function oneFractionLim(e: Eq, id: string): MoveOk | null {
 }
 
 /** C + c in a limit: times the conjugate over itself, √A − B → (A − B²)/(√A + B), for ∞ − ∞ */
-export function conjugateLim(e: Eq, sel: string | null): MoveResult {
+export function conjugateLim(e: Eq, sel: string | null): CheckedResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
   const r = rationalizeTop(L.arg);
@@ -356,7 +356,7 @@ export function conjugateLim(e: Eq, sel: string | null): MoveResult {
 
 /** C + h in a limit toward ±∞: top and bottom divided by the power of the letter the bottom grows
  *  like (x², or x for √(4x² + 1)), so every piece that is left either stays or goes to 0 */
-export function divideHighest(e: Eq, sel: string | null): MoveResult {
+export function divideHighest(e: Eq, sel: string | null): CheckedResult {
   const L = limTarget(e, sel);
   if (!L || L.v.includes(',')) return { error: 'No limit here.' };
   const env = sampleEnv(L), a = evaluate(L.to, env);
@@ -469,7 +469,7 @@ function oneSided(L: Lim, env: Env, a: number): string | null {
 }
 
 /** C + l: 0/0 or ∞/∞ becomes the limit of the derivatives' quotient */
-export function lhopital(e: Eq, sel: string | null): MoveResult {
+export function lhopital(e: Eq, sel: string | null): CheckedResult {
   const L = limTarget(e, sel);
   if (!L) return { error: 'No limit here.' };
   if (L.v.includes(',')) return { error: "L'Hôpital is for one letter. With two, try paths (C + p), or polar form." };
@@ -507,7 +507,7 @@ const near = (x: number, y: number) => Math.abs(x - y) < 1e-6;
 const huge = (x: number) => !Number.isFinite(x) && !Number.isNaN(x);
 
 /** 1^∞, 0⁰ and ∞⁰: lim f^g = e^(lim g ln f), so the power comes down as a product */
-export function expLog(e: Eq, sel: string | null): MoveResult {
+export function expLog(e: Eq, sel: string | null): CheckedResult {
   const L = limTarget(e, sel);
   if (!L || L.arg.k !== 'pow' || !dependsOn(L.arg.exp, L.v)) return { error: 'Needs a limit of f^g with the letter in the power.' };
   const t = tends(L), b = t(L.arg.base), x = Math.abs(t(L.arg.exp)) || t(fn('abs', fresh(L.arg.exp)));
@@ -518,7 +518,7 @@ export function expLog(e: Eq, sel: string | null): MoveResult {
 }
 
 /** 0·∞: one factor goes underneath as 1/it, so L'Hôpital can take the 0/0 */
-export function asQuotient(e: Eq, sel: string | null): MoveResult {
+export function asQuotient(e: Eq, sel: string | null): CheckedResult {
   const L = limTarget(e, sel);
   // −x·e^(−x), 3x·ln x: the sign and the numbers stay out front, the two that change are the product
   const { core: M, wrap } = L ? peelConst(L.arg, L.v) : { core: null, wrap: (n: Node) => n };
@@ -559,15 +559,15 @@ function nextCalc(n: Node): Node | null {
 
 /** the steps that work out every derivative, limit and integral, in order; stops at the first
  *  one that won't go. subs: u-substitutions in force (u → what it stands for), to put back. */
-export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: MoveOk[]; stuck?: string } {
-  const steps: MoveOk[] = [];
+export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Checked[]; stuck?: string } {
+  const steps: Checked[] = [];
   const active = { ...subs };
   let cur = e;
   // by parts on a side that is one integral: if that integral comes back (eˣ sin x), solve for it
   let origin: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node; ends: string } | null = null, parts = 0, trigs = 0, tsubs = 0;
   for (let i = 0; i < 60; i++) {
     const t = nextCalc(cur);
-    let r: MoveResult;
+    let r: CheckedResult;
     if (!t) {
       // all worked out: put any u back, the last one named first (w = 1 − u² before u = 2x)
       const u = Object.keys(active).reverse().find(w => symbols(cur).includes(w));
@@ -648,7 +648,7 @@ export function finishCalc(e: Eq, subs: Record<string, Node> = {}): { steps: Mov
 
 /** ∫ eˣ sin x by parts twice gives eˣ sin x − eˣ cos x − ∫ eˣ sin x: the integral I came back.
  *  The side was I all along, so I = A + kI, and I = A/(1 − k) */
-function cameBack(e: Eq, o: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node; ends: string }, t: Node): MoveResult | null {
+function cameBack(e: Eq, o: { side: 'lhs' | 'rhs'; f: Node; v: string; m: number; b: Node; ends: string }, t: Node): CheckedResult | null {
   const { side, f, v, m, b } = o;
   // the same integral: indefinite, or between the same ends (∫₀^∞ e⁻ˣ sin x dx comes back too)
   if (t.k !== 'int' || t.v !== v || !findPath(e[side], t.id)) return null;
@@ -678,7 +678,7 @@ const inInt = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'int' && !h
 const inLim = (e: Eq) => { let f = false; walk(e, n => { if (n.k === 'lim' && !hasCalc(n.arg)) f = true; }); return f; };
 
 /** ∫ 1/(1 + eˣ): × e⁻ˣ/e⁻ˣ (Tab m), when that lets u-substitution in */
-function expOver(e: Eq, t: Node): MoveOk | null {
+function expOver(e: Eq, t: Node): Checked | null {
   if (t.k !== 'int' || t.arg.k !== 'frac' || t.arg.den.k !== 'add') return null;
   const ex = t.arg.den.terms.flatMap(x => (x.k === 'pow' && x.base.k === 'sym' && x.base.name === 'e' && dependsOn(x.exp, t.v) ? [x] : []));
   if (ex.length !== 1) return null;
@@ -705,7 +705,7 @@ function polyInside(t: Node): boolean {
 }
 
 /** x²(sin x − x cos x): multiply the inside out, so the sum rule can take it term by term */
-function expandInside(e: Eq, t: Node, all = false): MoveOk | null {
+function expandInside(e: Eq, t: Node, all = false): Checked | null {
   if (t.k !== 'int' || hasCalc(t.arg)) return null;
   const h = newHints();
   let a = all ? expandAll(t.arg, h) : distributeNode(t.arg, h);
@@ -717,7 +717,7 @@ function expandInside(e: Eq, t: Node, all = false): MoveOk | null {
 }
 
 /** simplify one piece, when that changes it (no calculus left in it) */
-function tidyAt(e: Eq, id: string): MoveOk | null {
+function tidyAt(e: Eq, id: string): Checked | null {
   const n = find(e, id);
   if (!n || hasCalc(n)) return null;
   const h = newHints(), a = simplify(n, h);
@@ -728,7 +728,7 @@ function tidyAt(e: Eq, id: string): MoveOk | null {
 
 /** simplify the inside of each integral that has no calculus left in it (a double integral's
  *  outer one, once the inner is done), and plain numbers left by plugged-in bounds */
-function tidyIntegrands(e: Eq): MoveOk | null {
+function tidyIntegrands(e: Eq): Checked | null {
   const h = newHints();
   let changed = false;
   const busy = hasCalc(e);
@@ -780,7 +780,7 @@ export function criticalOf(e: Eq, v: string): Eq | { error: string } {
 
 /** C + d on an equation: d/dv both sides. The other variables depend on v (implicit
  *  differentiation), so y becomes y′. Not reversible: it is marked ⇒. */
-export function bothSides(e: Eq, v: string): MoveResult {
+export function bothSides(e: Eq, v: string): CheckedResult {
   // a definition holds for every value, so its sides' slopes are equal too: I(t) = … gives I′(t) = …
   if (relOf(e) === 'def') e = eq(e.lhs, e.rhs);
   if (relOf(e) !== '=') return { error: 'Differentiate both sides of an equation (=). An inequality may not keep its order.' };
@@ -801,7 +801,7 @@ export function bothSides(e: Eq, v: string): MoveResult {
 /* ---------- forms for the C hub ---------- */
 
 /** the definition: d/dx f = lim h→0 (f(x + h) − f(x))/h */
-export function definitionForm(e: Eq, sel: string | null): MoveOk | null {
+export function definitionForm(e: Eq, sel: string | null): Checked | null {
   const D = derivTarget(e, sel);
   if (!D || D.dep) return null;
   const h = symbols(e).includes('h') ? 'k' : 'h';
@@ -842,7 +842,7 @@ function target(e: Eq, sel: string | null, ok: (n: Node) => boolean): Node | nul
 }
 
 /** ∇f → ⟨∂f/∂x, ∂f/∂y, …⟩ */
-export function gradStep(e: Eq, sel: string | null): MoveResult {
+export function gradStep(e: Eq, sel: string | null): CheckedResult {
   const G = target(e, sel, n => n.k === 'grad') as Grad | null;
   if (!G) return { error: 'No gradient here.' };
   if (G.op) {
@@ -862,7 +862,7 @@ export function gradStep(e: Eq, sel: string | null): MoveResult {
 }
 
 /** ⟨a, b⟩ ⟨c, d⟩ → ac + bd */
-export function dotStep(e: Eq, sel: string | null): MoveResult {
+export function dotStep(e: Eq, sel: string | null): CheckedResult {
   const M = target(e, sel, isDot);
   if (!M || M.k !== 'mul') return { error: 'A dot product needs two vectors side by side, worked out.' };
   const [a, b] = M.factors.filter(f => f.k === 'vec') as { items: Node[] }[];
@@ -912,7 +912,7 @@ function entry(n: Node, i: number): Node | null {
 }
 
 /** a vector equation as one equation per entry: the first is a step (⇒), the rest new equations */
-export function components(e: Eq): { first: MoveResult; rest: Eq[] } {
+export function components(e: Eq): { first: CheckedResult; rest: Eq[] } {
   const none = (error: string) => ({ first: { error }, rest: [] });
   if (relOf(e) !== '=' || !(isVector(e.lhs) || isVector(e.rhs))) return none('Splitting into components needs a vector equation, like ⟨2x, 2y⟩ = ⟨0, 0⟩.');
   if (hasCalc(e)) return none('Work out the gradients first (C + n, or e).');
