@@ -353,7 +353,12 @@ function dryUSub(named: Eq, def: Eq, letter: string): string | null {
     const d = differentialsBoth(def);
     if (isErr(d)) return d.error;
     const s = subIn(named, d.eq, null, 'the name');
-    return isErr(s) ? s.error : null;
+    if (isErr(s)) return s.error;
+    // the shortcut promises an integral all in the new letter: x⁴ left in ∫ x⁴/(8√u) du means this
+    // inside doesn't do it alone
+    let left: string | undefined;
+    walk(s.eq, n => { if (n.k === 'int' && n.v === letter && !left) left = symbols(n.arg).find(v => symbols(def.rhs).includes(v)); });
+    return left ? `With ${letter} = ${toText(def.rhs)}, ${left} is left over inside the integral.` : null;
   } finally { if (had) LETS.set(letter, had); else LETS.delete(letter); }
 }
 

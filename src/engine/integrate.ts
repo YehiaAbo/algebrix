@@ -5,7 +5,7 @@
 import { Node, Eq, Int, At, Sum, num, sym, add, mul, neg, frac, pow, fn, call, int, at, lim, eq, findPath, replace, walk, cloneFresh, evaluate, symbols, key, Env, children, withChildren, sqrt as sqrtN, linkedTo, LETS } from './ast';
 import { toText } from './print';
 import { dependsOn, derivative, substitute } from './calculus';
-import { checked, MoveOk, CheckedResult, isErr, indefiniteVars, sampleIn } from './moves';
+import { checked, MoveOk, CheckedResult, isErr, indefiniteVars, sampleIn, domainOf } from './moves';
 import { newHints, simplify } from './simplify';
 import { times, plus, prettyDerivative, knownNumber } from './calcmoves';
 import { partialFractions, longDivide, slopeSplit } from './polytools';
@@ -360,12 +360,21 @@ const sqrtCut = (x: number): Node | null => { const s = ratNode(Math.round(x * x
 
 /** every move on an integral asks this first: a named letter tied to its letter (x inside ∫ … du with
  *  u = x² + 1) changes with it, so it is not a constant there; finish the substitution first. A letter
- *  also written outside the integral is a parameter of it (a in I′(a) = ∫ … du with u = ax): it stays
- *  put while u runs */
+ *  that is an input outside (a in I′(a) = ∫ … du with u = ax) is a parameter: it stays put while u runs */
 export function tiedIn(e: Eq, T: Int): { error: string } | null {
   const v = T.v;
-  const outside = symbols(replace(e, T.id, num(0)) as Eq);
-  const tied = linkedTo(v).filter(w => symbols(T.arg).includes(w) && !outside.includes(w));
+  // a parameter is written outside as an input (a in I′(a)) or as a letter you said something about
+  // (a > 0); a letter that is only outside because a step put it there (x in x⁴√u/4 − ∫ … du) still
+  // changes with u
+  const params = new Set<string>();
+  const rest = replace(e, T.id, num(0)) as Eq;
+  walk(rest, n => { if (n.k === 'call') symbols(n.arg).forEach(w => params.add(w)); });
+  symbols(rest).forEach(w => { if (domainOf(w) !== 'real') params.add(w); });
+  // tied through a chain of names too: s = 4w, w = 8√u, u = x² + 4 ties x to s
+  const tiedTo = new Set<string>([v]);
+  for (let grew = true; grew;) { grew = false; for (const w of [...tiedTo]) for (const z of linkedTo(w)) if (!tiedTo.has(z)) { tiedTo.add(z); grew = true; } }
+  tiedTo.delete(v);
+  const tied = [...tiedTo].filter(w => symbols(T.arg).includes(w) && !params.has(w));
   return tied.length ? { error: `${tied[0]} changes with ${v} (${letDef(tied[0], v)}), so it isn't a constant here. Sub in d${v} too, so the integral is all in one letter.` } : null;
 }
 

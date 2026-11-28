@@ -346,6 +346,7 @@ function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: st
   // what is left of the old letter often cancels ((x + 1)/(2x + 2) after du = (2x + 2) dx): when the
   // integrand doesn't change with it at all, any value of it gives the same, and it is all in the new one
   if (dependsOn(integrand, X)) { const flat = without(integrand, X); if (flat) integrand = flat; }
+
   let lo: Node | undefined, hi: Node | undefined;
   if (T.lo && T.hi) {
     const g = named.g ?? LETS.get(W), h = named.h ?? LETS.get(X);

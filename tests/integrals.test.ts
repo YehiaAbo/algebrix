@@ -122,4 +122,16 @@ describe('a letter tied to the integral\'s letter is never a constant (player, 2
       expect(isErr(byParts(e, null))).toBe(true);
     } finally { LETS.delete('u'); }
   });
+  it('x written outside by an earlier step is not a parameter: x⁴√u/4 − ∫ x⁴/(8√u) du refuses', () => {
+    LETS.set('u', parseExpr('x^2 + 4'));
+    try {
+      const e = parseEquation('F = x^4 sqrt(u)/4 - int x^4/(8 sqrt(u)) du');
+      expect(isErr(uSub(e, null).move)).toBe(true);
+      expect(isErr(intStep(e, null))).toBe(true);
+    } finally { LETS.delete('u'); }
+  });
+  it('through a chain of names: s = 4w, w = 8√u, u = x² + 4 ties x to s', () => {
+    LETS.set('u', parseExpr('x^2 + 4')); LETS.set('w', parseExpr('8 sqrt(u)')); LETS.set('s', parseExpr('4w'));
+    try { expect(isErr(intStep(parseEquation('F = int x^4/s ds'), null))).toBe(true); } finally { LETS.clear(); }
+  });
 });
