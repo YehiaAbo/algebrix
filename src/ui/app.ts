@@ -414,7 +414,7 @@ export class App {
     const vars = $('vars');
     const solved = eq && this.mode === 'write' ? null : eq && solvedFor(eq);
     // the rail only changes when what it shows changes: skip the rebuild otherwise
-    const sig = eq ? `${key(eq)}|${defsSig.v}|${solved}|${this.slot?.bad}|${JSON.stringify(this.domains)}|${(this.step?.conditions ?? []).join(';')}|${this.railOpen}|${this.cur}|${this.slots.map((_, j) => key(this.eqOf(j))).join(';')}|${document.documentElement.dataset.accent ?? ''}` : '';
+    const sig = eq ? `${key(eq)}|${defsSig.v}|${solved}|${this.slot?.bad}|${JSON.stringify(this.domains)}|${(this.step?.conditions ?? []).join(';')}|${this.railOpen}|${this.cur}|${this.slots.map((_, j) => key(this.eqOf(j))).join(';')}|${document.documentElement.dataset.accent ?? ''}|${this.sideNames().map(key).join(';')}` : '';
     const same = sig === this.railSig;
     this.railSig = sig;
     this.renderRailCounts();
@@ -426,7 +426,10 @@ export class App {
       const li = document.createElement('li');
       const conds = (this.step?.conditions ?? []).filter(c => new RegExp(`(^|[^a-zα-ω])${v}([^a-zα-ω]|$)`).test(c));
       const dom = this.domains[v] ?? 'real';
-      li.innerHTML = `<span class="var">${varHtml(v)}</span><span class="dom">${DOMAIN_TEXT[dom]}</span>${solved === v ? (this.slot?.bad ? '<span class="solved no">not a solution</span>' : noValue(eq) ? '<span class="solved no" title="What it equals has no finite value: an integral that diverges, or a limit that does not exist">no value</span>' : '<span class="solved">solved</span>') : ''}`;
+      const side = this.sideNames().find(d => d.lhs.k === 'sym' && d.lhs.name === v);
+      li.innerHTML = `<span class="var">${varHtml(v)}</span><span class="dom">${side ? '' : DOMAIN_TEXT[dom]}</span>${solved === v ? (this.slot?.bad ? '<span class="solved no">not a solution</span>' : noValue(eq) ? '<span class="solved no" title="What it equals has no finite value: an integral that diverges, or a limit that does not exist">no value</span>' : '<span class="solved">solved</span>') : ''}`;
+      // a name kept on the side shows what it stands for, and how to put it back
+      if (side) { const d = li.querySelector('.dom')!; d.classList.add('side'); d.append(mathEl(side, 14)); li.title = 'kept on the side: Tab + u puts it back'; }
       if (conds.length) li.title = conds.join(', ');
       vars.append(li, ...this.railItem(li, `v:${v}`, () => letterCard(this, v)));
     }

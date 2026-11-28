@@ -33,6 +33,21 @@ export const tests = {
     await until(s => s.eq === 'sin(x^2) + C', 'integrated in u, and x² put back', 10000);
   },
 
+  async 'b on a piece of algebra keeps the name on the side, and Tab u puts it back'(h) {
+    const { load, key, hold, until, p, assert } = h;
+    await load('(x^2+1)^2 + 3(x^2+1) = 10');
+    await dig(h, 'x^2 + 1');
+    await key('b', 'Enter');
+    await until(s => s.slots === 1 && s.eq === 'u^2 + 3u = 10', 'both x² + 1 are u, no second equation');
+    const rail = await p.evaluate(() => document.querySelector('.vars .dom.side')?.textContent ?? '');
+    assert(rail.includes('x'), `the left panel shows what u stands for: ${rail}`);
+    await hold('Tab', 'f');
+    await until(s => s.eq === 'u(u + 3) = 10', 'work in u');
+    await hold('Tab', 'u');
+    await until(s => s.eq.includes('x^2 + 1') && !/u/.test(s.eq), 'u put back after the work');
+    await key('u');
+    await until(s => s.eq === 'u(u + 3) = 10', 'undo takes it out again');
+  },
   async 'b on a number makes a parameter, and on a whole side a function I(t)'(h) {
     const { load, key, type, until, p, assert } = h;
     await load('int_0^1 (x^2 - 1)/ln(x) dx');

@@ -19,7 +19,7 @@ export const tests = {
     await until(s => s.eq === '(x^(1/3))^2 − 5x^(1/3) + 6 = 0', 'x^(2/3) as (x^(1/3))²');
     await dig(h, 'x^(1/3)');
     await key('b', 'Enter');
-    await until(s => s.slots === 2 && s.eq === 'u^2 − 5u + 6 = 0', 'both x^(1/3) are u');
+    await until(s => s.slots === 1 && s.eq === 'u^2 − 5u + 6 = 0', 'both x^(1/3) are u, u = x^(1/3) kept on the side');
     await hold('Tab', 'f');
     await until(s => s.eq === '(u − 2)(u − 3) = 0', 'factored in u');
   },

@@ -168,7 +168,7 @@ export const TOURS: TourDef[] = [
   {
     id: 'trig', group: 'Algebra pack', name: 'Trig identities', blurb: 'Pythagorean, double angle, differences.',
     steps: [
-      { load: 'sin(x)^2 + cos(x)^2', say: 'Tap <kbd>Tab</kbd>: identities show up as forms. Press <kbd>→</kbd> to highlight <b>trig: Pythagorean</b> and tap <kbd>Tab</kbd> again.', done: t => text(t.app) === '1' },
+      { load: 'sin(x)^2 + cos(x)^2', say: 'Tap <kbd>Tab</kbd>: identities show up as forms. Press <kbd>→</kbd> until <b>trig: Pythagorean</b> is highlighted, and tap <kbd>Tab</kbd> again.', done: t => text(t.app) === '1' },
       { load: 'sin(2x) = cos(x)', say: 'Tap <kbd>Tab</kbd>, browse to <b>trig: double angle</b>, tap <kbd>Tab</kbd>.', done: t => lhs(t.app) === '2 sin(x) cos(x)' },
       { say: `Now everything on one side: ${tab('z')}.`, done: t => rhs(t.app) === '0' },
       { say: `cos(x) is in both terms. ${Tab('f')} to pull it out.`, done: t => lhs(t.app).startsWith('cos(x)(') },

@@ -89,6 +89,17 @@ export function addName(this: App, r: Named) {
   // a bound letter (x in ∫₀¹ … dx) stays as it is here: only the name is new
   if (key(r.step.eq) !== key(this.eq) && !this.apply(r.step, 1.05)) return;
   const kind = r.def.rel === 'def' ? 'fn' : r.letter ? 'letter' : r.def.lhs.k === 'sym' && symbols(r.def.rhs).length === 0 ? 'param' : 'expr';
+  // a new letter for a piece of plain algebra is a note on the side, not an equation (user 2026-11-28);
+  // with an integral here it stays an equation, for C k (du = … dx) and the u-substitution
+  let integral = false;
+  walk(this.eq, n => { if (n.k === 'int') integral = true; });
+  if (kind === 'letter' && !integral && r.def.lhs.k === 'sym') {
+    this.step.side = r.def;
+    this.syncLets();
+    this.renderAll(null);
+    this.save();
+    return this.say(`${brief(r.def.lhs)} = ${brief(r.def.rhs)} is kept on the side (left panel). Tab + u puts it back.`);
+  }
   this.slots.push({ steps: [{ eq: r.def, label: 'name', conditions: [] }], at: 0, sel: null, from: here(this.slot!), named: kind });
   sound.commit();
   this.renderAll(null);
@@ -324,6 +335,14 @@ export function syncLets(this: App) {
     const e = s.steps[0].eq;
     if (e.lhs.k === 'sym' && !isDiff(e.lhs.name)) LETS.set(e.lhs.name, e.rhs);
   });
+  for (const d of this.sideNames()) if (d.lhs.k === 'sym') LETS.set(d.lhs.name, d.rhs);
+}
+
+/** the names kept on the side (b on a piece of algebra), from the steps up to where each equation is */
+export function sideNames(this: App): Eq[] {
+  const out: Eq[] = [];
+  this.slots.forEach(s => s.steps.slice(0, s.at + 1).forEach(st => { if (st.side) out.push(st.side); }));
+  return out;
 }
 
 /** the letters named from a piece (u = x²), to put back once the work in u is done */

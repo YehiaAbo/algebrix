@@ -3,9 +3,12 @@
 const browse = name => async ({ key, p, wait }) => {
   await key('Tab'); await wait(150);
   const names = await p.evaluate(() => window.algebrix.hub.forms.map(f => f.name));
-  const i = names.indexOf(name);
-  if (i < 0) throw new Error(`no form "${name}" in ${JSON.stringify(names)}`);
-  for (let j = 0; j <= i; j++) await key('ArrowRight');
+  if (!names.includes(name)) throw new Error(`no form "${name}" in ${JSON.stringify(names)}`);
+  // → through the grid (slim chips come first) until the form is the one browsed
+  for (let j = 0; j < 40; j++) {
+    await key('ArrowRight');
+    if (await p.evaluate(() => window.algebrix.browsedForm()?.name) === name) break;
+  }
   await key('Tab');
 };
 const tab = k => h => h.hold('Tab', k);

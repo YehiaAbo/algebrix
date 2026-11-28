@@ -50,6 +50,15 @@ export function techniques(this: App): Tech[] {
   if (folded && !isErr(folded)) out.push({ key: 'u', label: `${folded.label}`, ok: true, run: () => this.apply(fold(this.eq, this.sel), 1.1) });
   else if (hasCall) out.push({ key: 'u', label: 'unfold the function', ok: true, run: () => this.apply(unfold(this.eq, this.sel), 1.1) });
   if (relOf(eq) === 'def') out.push({ key: 'b', label: 'inverse function', ok: true, run: () => this.addInverse() });
+  // a name kept on the side (u = x² + 1) goes back in, shown as what it makes
+  const vs = symbols(eq);
+  for (const d of this.sideNames()) {
+    if (d.lhs.k !== 'sym' || !vs.includes(d.lhs.name)) continue;
+    const move = subIn(eq, d, this.sel, `${toText(d)}`);
+    if (isErr(move)) continue;
+    const k = out.some(t => t.key === 'u') ? '' : 'u';
+    out.push({ key: k, label: `put back ${toText(d)}`, ok: true, move, run: () => this.applyTidy(subIn(this.eq, d, this.sel, toText(d)), 1.15) });
+  }
   // q on a fraction is long division (a form); on a polynomial it takes out a factor you type
   if (aimed?.k !== 'frac' && polyTarget(eq, this.sel)) out.push({ key: 'q', label: 'take out a factor…', ok: true, run: () => this.openDivide() });
   // an identity in x with unknown coefficients (1 = A(x + 2) + B(x + 1)): one equation per power
