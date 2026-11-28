@@ -1,7 +1,7 @@
 // The algebra hub (Tab): techniques by key, and forms to browse and apply.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { Card, MenuSpec, MenuState, Effect, cardsOf, cardFor, menuKey, menuRelease, pickCard } from './menu/model';
-import { cardsEl, rectsOf, cardAt } from './menu/view';
+import { Card, Section, MenuSpec, MenuState, Effect, cardsOf, cardFor, menuKey, menuRelease, pickCard } from './menu/model';
+import { tabsEl, cardsEl, rectsOf, cardAt } from './menu/view';
 import { find, symbols, relOf, DEFS, Eq, Node, key } from '../engine/ast';
 import { unfold, fold } from '../engine/goals';
 import { applyMove, isErr } from '../engine/moves';
@@ -118,6 +118,7 @@ export function openHub(this: App, sticky: boolean, calc = false) {
   // one card per result: "write the sum out" came from both lists
   const forms = calc ? [] : [...cf.map(f => (taken.has(f.chord) ? { ...f, chord: '' } : f)), ...algebra].filter(f => { const k = key(f.eq); if (seen.has(k)) return false; seen.add(k); return true; });
   this.hub = { forms, techs, sticky, awaitVar: false, calc, menu: { section: 0, at: null, sticky, chordUsed: false } };
+  if (calc) { const topic = calcTopic(this, this.hub); this.hub.menu.section = Math.max(0, hubSpec(this, this.hub).sections.findIndex(sec => sec.name === topic)); }
   this.chordUsed = false;
   this.setMode('hub');
   if (this.slots.length > 1) this.renderTree();
@@ -362,29 +363,34 @@ const techCard = (t: Tech): Card => {
   return c;
 };
 
-/** C as Tab (user 2026-11-28): one even grid, only what applies, no section tabs. The topic of what
- *  is aimed (or the first thing to do) comes first; steps with nothing to draw yet are slim chips on top;
- *  two steps that make the same thing are one card */
-function calcRows(app: App, h: Hub): Card[][] {
-  // the topic of what is here: the first Σ, ∫, lim or d/dx in the aimed piece (or the equation)
+/** C's topic: the first Σ, ∫, lim or d/dx in the aimed piece (or the equation) that has a step here */
+function calcTopic(app: App, h: Hub): string | undefined {
   const TOPIC: Record<string, string> = { int: 'Integrals', sum: 'Series', lim: 'Limits', deriv: 'Derivatives' };
   let topic: string | undefined;
   const look = (n: Node) => walk(n, m => { if (!topic && TOPIC[m.k] && h.techs.some(t => t.ok && t.group === TOPIC[m.k])) topic = TOPIC[m.k]; });
   const aimed = app.sel && app.sel !== 'eq' ? find(app.eq, app.sel) : null;
   if (aimed) look(aimed);
   if (!topic) look(app.eq);
-  const lead = topic ?? (h.techs.find(t => t.lead && t.ok) ?? h.techs.find(t => t.ok))?.group;
-  const groups = [lead, ...CALC_GROUPS.map(g => g.name).filter(n => n !== lead)];
-  const seen = new Set<string>();
-  const ts = groups.flatMap(g => h.techs.filter(t => t.group === g && t.ok)).filter(t => {
-    const s = techShows(t);
-    if (!s) return true;
-    const k = key(s.n as Eq) + s.note;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-  return [ts.filter(t => !techShows(t) || t.ask).map(techCard), ts.filter(t => techShows(t) && !t.ask).map(techCard)];
+  return topic ?? (h.techs.find(t => t.lead && t.ok) ?? h.techs.find(t => t.ok))?.group;
+}
+
+/** C as Tab, with sub menus (user 2026-11-28): a tab only for each section with something that
+ *  applies here, and inside it the same even grid: steps with nothing to draw yet are slim chips on
+ *  top, two steps that make the same thing are one card */
+function calcSections(h: Hub): Section[] {
+  const out = CALC_GROUPS.map(g => {
+    const seen = new Set<string>();
+    const ts = h.techs.filter(t => t.group === g.name && t.ok).filter(t => {
+      const s = techShows(t);
+      if (!s) return true;
+      const k = key(s.n as Eq) + s.note;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return { name: g.name, live: true, rows: [ts.filter(t => !techShows(t) || t.ask).map(techCard), ts.filter(t => techShows(t) && !t.ask).map(techCard)] };
+  }).filter(sec => sec.rows.flat().length);
+  return out.length ? out : [{ name: 'Calculus', live: false, rows: [[], []] }];
 }
 
 /** the menu as cards of the menu model. C: one section per group. Tab: one section, the forms
@@ -393,7 +399,7 @@ function hubSpec(app: App, h: Hub): MenuSpec {
   const had = SPEC.get(h);
   if (had) return had;
   const spec: MenuSpec = h.calc
-    ? { id: 'calc', openKey: 'c', sections: [{ name: 'C', rows: calcRows(app, h) }] }
+    ? { id: 'calc', openKey: 'c', sections: calcSections(h) }
     : { id: 'tab', openKey: 'Tab', sections: [{ name: 'Tab', rows: [
       // what has no result to show yet (it asks first: solve for…, take out a factor…) is a slim chip
       // on one line, as f's inverse and make a function; the cards are for what you can see (user 2026-11-28)
@@ -429,6 +435,8 @@ function renderCalcHub(this: App, host: HTMLElement) {
   const h = this.hub!;
   const spec = hubSpec(this, h), st = h.menu;
   host.classList.add('pal', 'tabmenu', 'calc');
+  // the sub menus: only the sections with something here, each the same grid
+  if (spec.sections.length > 1) host.append(tabsEl(spec, st));
   // the same cards as Tab: the key in the corner, what the step makes drawn as maths, its name under it
   const face = (c: Card) => {
     const t = TECH.get(c)!;
@@ -449,7 +457,7 @@ function renderCalcHub(this: App, host: HTMLElement) {
     card.append(cardMath(shows.n, 15, 118, 44), name);
     return card;
   };
-  const sec = spec.sections[0];
+  const sec = spec.sections[st.section];
   if (cardsOf(sec).length) {
     const el = cardsEl(sec, st, face, 'pal-items');
     const first = el.querySelector('.menu-line');
@@ -469,6 +477,7 @@ function renderCalcHub(this: App, host: HTMLElement) {
   const tip = document.createElement('div');
   tip.className = 'forms-tip';
   tip.innerHTML = h.asking ? '<kbd>Enter</kbd> apply <kbd>Esc</kbd> back'
+    : st.at === null && spec.sections.length > 1 ? `<kbd>←</kbd><kbd>→</kbd> sections, <kbd>↓</kbd> into one, or press a key.${st.sticky ? ' <kbd>Esc</kbd> closes' : ''}`
     : st.sticky ? 'press a key, or <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> browse + <kbd>C</kbd> applies. <kbd>Esc</kbd> closes'
     : 'keep holding <kbd>C</kbd>: press a key, or the arrows and release';
   host.append(tip);

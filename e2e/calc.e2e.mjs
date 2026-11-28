@@ -123,11 +123,14 @@ export const tests = {
     await key('e'); await until(s => s.eq === '2x', 'and worked out', 10000);
   },
 
-  async 'C is one grid of what applies (no sections), and the limit and the area ask for what they need'({ load, p, key, until, assert, wait }) {
+  async 'C has sub menus only for what applies: ← → between them, ↓ into one; the limit and the area ask for what they need'({ load, p, key, until, assert, wait }) {
     await load('sin(x)/x');
     await key('c'); await wait(150);
-    const tabs = await p.evaluate(() => document.querySelectorAll('#forms .pal-tab').length);
-    assert(tabs === 0, `no section tabs: ${tabs}`);
+    const tabs = () => p.evaluate(() => [...document.querySelectorAll('#forms .pal-tab')].map(t => t.textContent + (t.classList.contains('on') ? '*' : '')));
+    const t0 = await tabs();
+    assert(t0[0] === 'Derivatives*' && t0.includes('Limits') && !t0.includes('Vector fields') && !t0.includes('Several variables'), `only the sections that apply, Derivatives open: ${t0}`);
+    await key('ArrowRight');
+    assert((await tabs()).includes('Limits*'), `→ moves to Limits: ${await tabs()}`);
     await key('l');
     const input = await p.evaluate(() => !!document.getElementById('calc-input'));
     assert(input, 'the limit asks where x goes');
