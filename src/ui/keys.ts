@@ -58,7 +58,6 @@ export function bind(this: App) {
   window.addEventListener('blur', () => document.body.classList.remove('ctrl'));
   window.addEventListener('keyup', e => {
     if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') {
-      if (this.chordUsed && !this.pal.moved && !this.pal.sticky && !this.pal.ask) { this.closePal(true); return; }
       this.palRelease(); return;
     }
     if (this.mode !== 'hub' || !this.hub || this.hub.sticky || (this.hub.calc ? e.key.toLowerCase() !== 'c' : e.key !== 'Tab')) return;
@@ -76,12 +75,10 @@ export function bind(this: App) {
     if (chip) {
       const ev = new KeyboardEvent('keydown', { key: chip.dataset.k! });
       if (this.mode === 'hub') this.hubKey(ev);
-      // a chip with no key of its own (your functions): pick it by its place in the row
-      else if (this.mode === 'fnpal' && !chip.dataset.k && chip.dataset.i) this.choose(this.palTabs()[this.pal.tab].items[Number(chip.dataset.i)]);
-      else if (this.mode === 'fnpal') this.palKey(ev);
+      else if (this.mode === 'fnpal') this.palClick(chip);
     }
     const tab = t.closest<HTMLElement>('.pal-tab');
-    if (tab && this.mode === 'fnpal') { this.pal.tab = Number(tab.dataset.tab); this.pal.i = 0; this.pal.sticky = true; this.renderPal(); }
+    if (tab && this.mode === 'fnpal') { this.pal.menu = { ...this.pal.menu, section: Number(tab.dataset.tab), at: null, sticky: true }; this.renderPal(); }
     if (tab && this.mode === 'hub' && this.hub?.calc) { this.hub.tab = Number(tab.dataset.tab); this.hub.moved = false; this.hub.sticky = true; this.renderHub(); }
   });
 }

@@ -9,6 +9,7 @@ import { substitute } from '../engine/calculus';
 import { simplify, newHints } from '../engine/simplify';
 import { moveAny } from '../engine/wrap';
 import { WrapItem } from './fntabs';
+import type { MenuState } from './menu/model';
 import { simplifySpot, Spot } from '../engine/spot';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition, SMOOTH } from '../render/stage';
@@ -107,7 +108,7 @@ export class App {
   /** Shift+P playing the steps back: where it stops, and the next beat */
   replaying: { to: number; timer: number } | null = null;
 
-  pal = { tab: 0, i: 0, moved: false, sticky: false, ask: null as WrapItem | null, started: '', startedTex: '', primes: 0 };
+  pal = { menu: { section: 0, at: null, sticky: false, chordUsed: false } as MenuState, ask: null as WrapItem | null, started: '', startedTex: '', primes: 0 };
   constructor() {
     this.stage = new Stage($('stage'));
     this.tree = new TreeView($('tree'), { size: 16, strip: true, pick: (c, id) => this.goStep(c, id), open: (c, id) => this.openTree(c, id) });

@@ -3,7 +3,9 @@
 import { Node, Eq, findPath, find, DEFS, eq, cloneFresh, evaluate, symbols, paramsOf, argsOf, call, vec, sym, children, withChildren, walk, CALC, relOf } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
 import { peel, wrapBoth, inverseOf, yourCall, fnTemplate, applyFn } from '../engine/wrap';
-import { FN_TABS, WRAPS, WrapItem } from './fntabs';
+import { FN_TABS, WrapItem } from './fntabs';
+import { Card, MenuSpec, MenuState, Effect, cardsOf, cardFor, menuKey, menuRelease, pickCard } from './menu/model';
+import { tabsEl, cardsEl, rectsOf, cardAt } from './menu/view';
 import { tidy } from '../engine/isolate';
 import { ms } from './prefs';
 import { parseExpr } from '../engine/parse';
@@ -36,7 +38,7 @@ export function openPal(this: App, sticky: boolean) {
   document.querySelectorAll('#stage .bubble').forEach(b => b.remove());
   const inv = inverseOf(this.peelSide());
   const tab = inv ? this.palTabs().findIndex(t => t.items.some(x => !x.tpl && x.f === inv.f)) : -1;
-  this.pal = { tab: Math.max(0, tab), i: 0, moved: false, sticky, ask: null, started: '', startedTex: '', primes: 0 };
+  this.pal = { menu: { section: Math.max(0, tab), at: null, sticky, chordUsed: false }, ask: null, started: '', startedTex: '', primes: 0 };
   this.chordUsed = false;
   this.setMode('fnpal');
   sound.labels();
@@ -44,13 +46,34 @@ export function openPal(this: App, sticky: boolean) {
   this.renderHints();
 }
 
+/** the function each card puts on both sides (the cards are built fresh with the menu) */
+const ITEM = new WeakMap<Card, WrapItem>();
+
+/** the f menu as cards of the menu model: each section's functions, then i, b and - (drawn beside the tabs) */
+export function palSpec(this: App): MenuSpec {
+  const pe = peel(this.eq, this.sel);
+  const aimed = !!this.sel && this.sel !== 'eq';
+  const F = this.invTarget();
+  const leads: Card[] = [
+    { key: 'i', label: isErr(pe) ? 'inverse' : `inverse: ${pe.label}`, ok: !isErr(pe), why: isErr(pe) ? pe.error : undefined, run: () => this.palInverse() },
+    { key: 'b', label: 'make a function', ok: aimed, why: 'Aim at the piece to name first (arrows, or Space), then press b.', run: () => { this.closePal(false); this.openName(true); } },
+    ...(F ? [{ key: '-', label: `write out ${F}⁻¹`, ok: true, run: () => { this.closePal(false); this.addInverse(F); } }] : []),
+  ];
+  const card = (w: WrapItem): Card => {
+    const c: Card = { key: w.key || undefined, label: w.label, ok: true, run: () => this.choose(w), shows: w.ask ? undefined : () => { const r = made(this, w); return isErr(r) ? null : { math: r.eq }; } };
+    ITEM.set(c, w);
+    return c;
+  };
+  return { id: 'fn', openKey: 'f', sections: this.palTabs().map(t => ({ name: t.name, rows: [t.items.map(card), leads] })) };
+}
+
 export function renderPal(this: App) {
-  const P = this.pal;
+  const P = this.pal, st = P.menu;
+  const spec = this.palSpec();
   const host = $('forms');
   host.replaceChildren();
   host.className = 'forms hub pal';
   const inv = inverseOf(this.peelSide());
-  const pe = peel(this.eq, this.sel);
   // the input box is always the first thing in the menu: type f(4), f(x² + 1), ln, e^_ …
   const mine = formHere(this.eq) ?? [...DEFS.keys()].find(n => !n.endsWith('⁻¹'));
   // one box, the same before and after you click it: examples as math on the right while it's
@@ -61,23 +84,30 @@ export function renderPal(this: App) {
   box.innerHTML = `<span class="pal-glyph">ƒ</span>${typing ? '<span id="pal-input" aria-label="a function or a value"></span>' : `<span id="pal-idle" class="pal-ph" tabindex="0" role="textbox" aria-label="type a function or a value">type a function or a value<kbd>=</kbd>${mine ? `<span class="or">or</span><kbd>${mine[0]}</kbd>` : ''}</span>`}<span id="${typing ? 'pal-note' : 'pal-eg'}" class="pal-note"></span>`;
   host.append(box);
   this.palExamples(box.querySelector('.pal-note')!, mine ?? null);
-  // the tabs share their row with i, b and - (one row less, so the menu fits beside the equation)
-  const aimed = !!this.sel && this.sel !== 'eq';
-  const tabs = document.createElement('div');
-  tabs.className = 'pal-tabs' + (P.moved ? '' : ' focus');
-  const TABS = this.palTabs();
-  tabs.innerHTML = TABS.map((t, j) => `<button class="pal-tab${j === P.tab ? ' on' : ''}" data-tab="${j}">${t.name}</button>`).join('')
-    + '<span class="pal-lead">'
-    + (isErr(pe) ? '' : `<button class="chip lead rec" data-k="i"><kbd>i</kbd>inverse: ${escapeHtml(pe.label)}</button>`)
-    + `<button class="chip lead${aimed ? '' : ' off'}" data-k="b" title="${aimed ? 'the aimed piece becomes a function' : 'aim at a piece first'}"><kbd>b</kbd>make a function</button>`
-    + (this.invTarget() ? `<button class="chip lead" data-k="-"><kbd>-</kbd>write out ${this.invTarget()}⁻¹</button>` : '')
-    + '</span>';
+  const tabs = tabsEl(spec, st);
   host.append(tabs);
-  const row = document.createElement('div');
-  row.className = 'hub-row pal-items';
-  row.innerHTML = TABS[P.tab].items.map((w, j) => `<button class="chip${!w.tpl && inv?.f === w.f ? ' rec' : ''}${P.moved && j === P.i ? ' on' : ''}" data-k="${w.key}" data-i="${j}">${w.key ? `<kbd>${w.key}</kbd>` : ''}<span class="fx">${w.show}</span><span class="pal-name">${w.label}</span></button>`).join('');
+  const sec = spec.sections[st.section];
+  const face = (c: Card) => {
+    const b = document.createElement('button');
+    const w = ITEM.get(c);
+    b.dataset.k = c.key ?? '';
+    if (!w) {
+      b.className = 'chip lead' + (c.key === 'i' && c.ok ? ' rec' : '');
+      b.title = c.ok ? (c.key === 'b' ? 'the aimed piece becomes a function' : '') : c.why ?? '';
+      b.innerHTML = `<kbd>${c.key}</kbd>${escapeHtml(c.label)}`;
+      return b;
+    }
+    b.className = 'chip' + (!w.tpl && inv?.f === w.f ? ' rec' : '');
+    b.innerHTML = `${w.key ? `<kbd>${w.key}</kbd>` : ''}<span class="fx">${w.show}</span><span class="pal-name">${w.label}</span>`;
+    return b;
+  };
+  const row = cardsEl(sec, st, face, 'pal-items');
+  // i, b and - share the tabs' line (one line less, so the menu fits beside the equation); the arrows
+  // go by where cards are drawn, so they reach them there too
+  const leads = row.querySelector('.menu-line:last-child:not(:first-child)');
+  if (leads) { leads.className = 'pal-lead'; tabs.append(leads); }
   host.append(row);
-  this.fillPal(row, TABS[P.tab].items);
+  this.fillPal(row, cardsOf(sec));
   if (P.ask && P.ask !== TYPED) {
     const ask = document.createElement('div');
     const yours = isYours(P.ask);
@@ -90,7 +120,7 @@ export function renderPal(this: App) {
   const tip = document.createElement('div');
   tip.className = 'forms-tip';
   tip.innerHTML = P.ask ? '<kbd>Enter</kbd> apply <kbd>Esc</kbd> back'
-    : P.moved ? '<kbd>←</kbd><kbd>→</kbd> functions <kbd>↑</kbd> back to categories ' + (P.sticky ? '<kbd>Enter</kbd> apply <kbd>f</kbd> closes' : 'release <kbd>f</kbd> to apply')
+    : st.at !== null ? '<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> cards <kbd>Esc</kbd> back to categories ' + (st.sticky ? '<kbd>Enter</kbd> apply' : 'release <kbd>f</kbd> to apply')
     : '<kbd>←</kbd><kbd>→</kbd> categories <kbd>↓</kbd> open one. Or press a function\'s key directly';
   host.append(tip);
   host.hidden = false;
@@ -152,17 +182,17 @@ function made(app: App, w: WrapItem): MoveResult {
 }
 function known(app: App, w: WrapItem) { return MADE.get(app.eq)?.has(`${app.sel}|${w.tpl ?? ''}|${w.f}`); }
 
-export function fillPal(this: App, row: HTMLElement, items: WrapItem[]) {
+export function fillPal(this: App, row: HTMLElement, cards: Card[]) {
   const token = ++filling, eqNow = this.eq;
+  const itemOf = (b: HTMLElement) => ITEM.get(cards[+b.dataset.i!]);
   const show = (b: HTMLElement) => {
-    const w = items[+b.dataset.i!];
-    const r = made(this, w);
+    const r = made(this, itemOf(b)!);
     if (isErr(r)) { b.classList.add('off'); b.title = r.error; return; }
     b.querySelector('.fx')?.replaceWith(cardMath(r.eq, 14, 190));
   };
-  const cards = [...row.querySelectorAll<HTMLElement>('button[data-i]')].filter(b => !items[+b.dataset.i!].ask);
-  const later = cards.filter(b => !known(this, items[+b.dataset.i!]));
-  cards.filter(b => !later.includes(b)).forEach(show);
+  const faces = [...row.querySelectorAll<HTMLElement>('button[data-i]')].filter(b => itemOf(b) && !itemOf(b)!.ask);
+  const later = faces.filter(b => !known(this, itemOf(b)!));
+  faces.filter(b => !later.includes(b)).forEach(show);
   if (!later.length) return;
   const step = () => {
     if (token !== filling || this.eq !== eqNow || !row.isConnected) return;
@@ -188,49 +218,57 @@ export function palResult(this: App, w: WrapItem, arg?: Node): MoveResult {
   return checked(this.eq, wrapBoth(this.eq, w.f, arg));
 }
 
-export function palPeek(this: App) {
-  const P = this.pal;
-  const w = this.palTabs()[P.tab].items[P.i];
-  const r = w.ask ? null : made(this, w);
-  this.peek = r && !isErr(r) ? r.eq : null;
+/** the browsed card's result on the stage (nothing browsed: the equation as it is) */
+export function palPeek(this: App, card: Card | null) {
+  this.peek = (card?.shows?.()?.math as Eq | undefined) ?? null;
   this.renderMain({ quick: true });
   this.place($('forms'));
 }
 
 export function palKey(this: App, e: KeyboardEvent) {
   const P = this.pal;
-  const k = e.key;
-  if (k === 'Escape') return this.closePal(true);
-  if (e.repeat) return;
-  const TABS = this.palTabs();
-  const items = TABS[P.tab].items;
-  // arrows only: ← → pick a category, ↓ steps into it, ← → pick a function (live preview), ↑ steps back out
-  const dx = k === 'ArrowRight' || k === 'Tab' ? 1 : k === 'ArrowLeft' ? -1 : 0;
-  if (dx && !P.moved) { P.tab = (P.tab + dx + TABS.length) % TABS.length; sound.tick(1); return this.renderPal(); }
-  if (dx && P.moved) { P.i = (P.i + dx + items.length) % items.length; sound.tick(2); this.renderPal(); return this.palPeek(); }
-  if (k === 'ArrowDown' && !P.moved) { P.moved = true; P.i = 0; sound.tick(2); this.renderPal(); return this.palPeek(); }
-  if (k === 'ArrowUp' && P.moved) { P.moved = false; sound.tick(1); this.peek = null; this.renderMain({ quick: true }); return this.renderPal(); }
-  if (k === 'Enter') { if (P.moved) return this.choose(items[P.i]); P.moved = true; P.i = 0; this.renderPal(); return this.palPeek(); }
-  if (k === 'i') return this.palInverse();
+  const k = e.key === 'Tab' ? 'ArrowRight' : e.key;
+  if (e.repeat && k !== 'Escape') return;
+  const spec = this.palSpec();
+  // the box's keys and your functions' come before the cards
   if (k === '=') return this.choose(TYPED);
   if (k === '(') return this.typeInPal('(');
-  if (k === 'b') { this.closePal(false); return this.openName(true); }
-  if (k === '-') { const F = this.invTarget(); if (!F) return this.refuse('No functions of yours yet. Type one (f(x) = …), then - writes out its inverse.'); this.closePal(false); return this.addInverse(F); }
-  if (/^[1-9]$/.test(k)) { const yours = TABS[0].name === 'Yours' ? TABS[0].items[Number(k) - 1] : undefined; if (yours) return this.choose(yours); return this.refuse(DEFS.size ? `You have ${DEFS.size} function${DEFS.size > 1 ? 's' : ''}: 1–${DEFS.size}.` : 'No functions of yours yet. Type one (F(x) = …), or aim at a piece and press b.'); }
+  if (k === '-' && !this.invTarget()) return this.refuse('No functions of yours yet. Type one (f(x) = …), then - writes out its inverse.');
+  if (/^[1-9]$/.test(k) && !cardFor(spec, P.menu.section, k)) return this.refuse(DEFS.size ? `You have ${DEFS.size} function${DEFS.size > 1 ? 's' : ''}: 1–${DEFS.size}.` : 'No functions of yours yet. Type one (F(x) = …), or aim at a piece and press b.');
   // a letter naming a function here (or one you defined) starts typing it: I in I′(t) = … gives I′(
-  if (k.length === 1 && /[A-Za-zα-ω]/.test(k)) { const here = formHere(this.eq, k); if (here || DEFS.has(k)) return this.typeInPal(`${here ?? k}(`); }
-  if (k === 'f' || k === 'F') { if (P.sticky) this.closePal(true); return; }
-  const w = WRAPS.find(x => x.key === k);
-  if (w) return this.choose(w);
+  if (k.length === 1 && k !== 'i' && k !== 'b' && /[A-Za-zα-ω]/.test(k)) { const here = formHere(this.eq, k); if (here || DEFS.has(k)) return this.typeInPal(`${here ?? k}(`); }
+  const r = menuKey(spec, { ...P.menu, chordUsed: this.chordUsed }, k, rectsOf($('forms')));
+  return this.palEffect(r, e);
 }
 
-/** on releasing f: apply what was browsed, else keep the menu open */
+/** what a key or the release did to the menu, carried out */
+export function palEffect(this: App, r: { state: MenuState; effect: Effect }, e?: KeyboardEvent) {
+  const was = this.pal.menu;
+  this.pal.menu = r.state;
+  const f = r.effect;
+  switch (f.k) {
+    case 'none':
+      if (was.section !== r.state.section) sound.tick(1);
+      if (was.section !== r.state.section || was.at !== r.state.at || was.sticky !== r.state.sticky) this.renderPal();
+      return;
+    case 'peek': sound.tick(f.card ? 2 : 1); this.renderPal(); return this.palPeek(f.card);
+    case 'run': case 'ask': return f.card.run();
+    case 'refuse': return this.refuse(f.why);
+    case 'close': return this.closePal(true);
+    case 'pass': this.closePal(true); if (e) this.key(e); return;
+  }
+}
+
+/** on releasing f: apply what was browsed, close after a chord, else keep the menu open */
 export function palRelease(this: App) {
-  const P = this.pal;
-  if (P.sticky || P.ask) return;
-  if (P.moved) return this.choose(this.palTabs()[P.tab].items[P.i]);
-  P.sticky = true;
-  this.renderPal();
+  if (this.pal.ask) return;
+  this.palEffect(menuRelease(this.palSpec(), { ...this.pal.menu, chordUsed: this.chordUsed }));
+}
+
+/** a click on one of the menu's cards */
+export function palClick(this: App, el: Element) {
+  const hit = cardAt(this.palSpec(), this.pal.menu, el);
+  if (hit) this.palEffect({ state: { ...this.pal.menu, at: hit.at }, effect: pickCard(hit.card) });
 }
 
 export function palInverse(this: App) {
@@ -241,13 +279,12 @@ export function palInverse(this: App) {
 export function choose(this: App, w: WrapItem) {
   if (w.ask) {
     this.pal.ask = w;
-    this.pal.sticky = true;
+    this.pal.menu = { ...this.pal.menu, sticky: true };
     if (w !== TYPED) {
       // the Yours items are built fresh each time: find the item by what it is, not by identity
       const same = (x: WrapItem) => x.key === w.key && x.tpl === w.tpl && x.f === w.f;
-      this.pal.tab = Math.max(0, this.palTabs().findIndex(t => t.items.some(same)));
-      this.pal.i = Math.max(0, this.palTabs()[this.pal.tab].items.findIndex(same));
-      this.pal.moved = true;
+      const section = Math.max(0, this.palTabs().findIndex(t => t.items.some(same)));
+      this.pal.menu = { ...this.pal.menu, section, at: Math.max(0, this.palTabs()[section].items.findIndex(same)) };
     }
     this.setMode('fnask');
     sound.tick(2);

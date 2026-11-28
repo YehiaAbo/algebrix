@@ -29,8 +29,6 @@ const KNOWN = new Set([
   'calc|written-out sum|down', 'calc|series|down',
   // Tab's technique chips can't be reached by arrows (only ← → over the forms)
   ...['written-out sum', 'linear', 'quadratic', 'feynman', 'series', 'derivative', 'log'].map(id => `tab|${id}|unreachable`),
-  // f's i / b / - chips beside the tabs can't be reached by arrows
-  ...['written-out sum', 'linear', 'quadratic', 'feynman', 'series', 'derivative', 'log'].map(id => `fn|${id}|unreachable`),
   // Tab and C work out and check every form and technique before they draw (about 170 ms here)
   'tab|feynman|slow', 'calc|feynman|slow',
 ]);

@@ -350,6 +350,12 @@ kbd.wide { padding: 0 7px; }
 .pal-tab { border: 0; background: transparent; color: var(--muted); font-size: 12.5px; padding: 6px 10px 7px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .pal-tab.on { color: var(--ink); border-bottom-color: var(--sel); font-weight: 600; }
 .pal-items { padding-top: 4px; }
+/* any menu's cards (ui/menu/view.ts): one line per row, each wraps, and a card never shrinks below its content */
+.menu-cards { display: flex; flex-direction: column; gap: 5px; }
+.menu-line { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.menu-line > * { flex: none; }
+.pal-lead { margin-left: auto; display: flex; gap: 5px; padding-bottom: 4px; }
+.pal-lead .chip { height: 26px; font-size: 12px; }
 .forms.calc { min-width: min(560px, calc(100% - 24px)); max-width: min(760px, calc(100% - 24px)); }
 .forms.calc .pal-tabs { flex-wrap: wrap; }
 .forms.calc .pal-tab:not(.live) { opacity: .4; }
@@ -799,8 +805,6 @@ body[data-mode="write"] .input-keys { display: flex; }
 .forms.calc .form-card { justify-items: start; max-width: 260px; }
 .form-name .short { margin-left: 2px; font-size: 9px; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--faint); border-radius: 4px; padding: 0 4px; line-height: 13px; }
 .pal .pal-tabs { align-items: flex-end; }
-.pal-lead { margin-left: auto; display: flex; gap: 5px; padding-bottom: 4px; }
-.pal-lead .chip { height: 26px; font-size: 12px; }
 .pal .pal-tab { white-space: nowrap; }
 
 /* ---------- live math fields (ui/mathfield.ts, MathQuill underneath): typed math looks like the stage's ---------- */
