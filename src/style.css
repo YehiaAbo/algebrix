@@ -851,6 +851,6 @@ body[data-mode="write"] .input-keys { display: flex; }
 /* Tab: the box on top, then one even grid of same-size cards (as the f menu) */
 .tabmenu .pal-items .menu-line { gap: 6px; }
 .tabmenu .pal-items .chip { width: 132px; height: 84px; padding: 20px 6px 6px; justify-content: center; }
-.tabmenu .pal-items .chip.tech { color: var(--ink); font-size: 13px; text-align: center; }
-.tabmenu .tech-label { display: block; line-height: 1.3; }
+.tabmenu .pal-items .tab-chips .chip.tech { width: auto; height: 26px; flex-direction: row; gap: 6px; padding: 0 9px 0 5px; color: var(--ink); font-size: 12px; }
+.tabmenu .pal-items .tab-chips .chip.tech kbd { position: static; }
 .tabmenu .hub-eg { font: 14px var(--math-font); color: var(--faint); }

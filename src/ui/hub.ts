@@ -23,7 +23,7 @@ import type { App } from './app';
 import { mathLabel } from './mathlabel';
 import { crossOut } from '../engine/series';
 import { mathField, field } from './mathfield';
-import { doNothing } from '../engine/general';
+import { doNothing, subIn } from '../engine/general';
 import { parseExpr } from '../engine/parse';
 import { toText } from '../engine/print';
 
@@ -67,11 +67,14 @@ export function techniques(this: App): Tech[] {
     const shares = appearsIn(eq, this.eqOf(j));
     // another case of the same split is an alternative, not something that also holds
     const alt = areCases(this, this.cur, j);
-    out.push({ key: String(j + 1), label: alt ? `(${j + 1}) is another case` : `substitute from (${j + 1})`, ok: shares && !alt, run: () => this.substituteFrom(j) });
+    // what comes in, and what it makes, so the card says it all without looking away (user 2026-11-28)
+    const move = shares && !alt ? subIn(eq, this.eqOf(j), this.sel, `Equation ${j + 1}`) : undefined;
+    out.push({ key: String(j + 1), label: alt ? `(${j + 1}) is another case` : `sub in ${toText(this.eqOf(j))}`, ok: shares && !alt && !!move && !isErr(move), why: move && isErr(move) ? move.error : undefined, move, run: () => this.substituteFrom(j) });
   });
   const partner = this.slots.findIndex((_, j) => j !== this.cur && !areCases(this, this.cur, j) && !isErr(eliminate(eq, this.eqOf(j), j + 1, aimVar ?? undefined)));
+  const elim = partner >= 0 ? eliminate(eq, this.eqOf(partner), partner + 1, aimVar ?? undefined) : undefined;
   if (this.slots.length > 1) out.push({
-    key: 'k', label: partner >= 0 ? `eliminate${aimVar ? ' ' + aimVar : ''} with (${partner + 1})` : 'eliminate with another equation', ok: partner >= 0,
+    key: 'k', label: partner >= 0 ? `eliminate${aimVar ? ' ' + aimVar : ''} with ${toText(this.eqOf(partner))}` : 'eliminate with another equation', ok: partner >= 0, move: elim,
     run: () => {
       this.flyFrom(partner);
       const r = eliminate(this.eq, this.eqOf(partner), partner + 1, aimVar ?? undefined);
@@ -324,6 +327,10 @@ function partOf(f: Form): string {
   return '';
 }
 
+/** Tab's techniques: only what applies; = and m are the box on top */
+const tabTechs = (h: Hub) => h.techs.filter(t => t.ok && t.key !== '=' && t.key !== 'm');
+const shows = (t: Tech) => !!t.move && !isErr(t.move);
+
 /** what each card stands for (the cards are built fresh with the menu) */
 const TECH = new WeakMap<Card, Tech>();
 const FORM = new WeakMap<Card, Form>();
@@ -345,7 +352,10 @@ function hubSpec(app: App, h: Hub): MenuSpec {
       const ts = h.techs.filter(t => t.group === g.name);
       return { name: g.name, live: ts.some(t => t.ok), rows: [ts.map(techCard)] };
     }) }
-    : { id: 'tab', openKey: 'Tab', sections: [{ name: 'Tab', rows: [[
+    : { id: 'tab', openKey: 'Tab', sections: [{ name: 'Tab', rows: [
+      // what has no result to show yet (it asks first: solve for…, take out a factor…) is a slim chip
+      // on one line, as f's inverse and make a function; the cards are for what you can see (user 2026-11-28)
+      tabTechs(h).filter(t => !shows(t)).map(techCard), [
       // the general forms; a sum's, an integral's or a limit's own moves are C's (user 2026-11-28)
       ...h.forms.filter(f => !partOf(f)).map(form => {
         const c: Card = { key: form.chord || undefined, label: form.name, ok: true, run: () => app.apply(form, 1.15) };
@@ -354,7 +364,7 @@ function hubSpec(app: App, h: Hub): MenuSpec {
       }),
       // only what applies: a technique that can't be used here is left off (its key still says why);
       // = and m are the box on top
-      ...h.techs.filter(t => t.ok && t.key !== '=' && t.key !== 'm').map(techCard),
+      ...tabTechs(h).filter(shows).map(techCard),
     ]] }] };
   SPEC.set(h, spec);
   return spec;
@@ -470,12 +480,20 @@ export function renderHub(this: App) {
       const name = document.createElement('span');
       name.className = 'pal-name';
       name.append(mathLabel(c.label, 11));
-      if (!form) { const t = document.createElement('div'); t.className = 'tech-label'; t.append(mathLabel(c.label, 14)); card.classList.add('tech'); card.append(t); return card; }
+      const tm = TECH.get(c)?.move;
+      if (!form && tm && !isErr(tm)) { card.append(cardMath(tm.eq, 15, 118, 44), name); return card; }
+      if (!form) { card.classList.add('tech'); card.append(mathLabel(c.label, 12)); return card; }
       const piece = form.select ? find(form.eq, form.select) : null;
       card.append(cardMath(piece ?? form.eq, 15, 118, 44), name);
       return card;
     };
-    if (cardsOf(spec.sections[0]).length) host.append(cardsEl(spec.sections[0], st, face, 'pal-items'));
+    if (cardsOf(spec.sections[0]).length) {
+      const el = cardsEl(spec.sections[0], st, face, 'pal-items');
+      const first = el.querySelector('.menu-line');
+      const c0 = first && cardsOf(spec.sections[0])[Number(first.querySelector('[data-i]')?.getAttribute('data-i'))];
+      if (c0 && !FORM.get(c0) && !shows(TECH.get(c0)!)) first!.classList.add('tab-chips');
+      host.append(el);
+    }
     if (h.typing) {
       const input = mathField($('hub-input'), {
         onKey: ev => {

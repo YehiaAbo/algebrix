@@ -121,7 +121,7 @@ export const tests = {
     await load('2x^2 + 4x = 6');
     await key('Tab');
     await wait(200);
-    const cards = await p.evaluate(() => [...document.querySelectorAll('#forms .pal-items [data-i]')].map(b => { const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), off: b.classList.contains('off'), name: b.textContent }; }));
+    const cards = await p.evaluate(() => [...document.querySelectorAll('#forms .pal-items .menu-line:not(.tab-chips) [data-i]')].map(b => { const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), off: b.classList.contains('off'), name: b.textContent }; }));
     assert(cards.length >= 4, `cards: ${cards.length}`);
     assert(new Set(cards.map(c => `${c.w}x${c.h}`)).size === 1, `all the same size: ${JSON.stringify(cards.map(c => `${c.w}x${c.h}`))}`);
     assert(!cards.some(c => c.off), 'no greyed-out card');
