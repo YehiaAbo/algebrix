@@ -15,7 +15,8 @@ import { sumForms } from './sums';
 import { seriesForms } from './series';
 import { longDivide, partialFractions, rationalize, rationalizeTop, trigForms, completeSquare, Range, factorFully, primeFactors } from './polytools';
 
-export interface Form extends Checked { name: string; chord: string }
+/** part: the kind of piece the form belongs to (Σ, ∫, d/dx, lim, trig), so a menu can group it apart */
+export interface Form extends Checked { name: string; chord: string; part?: string }
 
 const CHORDS: Record<string, string> = {
   'everything on one side': 'z', 'expanded': 'x', 'simplified': 's', 'sides swapped': 'w', 'one fraction': 'c',

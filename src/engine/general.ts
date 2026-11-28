@@ -3,8 +3,8 @@
 // for every value, and ∫ both sides. With the facts (the derivative and integral rules, the
 // theorems) these are enough for u-substitution, trig substitution, separable and linear ODEs,
 // the Feynman technique, and the rest, one checked step at a time.
-import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim, holds, CALC } from './ast';
-import { CheckedResult, Checked, introduced, checked, isErr, solvedFor, applyBothChecked, applyMove, sampleIn } from './moves';
+import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, find, findPath, replace, walk, cloneFresh, evaluate, symbols, key, relOf, isDiff, children, withChildren, Env, LETS, DEFS, CONSTS, fn, lim, holds, CALC, pow } from './ast';
+import { CheckedResult, Checked, introduced, checked, isErr, solvedFor, applyBothChecked, applyMove, sampleIn, neverZero } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
 import { solvedForm } from './systems';
@@ -16,6 +16,8 @@ import { splitXY } from './ode';
 import { signedInf, endDepends } from './integrate';
 import { expandAll } from './rewrite';
 import { finishCalc } from './calcmoves';
+import { fnTemplate, inverseOf, wrapNode } from './wrap';
+import { nonneg } from './simplify';
 
 const one = () => 1;
 const t = (n: Node) => toText(n);
@@ -698,6 +700,89 @@ export function timesOne(e: Eq, sel: string | null, text: string): CheckedResult
   const next = T.k === 'frac' ? frac(times(T.num), times(T.den)) : frac(mul([cloneFresh(T), cloneFresh(A)]), cloneFresh(A));
   const shown = A.k === 'add' ? `(${toText(A)})` : toText(A);
   return checked(e, { eq: replace(e, T.id, next) as Eq, label: `× ${shown}/${shown}, which is 1`, hints: h, factor: () => 1, select: next.id, rule: 'multiply by 1', conditions: symbols(A).length ? [`${toText(A)} ≠ 0`] : [] });
+}
+
+/* ---------- doing nothing ---------- */
+
+/** where a piece is defined, for each function in it that holds the aimed piece T: ln and log need
+ *  > 0, √ and even roots ≥ 0, sin⁻¹ and cos⁻¹ between −1 and 1 */
+function definedWhere(n: Node, T: Node): string[] {
+  const out: string[] = [];
+  const holds = (m: Node) => { let h = false; walk(m, c => { if (c === T) h = true; }); return h; };
+  walk(n, m => {
+    if (!holds(m) || m === T) return;
+    const a = m.k === 'fn' || m.k === 'sqrt' ? m.arg : m.k === 'pow' ? m.base : null;
+    if (!a || !holds(a)) return;
+    const s = toText(a);
+    if (m.k === 'fn' && (m.name === 'ln' || m.name === 'log')) { if (!(nonneg(a) && neverZero(a))) out.push(`${s} > 0`); }
+    else if (m.k === 'sqrt' && !nonneg(a)) out.push(`${s} ≥ 0`);
+    else if (m.k === 'fn' && (m.name === 'asin' || m.name === 'acos')) out.push(`−1 ≤ ${s} ≤ 1`);
+    else if (m.k === 'pow' && !nonneg(a)) {
+      const k = evaluate(m.exp, {});
+      // a root of even order (^(1/2), ^(1/4)) needs the base ≥ 0
+      if (Number.isFinite(k) && !Number.isInteger(k) && Number.isInteger(1 / k) && (1 / k) % 2 === 0) out.push(`${s} ≥ 0`);
+    }
+  });
+  return [...new Set(out)];
+}
+
+/** Tab's box: do something to the aimed piece and undo it, in one checked step ("doing nothing",
+ *  user 2026-11-28): + n gives T + n − n, × 2 gives (T·2)/2, ÷ 2 gives T/2 · 2, ^2 gives (T²)^½,
+ *  a function gives its inverse of it (e^(ln T)), or it of its inverse where only that way holds
+ *  (sin(sin⁻¹ T)). Anything else typed is the form to rewrite T as. */
+export function doNothing(e: Eq, sel: string | null, text: string): CheckedResult {
+  const T = sel && sel !== 'eq' ? find(e, sel) : relOf(e) === 'expr' ? e.lhs : null;
+  if (!T || T.k === 'eq') return { error: 'Aim at a piece first, then type what to do to it and undo: + n, × 2, ^2, ln.' };
+  const src = text.trim();
+  if (!src) return { error: `Type what to do to ${toText(T)} and undo: + n, × 2, ^2, ln. Or a form to rewrite it as.` };
+  const op = /^([+\-−*×·/÷^])\s*(.*)$/.exec(src);
+  const parsed = (s: string): Node | { error: string } => { try { return parseExpr(s); } catch (err) { return { error: (err as Error).message }; } };
+  const go = (next: Node, label: string, conditions: string[] = [], where = (_: Env) => true): CheckedResult => checked(e, {
+    eq: replace(e, T.id, next) as Eq, label, rule: 'do nothing', hints: newHints(), factor: () => 1, select: next.id, conditions,
+    // checked where the new form is defined (and where the conditions hold); the conditions say where that is
+    check: conditions.length ? env => { const a = evaluate(next, env); return Number.isFinite(a) && where(env) ? [[a, evaluate(T, env)]] : [[NaN, NaN]]; } : undefined,
+  });
+  if (op) {
+    const A = parsed(op[2]);
+    if ('error' in A) return A;
+    const s = A.k === 'add' ? `(${toText(A)})` : toText(A);
+    const zero = A.k === 'num' && A.v === 0;
+    switch (op[1]) {
+      case '+': return go(add([...(T.k === 'add' ? T.terms : [T]), A, neg(cloneFresh(A))], T.k === 'add' ? T.id : undefined), `+ ${s} − ${s}, which is 0`);
+      case '-': case '−': return go(add([...(T.k === 'add' ? T.terms : [T]), neg(A), cloneFresh(A)], T.k === 'add' ? T.id : undefined), `− ${s} + ${s}, which is 0`);
+      case '*': case '×': case '·':
+        if (zero) return { error: '0/0 is not 1: pick something that is never 0.' };
+        // on a fraction A goes on top and below, each multiplied out (Tab m as it always was)
+        if (T.k === 'frac') return timesOne(e, T.id, op[2]);
+        return go(frac(mul([T, A]), cloneFresh(A)), `× ${s}/${s}, which is 1`, symbols(A).length ? [`${toText(A)} ≠ 0`] : []);
+      case '/': case '÷':
+        if (zero) return { error: 'Dividing by 0 can’t be undone: pick something that is never 0.' };
+        return go(mul([frac(T, A), cloneFresh(A)]), `÷ ${s} × ${s}, which is 1`, symbols(A).length ? [`${toText(A)} ≠ 0`] : []);
+      case '^': {
+        if (zero) return { error: 'A power of 0 is 1 whatever it was, so it can’t be undone.' };
+        const next = pow(pow(T, A), frac(num(1), cloneFresh(A)));
+        // an even power forgets the sign: (T²)^½ is |T|, so it is T only where T ≥ 0
+        const k = evaluate(A, {});
+        const even = !(Number.isInteger(k) && k % 2 !== 0) && !nonneg(T);
+        const cs = even ? [...new Set([`${toText(T)} ≥ 0`, ...definedWhere(next, T)])] : definedWhere(next, T);
+        return go(next, `to the ${s}, then the ${s} root`, cs, even ? env => evaluate(T, env) >= 0 : undefined);
+      }
+    }
+  }
+  // a function: f then its inverse, or the inverse then f where only that way gives T back
+  const F = /^(=|[(\d])/.test(src) ? null : fnTemplate(src);
+  if (F && !('error' in F)) {
+    const put = (x: Node, G: Node) => { const go2 = (m: Node): Node => (m.k === 'sym' && m.name === '□' ? x : withChildren(m, children(m).map(go2))); return go2(cloneFresh(G)); };
+    const inv = inverseOf(put(sym('x'), F));
+    if (!inv) return { error: `${src} has no inverse to undo it with here.` };
+    const G = wrapNode(sym('□'), inv.f, inv.arg ?? num(2));
+    for (const next of [put(put(T, F), G), put(put(T, G), F)]) {
+      const r = go(next, `${toText(put(sym('□'), F))} and back`, definedWhere(next, T));
+      if (!isErr(r)) return r;
+    }
+    return { error: `${src} and its inverse don’t give ${toText(T)} back here.` };
+  }
+  return rewriteAs(e, sel, src.replace(/^=\s*/, ''));
 }
 
 /** Tab + =: the aimed piece rewritten as the form you type (x² − 1 as (x − 1)(x + 1)), kept only if

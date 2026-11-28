@@ -15,8 +15,11 @@ export function calcForms(eq: Eq, sel: string | null): Form[] {
   const kinds = new Set<string>();
   walk(eq, n => kinds.add(n.k));
   const out: Form[] = [];
-  const push = (chord: string, r: ReturnType<typeof derivStep>) => { if (!isErr(r) && !out.some(f => key(f.eq) === key(r.eq))) out.push({ ...r, name: r.label, chord }); };
+  let part = '';
+  const push = (chord: string, r: ReturnType<typeof derivStep>) => { if (!isErr(r) && !out.some(f => key(f.eq) === key(r.eq))) out.push({ ...r, name: r.label, chord, part }); };
+  part = 'd/dx';
   if (kinds.has('deriv')) push('d', derivStep(eq, sel));
+  part = '∫';
   if (kinds.has('int')) {
     push('i', intStep(eq, sel));
     push('b', byParts(eq, sel));
@@ -28,7 +31,9 @@ export function calcForms(eq: Eq, sel: string | null): Form[] {
     if (T && T.arg.k === 'mul') for (const f of T.arg.factors) if (symbols(f).includes(T.v)) push('', byParts(eq, f.id));
   }
   if (kinds.has('at')) push('p', plugBounds(eq, sel));
+  part = 'lim';
   if (kinds.has('lim')) { push('p', plugIn(eq, sel)); push('l', lhopital(eq, sel)); }
+  part = 'Σ';
   if (kinds.has('sum')) { push('k', knownSum(eq, sel)); push('x', writeOutDots(eq, sel)); }
   return out;
 }

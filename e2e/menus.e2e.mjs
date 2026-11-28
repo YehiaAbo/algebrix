@@ -117,6 +117,44 @@ async function contract(h, menu) {
 }
 
 export const tests = {
+  async 'Tab is one even grid of same-size cards, only what applies, nothing twice'({ p, load, key, assert, wait, countRefusals, refusals }) {
+    await load('2x^2 + 4x = 6');
+    await key('Tab');
+    await wait(200);
+    const cards = await p.evaluate(() => [...document.querySelectorAll('#forms .pal-items [data-i]')].map(b => { const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), off: b.classList.contains('off'), name: b.textContent }; }));
+    assert(cards.length >= 4, `cards: ${cards.length}`);
+    assert(new Set(cards.map(c => `${c.w}x${c.h}`)).size === 1, `all the same size: ${JSON.stringify(cards.map(c => `${c.w}x${c.h}`))}`);
+    assert(!cards.some(c => c.off), 'no greyed-out card');
+    assert(new Set(cards.map(c => c.name)).size === cards.length, 'no card twice');
+    // a technique that doesn't apply is not shown, and its key still says why
+    await countRefusals();
+    await key('a');
+    assert(await refusals() === 1, 'Tab a (split into cases) refused with its reason');
+    await key('Escape');
+  },
+
+  async 'Tab box: = then + 1 adds 1 − 1 to the aimed piece, previewed as you type; m starts it with ×'({ p, load, key, type, until, wait }) {
+    await load('x^2 + 2x = 3');
+    await p.evaluate(() => { const a = window.algebrix; a.sel = a.eq.lhs.id; a.renderSelection(); });
+    await key('Tab');
+    await wait(150);
+    await key('=');
+    await p.waitForSelector('#hub-input');
+    await type('+1');
+    await p.waitForFunction(() => window.algebrix.peek && window.toText(window.algebrix.peek) === 'x^2 + 2x + 1 − 1 = 3', null, { timeout: 3000 });
+    await key('Enter');
+    await until(s => s.eq === 'x^2 + 2x + 1 − 1 = 3' && s.mode !== 'hub', 'applied, menu closed');
+    await load('y = 3x');
+    await p.evaluate(() => { const a = window.algebrix; a.sel = a.eq.rhs.id; a.renderSelection(); });
+    await key('Tab');
+    await wait(150);
+    await key('m');
+    await p.waitForSelector('#hub-input');
+    await type('2');
+    await key('Enter');
+    await until(s => s.eq === 'y = 3x·2/2', 'm typed × 2: times 2/2');
+  },
+
   'Tab keeps the menu contract on every kind of equation': h => contract(h, MENUS[0]),
   'C keeps the menu contract on every kind of equation': h => contract(h, MENUS[1]),
   'f keeps the menu contract on every kind of equation': h => contract(h, MENUS[2]),

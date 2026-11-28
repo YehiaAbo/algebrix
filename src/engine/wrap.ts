@@ -19,7 +19,7 @@ const nonNeg = (n: Node) => (n.k === 'num' && n.v >= 0) || n.k === 'sqrt' || (n.
 const positive = (n: Node) => (n.k === 'num' && n.v > 0) || (n.k === 'pow' && n.base.k === 'sym' && n.base.name === 'e') || (n.k === 'pow' && n.base.k === 'num' && n.base.v > 0);
 const fresh = (n: Node) => { const c = cloneFresh(n); walk(c, m => { m.from = undefined; }); return c; };
 
-function wrapNode(s: Node, f: Wrap, arg: Node): Node {
+export function wrapNode(s: Node, f: Wrap, arg: Node): Node {
   switch (f) {
     case 'square': return pow(s, num(2));
     case 'cube': return pow(s, num(3));

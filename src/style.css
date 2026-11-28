@@ -848,3 +848,9 @@ body[data-mode="write"] .input-keys { display: flex; }
 .g.dim { opacity: .38; transition: opacity calc(.25s * var(--pace, 1)) var(--ease); }
 .g.bar.strike { background: linear-gradient(to top right, transparent calc(50% - .05 * var(--s)), var(--bad) calc(50% - .035 * var(--s)), var(--bad) calc(50% + .035 * var(--s)), transparent calc(50% + .05 * var(--s))); border-radius: 0; animation: strike-draw calc(.3s * var(--pace, 1)) var(--ease) both; }
 @keyframes strike-draw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+/* Tab: the box on top, then one even grid of same-size cards (as the f menu) */
+.tabmenu .pal-items .menu-line { gap: 6px; }
+.tabmenu .pal-items .chip { width: 132px; height: 84px; padding: 20px 6px 6px; justify-content: center; }
+.tabmenu .pal-items .chip.tech { color: var(--ink); font-size: 13px; text-align: center; }
+.tabmenu .tech-label { display: block; line-height: 1.3; }
+.tabmenu .hub-eg { font: 14px var(--math-font); color: var(--faint); }
