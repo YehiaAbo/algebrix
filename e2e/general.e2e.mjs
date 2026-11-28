@@ -190,11 +190,11 @@ export const tests = {
     assert(chips.filter(c => c.chain).length < chips.length, 'the single rules are not tagged');
   },
 
-  async 'Tab on a sum shows the general moves'({ load, p, key, assert, wait }) {
+  async 'C on a sum shows the general moves of a sum (they live in C, not Tab)'({ load, p, key, assert, wait }) {
     await load('sum_{k=1}^{n} (k^2 + 3k)');
-    await p.keyboard.down('Tab'); await wait(150);
+    await key('c'); await wait(150);
     const forms = await p.evaluate(() => [...document.querySelectorAll('#forms .form-name')].map(c => c.textContent));
-    await p.keyboard.up('Tab'); await key('Escape');
+    await key('Escape');
     assert(forms.some(f => f.includes('split the sum')), `split the sum is offered: ${forms}`);
   },
 };

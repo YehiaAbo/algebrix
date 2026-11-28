@@ -103,9 +103,9 @@ export const tests = {
     await load('S = sum_{n=1}^{oo} (-1)^(n+1)/(n C(2n, n))');
     await p.evaluate(() => { const a = window.algebrix; a.sel = a.eq.rhs.arg.id; a.renderSelection(); });
     await hold('Tab', '=');
-    await wait(150);
+    await p.waitForSelector('#hub-input');
     await p.keyboard.press('Control+a');
-    await p.evaluate(() => window.field('op-input').setLatex(String.raw`\int_0^1\left(-1\right)^{n+1}\frac{1}{2}\left(t\left(1-t\right)\right)^{n-1}dt`));
+    await p.evaluate(() => window.field('hub-input').setLatex(String.raw`\int_0^1\left(-1\right)^{n+1}\frac{1}{2}\left(t\left(1-t\right)\right)^{n-1}dt`));
     await key('Enter');
     await until(s => s.eq.startsWith('S = Σ_{n=1}^{∞} ∫_{0}^{1}'), 'the term is its Beta integral');
     await p.evaluate(() => { const a = window.algebrix; a.sel = a.eq.rhs.arg.id; a.renderSelection(); });

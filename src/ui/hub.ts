@@ -25,6 +25,7 @@ import { crossOut } from '../engine/series';
 import { mathField, field } from './mathfield';
 import { doNothing } from '../engine/general';
 import { parseExpr } from '../engine/parse';
+import { toText } from '../engine/print';
 
 export function techniques(this: App): Tech[] {
   const eq = this.eq;
@@ -147,7 +148,9 @@ export function hubKey(this: App, e: KeyboardEvent): unknown {
   }
   if ((k === '=' || k === 'm') && !e.ctrlKey && !e.metaKey) {
     if (!this.sel || this.sel === 'eq') { if (k === 'm' || relOf(this.eq) !== 'expr') return this.refuse('Aim at a piece first (arrows), then type what to do to it and undo: + n, × 2, ^2, ln.'); }
-    return this.hubType(k === 'm' ? '*' : '');
+    // = starts from the piece as it is written (to change into the form you want); m from ×
+    const P = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : relOf(this.eq) === 'expr' ? this.eq.lhs : null;
+    return this.hubType(k === 'm' ? '*' : P ? toText(P) : '');
   }
   const spec = hubSpec(this, h);
   // another equation's number subs it in (a technique card); any other number says why not
@@ -318,7 +321,6 @@ export function hubClick(this: App, el: Element) {
 function partOf(f: Form): string {
   if (f.part) return f.part;
   if (/sum|product|term out|shift|telescop|Σ|∏|⋯|partial sums/.test(f.name)) return 'Σ';
-  if (/^trig|triangle/.test(f.name)) return 'trig';
   return '';
 }
 
@@ -385,7 +387,7 @@ function renderCalcHub(this: App, host: HTMLElement) {
     card.dataset.k = t.key;
     const name = document.createElement('span');
     name.className = 'form-name';
-    name.innerHTML = `<kbd>${t.key}</kbd>`;
+    name.innerHTML = t.key ? `<kbd>${t.key}</kbd>` : '';
     name.append(mathLabel(t.label + (t.ask ? ' …' : ''), 12));
     if (t.shortcut) name.insertAdjacentHTML('beforeend', '<span class="short" title="a chain of general moves, each one in the tree">chain</span>');
     card.append(name);
@@ -488,8 +490,10 @@ export function renderHub(this: App) {
         placeholder: '+ n, × 2, ^2, ln, or a form',
       });
       input.el.addEventListener('input', () => this.hubTyped());
-      if (h.typed) { input.typeText(h.typed); h.typed = undefined; }
-      setTimeout(() => input.focus(), 0);
+      // what = starts from (the piece as written) is selected, so typing + 1 replaces it and editing keeps it
+      const pre = h.typed;
+      if (pre) { input.value = pre; h.typed = undefined; }
+      setTimeout(() => { input.focus(); if (pre && pre !== '*') input.select(); }, 0);
     } else {
       const idle = document.getElementById('hub-idle');
       idle?.addEventListener('mousedown', ev => { ev.preventDefault(); this.hubType(''); });

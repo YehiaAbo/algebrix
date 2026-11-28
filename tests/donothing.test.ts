@@ -53,6 +53,8 @@ describe('do and undo on the aimed piece', () => {
   it('a whole expression is "rewrite as"', () => {
     expect(txt(at('y = x^2 - 1', e => e.rhs.id, '(x-1)(x+1)'))).toBe('y = (x − 1)(x + 1)');
     expect(txt(at('y = x^2 - 1', e => e.rhs.id, '= (x-1)(x+1)'))).toBe('y = (x − 1)(x + 1)');
+    // a subscript is not a function's slot: ∫ from 0 to 1 is a form to rewrite as
+    expect(txt(at('y = 1/2', e => e.rhs.id, 'int_{0}^{1} t dt'))).toBe('y = ∫_{0}^{1} t dt');
   });
   it('refusals say why', () => {
     expect(txt(at('y = x', () => 'eq', '+ 1'))).toMatch(/^error: Aim at/);

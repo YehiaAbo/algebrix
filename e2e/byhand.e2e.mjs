@@ -129,14 +129,15 @@ export const tests = {
     await until(s => s.eq === '∫_{0}^{1} ∂/∂t(x^t) dx = y', 'd/dt inside');
   },
 
-  async 'Tab on an integral offers by parts with each choice of u, previewed, next to the algebra'(h) {
-    const { load, key, until, p, assert } = h;
+  async 'C on an integral offers by parts with each choice of u, previewed'(h) {
+    const { load, key, hold, until, p, assert } = h;
     await load('int x e^x dx');
     await dig(h, '∫ xe^x dx');
-    await key('Tab');
+    await key('c');
     const names = await p.evaluate(() => [...document.querySelectorAll('#forms .form-name, #forms .chip')].map(e => { const c = e.cloneNode(true); c.querySelectorAll('.mlabel').forEach(m => m.replaceWith(m.dataset.text)); return c.textContent; }).join(' | '));
     assert(names.includes('u = x') && names.includes('u = e^x'), `both choices of u: ${names}`);
-    await key('ArrowRight', 'Tab');
+    await key('Escape');
+    await hold('c', 'b');
     await until(s => s.eq === 'xe^x − ∫ e^x dx', 'by parts with u = x');
   },
 
@@ -524,11 +525,12 @@ export const tests = {
     await dig(h, 'x^2 − 1');
     await hold('Tab', '=');
     await until(() => true, '');
-    const start = await p.evaluate(() => window.field('op-input').value);
+    await p.waitForSelector('#hub-input');
+    const start = await p.evaluate(() => window.field('hub-input').value);
     assert(start.replace(/\s/g, '') === 'x^2-1', `starts from how it is written: ${start}`);
     await p.keyboard.press('Control+a');
     await type('(x-1)^2');
-    const bad = await p.evaluate(() => document.querySelector('#op').classList.contains('bad'));
+    const bad = await p.evaluate(() => document.querySelector('#hub-note').classList.contains('bad'));
     assert(bad, 'an unequal form shows as wrong while typing');
     await key('Enter');
     await until(s => s.eq === 'y = x^2 − 1', 'and is refused');

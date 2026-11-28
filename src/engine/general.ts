@@ -770,7 +770,8 @@ export function doNothing(e: Eq, sel: string | null, text: string): CheckedResul
     }
   }
   // a function: f then its inverse, or the inverse then f where only that way gives T back
-  const F = /^(=|[(\d])/.test(src) ? null : fnTemplate(src);
+  // a function: a bare name (ln, sin) or a form with _ or □ for the piece (e^_); a subscript (int_{0}) is not one
+  const F = /^[A-Za-zα-ω]+(⁻¹)?$/.test(src) || /□|_(?![{\w])/.test(src) ? fnTemplate(src) : null;
   if (F && !('error' in F)) {
     const put = (x: Node, G: Node) => { const go2 = (m: Node): Node => (m.k === 'sym' && m.name === '□' ? x : withChildren(m, children(m).map(go2))); return go2(cloneFresh(G)); };
     const inv = inverseOf(put(sym('x'), F));

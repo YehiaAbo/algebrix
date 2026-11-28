@@ -98,6 +98,15 @@ export function calcTechniques(this: App): Tech[] {
     const r = intStep(eq, this.sel), u = uCandidate(eq, this.sel), b = byParts(eq, this.sel);
     add('Integrals', { lead: true, key: 'i', label: isErr(r) ? 'integrate' : r.label, ok: !isErr(r), why: isErr(r) ? r.error : undefined, move: r, run: () => this.apply(intStep(this.eq, this.sel), 1.1) });
     add('Integrals', { key: 'b', label: isErr(b) ? 'by parts' : b.label, ok: !isErr(b), why: isErr(b) ? b.error : undefined, move: b, run: () => this.apply(byParts(this.eq, this.sel), 1.1) });
+    // by parts with each other factor as u: you choose, the card shows where each one leads (it was Tab's)
+    const aimed = this.sel && this.sel !== 'eq' ? find(eq, this.sel) : null;
+    let I: Node | null = aimed?.k === 'int' ? aimed : null;
+    if (!I) walk(eq, n => { if (!I && n.k === 'int') I = n; });
+    const T = I as Extract<Node, { k: 'int' }> | null;
+    if (T && T.arg.k === 'mul') for (const f of T.arg.factors) {
+      const o = byParts(eq, f.id);
+      if (!isErr(o) && (isErr(b) || key(o.eq) !== key(b.eq))) { const id = f.id; add('Integrals', { key: '', label: o.label, ok: true, move: o, run: () => this.apply(byParts(this.eq, id), 1.1) }); }
+    }
     add('Integrals', { key: 'u', label: u ? `u-substitution: u = ${toText(u)}` : 'u-substitution', shortcut: true, ok: !!u, why: u ? undefined : (() => { const m = uSub(eq, this.sel).move; return isErr(m) ? m.error : undefined; })(), run: () => this.uSubShortcut() });
   } else if (isEq && !diffs && bv) {
     const r = integrateBoth(eq, bv);
