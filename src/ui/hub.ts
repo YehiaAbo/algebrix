@@ -59,6 +59,17 @@ export function techniques(this: App): Tech[] {
     const k = out.some(t => t.key === 'u') ? '' : 'u';
     out.push({ key: k, label: `put back ${toText(d)}`, ok: true, move, run: () => this.applyTidy(subIn(this.eq, d, this.sel, toText(d)), 1.15) });
   }
+  // a piece by itself on the side, and back again (user 2026-11-28)
+  if (this.sel && this.sel !== 'eq' && !this.slot?.focus) out.push({ key: '', label: 'work on it on the side', ok: true, run: () => this.focusAside() });
+  for (const a of this.asideFor(this.cur)) {
+    const k = out.some(t => t.key === 'u') ? '' : 'u';
+    out.push({ key: k, label: `put back from (${a.from + 1})`, ok: true, move: a.move, run: () => { const m = this.asideFor(this.cur).find(b => b.from === a.from); if (m) this.applyTidy(m.move, 1.15); } });
+  }
+  const F = this.slot?.focus, srcAt = F ? this.slots.findIndex(s => s.uid === F.slot) : -1;
+  if (srcAt >= 0) {
+    const back = this.asideFor(srcAt).find(b => b.from === this.cur);
+    if (back) out.push({ key: '', label: `put it back into (${srcAt + 1})`, ok: true, run: () => { const side = this.cur; this.switchTo(srcAt); const m = this.asideFor(srcAt).find(b => b.from === side); if (m) this.applyTidy(m.move, 1.15); } });
+  }
   // q on a fraction is long division (a form); on a polynomial it takes out a factor you type
   if (aimed?.k !== 'frac' && polyTarget(eq, this.sel)) out.push({ key: 'q', label: 'take out a factor…', ok: true, run: () => this.openDivide() });
   // an identity in x with unknown coefficients (1 = A(x + 2) + B(x + 1)): one equation per power
@@ -71,7 +82,7 @@ export function techniques(this: App): Tech[] {
   // any piece times A/A: e⁻ˣ on top and below, a conjugate, a missing factor
   if (aimed) out.push({ key: 'm', label: 'multiply by 1…', ok: true, run: () => this.openOne() });
   this.slots.forEach((_, j) => {
-    if (j === this.cur) return;
+    if (j === this.cur || this.slots[j].focus || this.slot?.focus) return;
     // a shared letter, a letter an integral here runs over, or a side of it written here (I(0) = 0)
     const shares = appearsIn(eq, this.eqOf(j));
     // another case of the same split is an alternative, not something that also holds

@@ -300,7 +300,8 @@ export class App {
       const e = this.eqOf(i);
       if (i === this.cur) return { tag: this.slotTag(i, e), offer: '', linked: false, focus: true };
       // a case of the same split, or an answer that fails, has nothing to give this equation
-      const shared = sheet.areCases(this, this.cur, i) || this.slots[i].bad ? [] : symbols(e).filter(v => mine.includes(v));
+      // a piece taken aside is worked on by itself: it shares nothing with the equations
+      const shared = sheet.areCases(this, this.cur, i) || this.slots[i].bad || this.slots[i].focus || this.slot?.focus ? [] : symbols(e).filter(v => mine.includes(v));
       const solved = solvedFor(e);
       const keys = `<span class="sep">·</span><kbd>Tab</kbd>+<kbd>${i + 1}</kbd>`;
       let offer = '';
@@ -372,7 +373,7 @@ export class App {
     this.renderRail();
     this.renderHints();
     this.graph.extra = this.slot?.bad && this.shown && solvedFor(this.shown) && !this.preview ? 'But this answer came from a one-way step (like squaring) and fails the original, so it is not a solution.' : '';
-    if (this.shown) this.drawGraphSoon(this.shown, graphAnim, this.slots.filter((_, i) => i !== this.cur).map((_, j) => this.eqOf(j >= this.cur ? j + 1 : j)), sameSet && this.shown === this.eq);
+    if (this.shown) this.drawGraphSoon(this.shown, graphAnim, this.slots.map((_, i) => i).filter(i => i !== this.cur && !this.slots[i].focus && !this.slot?.focus).map(i => this.eqOf(i)), sameSet && this.shown === this.eq);
     document.body.dataset.mode = this.mode;
     this.tour?.check();
   }

@@ -2,13 +2,13 @@
 // holds for every value, hold Tab + n subs a piece in from equation n, and C does calculus to both
 // sides. Each is one step in the tree; the shortcuts in C are chains of these.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
-import { find, symbols, LETS, isDiff, Node, key, replace, walk, DEFS, Eq, relOf } from '../engine/ast';
+import { find, symbols, LETS, isDiff, Node, key, replace, walk, DEFS, Eq, relOf, eq, num, cloneFresh } from '../engine/ast';
 import { parseExpr } from '../engine/parse';
 import { divideOut, polyTarget, factorGuess } from '../engine/polytools';
 import { newHints } from '../engine/simplify';
 import { toText } from '../engine/print';
 import { isErr, Checked, CheckedResult, checked } from '../engine/moves';
-import { nameIt, subIn, putValue, tryValue, valueParts, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne, rewriteAs } from '../engine/general';
+import { nameIt, subIn, putValue, tryValue, valueParts, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne, rewriteAs, putBack } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
 import { compareCoefficients } from '../engine/systems';
@@ -456,4 +456,37 @@ export function compareKey(this: App, v: string) {
   this.save();
   const n = r.rest.length + 1;
   this.say(n === 1 ? `One power of ${v} to match: this equation.` : `${n} equations, one for each power of ${v}: this one and ${r.rest.map((_, i) => this.slots.length - r.rest.length + i + 1).join(', ')}. Tab + k eliminates with another.`);
+}
+
+/** Tab: work on the aimed piece by itself, as an expression of its own linked to this one (user 2026-11-28) */
+export function focusAside(this: App) {
+  const piece = this.sel && this.sel !== 'eq' ? find(this.eq, this.sel) : null;
+  if (!piece) return this.refuse('Aim at the piece you want to work on by itself.');
+  if (this.slots.length >= 9) return this.refuse('Nine equations is the limit for now.');
+  const src = here(this.slot!);
+  const n = this.cur + 1;
+  this.slots.push({ steps: [{ eq: eq(cloneFresh(piece), num(0), 'expr'), label: 'on the side', conditions: [] }], at: 0, sel: null, from: src, focus: { slot: src.slot, piece: piece.id } });
+  this.cur = this.slots.length - 1;
+  sound.commit();
+  this.sel = null;
+  this.stage.clear();
+  this.renderAll(null);
+  this.entrance();
+  this.save();
+  this.say(`${brief(piece)} on its own. Work on it with any move; Tab puts it back into equation ${n}.`);
+}
+
+/** the pieces taken aside from equation i that can go back now: where they go and what comes back */
+export function asideFor(this: App, i: number): { from: number; piece: string; worked: Node; move: CheckedResult }[] {
+  const uid = this.slots[i]?.uid;
+  if (!uid) return [];
+  const e = this.eqOf(i);
+  return this.slots.flatMap((s, j) => {
+    if (!s.focus || s.focus.slot !== uid) return [];
+    const worked = this.eqOf(j).lhs;
+    // what working on it assumed (x ≠ 1 from cancelling) holds where it goes back too
+    const conds = s.steps.slice(0, s.at + 1).flatMap(st => st.conditions);
+    const move = putBack(e, s.focus.piece, worked, [...new Set(conds)]);
+    return isErr(move) || key(move.eq) === key(e) ? [] : [{ from: j, piece: s.focus.piece, worked, move }];
+  });
 }

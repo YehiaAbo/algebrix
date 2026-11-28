@@ -1,6 +1,7 @@
 // Input: mouse and keyboard bindings, and the key dispatcher.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { applyMove, isErr } from '../engine/moves';
+import { shiftVertical } from '../engine/levels';
 import { moveAny } from '../engine/wrap';
 import { sound } from './sound';
 import { cycleGraph } from './panels';
@@ -194,10 +195,10 @@ export function key(this: App, e: KeyboardEvent) {
     case 'l': case 'ArrowRight': handled(); return e.altKey ? this.stepEquation(1) : e.shiftKey ? this.apply(applyMove('slideR', this.eq, this.sel)) : this.sideways(1);
     case 'H': handled(); return this.apply(applyMove('slideL', this.eq, this.sel));
     case 'L': handled(); return this.apply(applyMove('slideR', this.eq, this.sel));
-    case 'k': case 'ArrowUp': handled(); return e.shiftKey ? this.apply(applyMove('lift', this.eq, this.sel)) : this.grow();
-    case 'j': case 'ArrowDown': handled(); return e.shiftKey ? this.apply(applyMove('drop', this.eq, this.sel)) : this.shrink();
-    case 'K': handled(); return this.apply(applyMove('lift', this.eq, this.sel));
-    case 'J': handled(); return this.apply(applyMove('drop', this.eq, this.sel));
+    case 'k': case 'ArrowUp': handled(); return e.shiftKey ? this.apply(shiftVertical(this.eq, this.sel, -1)) : this.grow();
+    case 'j': case 'ArrowDown': handled(); return e.shiftKey ? this.apply(shiftVertical(this.eq, this.sel, 1)) : this.shrink();
+    case 'K': handled(); return this.apply(shiftVertical(this.eq, this.sel, -1));
+    case 'J': handled(); return this.apply(shiftVertical(this.eq, this.sel, 1));
     case 'Tab': handled(); if (e.shiftKey) return this.toggleSide(); if (!e.repeat) this.openHub(false); return;
     case 'a': handled(); return this.select('eq');
     case 'Escape': handled(); return this.select(null, true);

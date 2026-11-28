@@ -811,3 +811,9 @@ export function rewriteAs(e: Eq, at: string | null, text: string): CheckedResult
   const r = checked(e, { eq: replace(e, target.id, out) as Eq, label: `rewrite as ${toText(n)}`, rule: 'rewrite as', hints: newHints(), factor: () => 1, select: out.id });
   return isErr(r) ? { error: `${toText(n)} isn’t equal to ${toText(target)} here, so it can’t take its place.` } : r;
 }
+
+/** a piece worked on by itself on the side goes back where it was taken from (checked like any move) */
+export function putBack(e: Eq, piece: string, worked: Node, conditions: string[] = []): CheckedResult {
+  if (!find(e, piece)) return { error: 'The piece you took aside has changed here since, so it has nowhere to go back to.' };
+  return checked(e, { eq: replace(e, piece, cloneFresh(worked)) as Eq, label: `put back ${toText(worked)}`, hints: newHints(), factor: () => 1, select: null, rule: 'put back', conditions });
+}

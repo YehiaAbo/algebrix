@@ -18,7 +18,8 @@ export interface StepFx { absorbs: [string, string][]; flights: { from: string; 
  *  steps is the line you are on (start to its last step); alts are the other lines you tried, each
  *  from the start, together the work tree. uid names the equation for links; from: the step it came out of */
 /** named: this equation is a name made with b (u = x², t = 2, I(t) = …, x = sin θ) */
-export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string; uid?: string; alts?: Step[][]; from?: Link; named?: 'letter' | 'param' | 'fn' | 'expr' }
+/** focus: a piece taken aside to work on by itself (slot uid and the piece's id there), put back when done */
+export interface Slot { steps: Step[]; at: number; sel: string | null; origin?: Eq; bad?: string; uid?: string; alts?: Step[][]; from?: Link; named?: 'letter' | 'param' | 'fn' | 'expr'; focus?: { slot: string; piece: string } }
 export type Mode = 'write' | 'solve' | 'labels' | 'op' | 'hub' | 'fnpal' | 'fnask';
 
 export const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;

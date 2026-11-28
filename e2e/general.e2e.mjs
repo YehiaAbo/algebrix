@@ -48,6 +48,44 @@ export const tests = {
     await key('u');
     await until(s => s.eq === 'u(u + 3) = 10', 'undo takes it out again');
   },
+  async 'Tab: work on a piece on the side, then put it back'(h) {
+    const { load, key, hold, until, p, assert } = h;
+    await load('y = (x^2 - 1)/(x - 1) + 3');
+    await dig(h, '(x^2 − 1)/(x − 1)');
+    await key('Tab');
+    for (let j = 0; j < 20 && !(await p.evaluate(() => document.querySelector('.tabmenu .on')?.textContent ?? '')).includes('on the side'); j++) await key('ArrowRight');
+    await key('Tab');
+    await until(s => s.slots === 2 && s.cur === 1 && s.eq === '(x^2 − 1)/(x − 1)', 'the piece on its own, as equation 2');
+    await hold('Tab', 'f');
+    await until(s => s.eq === '((x − 1)(x + 1))/(x − 1)', 'factored on the side');
+    await key('s');
+    await until(s => s.eq === 'x + 1', 'cancelled on the side');
+    await key('1');
+    await until(s => s.cur === 0, 'back on equation 1');
+    await hold('Tab', 'u');
+    await until(s => s.eq === 'y = x + 1 + 3', 'the worked piece goes back in');
+  },
+  async 'Shift ↑ opens Σ, ∫ and d/dx one pure step at a time; Shift ↓ folds a written-out Σ back'(h) {
+    const { load, key, until } = h;
+    await load('y = int_0^1 (3x^2 + 2) dx');
+    await dig(h, '∫_{0}^{1} (3x^2 + 2) dx');
+    await key('Shift+ArrowUp');
+    await until(s => s.eq === 'y = ∫_{0}^{1} 3x^2 dx + ∫_{0}^{1} 2 dx', 'split over +');
+    await key('Shift+ArrowUp');
+    await until(s => s.eq === 'y = [x^3]_{x=0}^{1} + ∫_{0}^{1} 2 dx', 'power rule, aim kept');
+    await load('S = sum_(n=1)^N n^2');
+    await dig(h, 'Σ_{n=1}^{N} n^2');
+    await key('Shift+ArrowUp');
+    await until(s => s.eq.startsWith('S = 1 + 4 + 9 +'), 'written out');
+    await key('Shift+ArrowDown');
+    await until(s => s.eq === 'S = Σ_{n=1}^{N} n^2', 'folded back');
+    await load('y = d/dx(x^3 + sin(x))');
+    await dig(h, 'd/dx(x^3 + sin(x))');
+    for (const want of ['y = d/dx(x^3) + d/dx(sin(x))', 'y = 3x^2 + d/dx(sin(x))', 'y = 3x^2 + cos(x)']) {
+      await key('Shift+ArrowUp');
+      await until(s => s.eq === want, want);
+    }
+  },
   async 'b on a number makes a parameter, and on a whole side a function I(t)'(h) {
     const { load, key, type, until, p, assert } = h;
     await load('int_0^1 (x^2 - 1)/ln(x) dx');
