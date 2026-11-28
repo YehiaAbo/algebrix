@@ -23,8 +23,6 @@ const CORPUS = [
 const BUDGET = 100;
 
 const KNOWN = new Set([
-  // Tab and C work out and check every form and technique before they draw (about 170 ms here)
-  'tab|feynman|slow', 'calc|feynman|slow',
 ]);
 
 const MENUS = [
