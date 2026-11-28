@@ -6,7 +6,8 @@ import { cardMath } from './hub';
 
 /** names that are maths though they are words */
 const FN = new Set(['sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'ln', 'log', 'exp', 'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan', 'sqrt', 'lim', 'det', 'dx', 'dy', 'dt', 'du', 'dv']);
-const isWord = (t: string) => /^[A-Za-z]{2,}[:,;.…]?$/.test(t) && !FN.has(t.replace(/[:,;.…]$/, ''));
+// a hyphenated word (u-substitution) is a word too
+const isWord = (t: string) => (/^[A-Za-z]{2,}[:,;.…]?$/.test(t) || /^[A-Za-z]+(-[A-Za-z]+)+[:,;.…]?$/.test(t)) && !FN.has(t.replace(/[:,;.…]$/, ''));
 const LEAD = /^([Σ∏∫÷×±√·])\s*/;
 
 const CACHE = new Map<string, (string | { math: string; sym?: string })[]>();

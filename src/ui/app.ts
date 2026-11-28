@@ -492,7 +492,7 @@ export class App {
     if (this.mode === 'hub') {
       const h = this.hub;
       return h?.awaitVar ? '<span class="aside">Solve for which letter? Press it, or <kbd>Esc</kbd>.</span>'
-        : h?.calc ? '<span class="aside">Calculus: <kbd>←</kbd><kbd>→</kbd> sections, <kbd>↓</kbd> into one, or press a key to use it now.</span>'
+        : h?.calc ? `<span class="aside">Calculus: press a key to use it now, or the arrows to browse and ${h.sticky ? '<kbd>C</kbd> to apply. <kbd>Esc</kbd> closes.' : 'release to apply.'}</span>`
         : h?.sticky ? '<span class="aside">Algebra: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and <kbd>Tab</kbd> to apply. <kbd>Esc</kbd> closes.</span>'
         : '<span class="aside">Holding <kbd>Tab</kbd>: press a key to use it now, or <kbd>←</kbd><kbd>→</kbd> to browse forms and release to apply.</span>';
     }

@@ -239,7 +239,7 @@ export const tests = {
     await load('int x e^x dx');
     await p.keyboard.down('Shift'); await key('C'); await p.keyboard.up('Shift'); await wait(300);
     await key('ArrowDown');
-    await until(() => p.evaluate(() => document.querySelectorAll('#forms .calc-items .mini').length >= 1), 'the C cards hold math');
+    await until(() => p.evaluate(() => document.querySelectorAll('#forms .pal-items .mini').length >= 1), 'the C cards hold math');
     c = await covered();
     assert(!c.hit, `the C menu fits beside the equation: ${JSON.stringify(c)}`);
     const before = await p.evaluate(() => window.toText(window.algebrix.eq));

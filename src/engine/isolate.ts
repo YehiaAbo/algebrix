@@ -528,6 +528,10 @@ export function splitCases(e: Eq, v?: string): Cases | null {
 /** a v² + b v + c = 0  →  v = (−b ± √(b² − 4ac)) / 2a, as two cases with a, b, c plugged in. */
 export function quadraticFormula(e: Eq, v: string): Cases | { error: string } {
   if (relOf(e) !== '=') return { error: 'The quadratic formula needs an equation.' };
+  // v inside a function, an exponent, a root or under a bar can't be a quadratic in v: say so before
+  // expanding (on a long equation that expansion is seconds of work for nothing)
+  if (!polyShaped(e.lhs, v) || !polyShaped(e.rhs, v)) return { error: `This is not a quadratic in ${v}: ${v} sits inside a function, a power or a fraction's bottom.` };
+  if (Math.max(degreeAtMost(e.lhs, v), degreeAtMost(e.rhs, v)) < 2) return { error: `There is no ${v}² here, so this is not a quadratic in ${v}.` };
   const P = polyOf(expandAll(add([fresh(e.lhs), negate(fresh(e.rhs))]), newHints()));
   if (!P || P.v !== v || P.c.length !== 3) return quadraticLetters(e, v);
   const [c, b, a] = P.c;
@@ -630,4 +634,32 @@ export function everyTrigSolution(peeled: Eq, answer: Eq, v: string): string | n
   const fams = [show(A)];
   if (second && !same(evaluate(second, {}), a)) fams.push(show(second));
   return `every solution: ${fams.map(f => `${v} = ${f}`).join(' or ')}, for any whole number k`;
+}
+
+/** could n be a polynomial in v as written: v only under +, ×, −, whole-number powers and number bottoms */
+function polyShaped(n: Node, v: string): boolean {
+  const has = (m: Node) => { let f = false; walk(m, k => { if (k.k === 'sym' && k.name === v) f = true; }); return f; };
+  if (!has(n)) return true;
+  switch (n.k) {
+    case 'sym': return true;
+    case 'add': return n.terms.every(t => polyShaped(t, v));
+    case 'mul': return n.factors.every(t => polyShaped(t, v));
+    case 'neg': return polyShaped(n.arg, v);
+    case 'pow': return n.exp.k === 'num' && Number.isInteger(n.exp.v) && n.exp.v >= 0 && polyShaped(n.base, v);
+    case 'frac': return !has(n.den) && polyShaped(n.num, v);
+    default: return false;
+  }
+}
+
+/** the highest power of v as written (an upper bound: terms may still cancel); for polyShaped nodes */
+function degreeAtMost(n: Node, v: string): number {
+  switch (n.k) {
+    case 'sym': return n.name === v ? 1 : 0;
+    case 'add': return Math.max(0, ...n.terms.map(t => degreeAtMost(t, v)));
+    case 'mul': return n.factors.reduce((d, t) => d + degreeAtMost(t, v), 0);
+    case 'neg': return degreeAtMost(n.arg, v);
+    case 'pow': return n.exp.k === 'num' ? n.exp.v * degreeAtMost(n.base, v) : 0;
+    case 'frac': return degreeAtMost(n.num, v);
+    default: return 0;
+  }
 }

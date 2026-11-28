@@ -188,7 +188,7 @@ export function fewerTerms(e: Eq, sel: string | null, end: 'start' | 'end'): Che
   const D2 = dotsOf(D, end === 'start' ? plus(D.lo, -1) : cloneFresh(D.lo), end === 'end' ? plus(D.hi, 1) : cloneFresh(D.hi), D.id);
   const wd = edgeWidth(host, D, end);
   const next = withParts(host, end === 'start' ? [...ps.slice(0, at - wd), D2, ...ps.slice(at + 1)] : [...ps.slice(0, at), D2, ...ps.slice(at + 1 + wd)]);
-  return ok(e, host, next, `a term back into ⋯ at the ${end}`, D.id);
+  return ok(e, host, next, `one fewer term at the ${end}`, D.id);
 }
 
 /** all the terms next to the ⋯ that belong to it go back in: one Σ again */

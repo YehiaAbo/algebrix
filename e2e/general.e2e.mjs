@@ -236,7 +236,7 @@ export const tests = {
   async 'C hub marks the shortcuts as chains'({ load, p, key, assert, wait }) {
     await load('int 2x cos(x^2) dx');
     await p.keyboard.down('c'); await wait(150);
-    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .calc-items .form-name')].map(c => ({ t: c.textContent, chain: !!c.querySelector('.short') })));
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#forms .pal-items button')].map(b => ({ t: b.querySelector('.cname')?.textContent ?? '', chain: !!b.querySelector('.short') })));
     await p.keyboard.up('c'); await key('Escape');
     const u = chips.find(c => c.t.includes('u-substitution'));
     assert(u && u.chain, `u-substitution is tagged as a chain: ${JSON.stringify(chips)}`);
@@ -246,7 +246,7 @@ export const tests = {
   async 'C on a sum shows the general moves of a sum (they live in C, not Tab)'({ load, p, key, assert, wait }) {
     await load('sum_{k=1}^{n} (k^2 + 3k)');
     await key('c'); await wait(150);
-    const forms = await p.evaluate(() => [...document.querySelectorAll('#forms .form-name')].map(c => c.textContent));
+    const forms = await p.evaluate(() => [...document.querySelectorAll('#forms .pal-items button')].map(b => (b.querySelector('kbd')?.textContent ?? '') + (b.querySelector('.cname')?.textContent ?? '')));
     await key('Escape');
     assert(forms.some(f => f.includes('split the sum')), `split the sum is offered: ${forms}`);
   },

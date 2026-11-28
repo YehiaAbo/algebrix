@@ -136,7 +136,7 @@ export function calcTechniques(this: App): Tech[] {
       }
       for (const [key, end] of [['{', 'start'], ['}', 'end']] as const) {
         const r = fewerTerms(eq, sel, end);
-        if (!isErr(r)) add('Series', { key, label: `a term back into ⋯ at the ${end}`, ok: true, move: r, run: () => this.apply(fewerTerms(this.eq, this.sel, end), 0.95) });
+        if (!isErr(r)) add('Series', { key, label: `one fewer term at the ${end}`, ok: true, move: r, run: () => this.apply(fewerTerms(this.eq, this.sel, end), 0.95) });
       }
     }
     const fb = foldBack(eq, sel);
