@@ -38,6 +38,22 @@ export const tests = {
     assert(await dots(p) === 1, 'the ⋯ is still there');
   },
 
+  async 'the ⋯ stays put under Shift and m, and s gives back the Σ it was written from'({ p, load, aim, key, until, assert, wait, countRefusals, refusals }) {
+    await load('S = 1 + 4 + 9 + ... + 250000');
+    await poll(p, async () => (await dots(p)) === 1, 'written out with a ⋯');
+    const was = (await p.evaluate(() => window.algebrix.eq.rhs.terms.map(t => t.id))).join();
+    await aim('1 + 4 + 9 + Σ_{k=4}^{499} k^2 + 250000');
+    await key('ArrowDown');
+    await aim('Σ_{k=4}^{499} k^2');
+    await countRefusals();
+    for (const k of ['Shift+ArrowRight', 'Shift+ArrowLeft', 'm']) { await key(k); await wait(250); }
+    assert(await refusals() === 3, `each key was refused: ${await refusals()}`);
+    const now = (await p.evaluate(() => window.algebrix.eq.rhs.terms.map(t => t.id))).join();
+    assert(now === was, 'the ⋯ and its terms did not move');
+    await key('s');
+    await until(s => s.eq === 'S = Σ_{k=1}^{500} k^2', 'simplify folds it back into the original Σ');
+  },
+
   async 'typing 1 + 1/4 + 1/9 + … reads the pattern as a Σ to ∞'({ load, until }) {
     await load('S = 1 + 1/4 + 1/9 + ...');
     await until(s => /Σ/.test(s.eq) && /∞/.test(s.eq), 'a sum to ∞');

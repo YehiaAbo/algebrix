@@ -12,6 +12,7 @@ import { derivative, substitute } from './calculus';
 import { distributeNode, factorize } from './rewrite';
 import { toText } from './print';
 import { parseExpr } from './parse';
+import { foldBack } from './series';
 
 export interface MoveOk {
   eq: Eq;
@@ -60,7 +61,7 @@ export function introduced(r: MoveOk, _what: 'a definition' | 'an answer'): Chec
 
 /** the strict check alone: the numbers must agree, with no fallback for pieces that have no value and
  *  nothing logged. For trying many candidates (Tab's forms), where a refusal just means "not offered". */
-export function strictly(before: Eq, r: MoveOk): Checked | null { return verify(before, r) ? null : r as Checked; }
+export function strictly(before: Eq, r: MoveOk): Checked | null { return dotsMoved(before, r.eq) || verify(before, r) ? null : r as Checked; }
 export const isErr = (r: MoveResult): r is { error: string } => 'error' in r;
 
 export type MoveName = 'move' | 'divide' | 'multiply' | 'distribute' | 'simplify' | 'factor' | 'slideL' | 'slideR' | 'swap' | 'lift' | 'drop';
@@ -179,10 +180,21 @@ function distribute(e: Eq, sel: string | null): MoveResult {
 /* ---------- simplify the selection ---------- */
 function simplifyMove(e: Eq, sel: string | null): MoveResult {
   const h = newHints();
+  // a written-out Σ or ∏ in reach goes back into the one it was written from: its numbers are a
+  // pattern being shown, not terms to add up (user 2026-11-28)
+  const scope = sel && sel !== 'eq' ? find(e, sel) : e;
+  const ds: string[] = [];
+  if (scope) walk(scope, n => { if (n.k === 'sum' && n.dots) ds.push(n.id); });
+  let folded = false;
+  for (const d of ds) {
+    const r = find(e, d) ? foldBack(e, d) : null;
+    if (r && !isErr(r)) { e = r.eq; folded = true; }
+  }
   const target = sel && sel !== 'eq' ? find(e, sel) : null;
   let next: Eq;
   if (!target) next = eq(simplify(e.lhs, h), simplify(e.rhs, h));
   else next = replace(e, target.id, simplify(target, h));
+  if (folded && key(next) === key(e)) return { eq: e, label: 'back into one Σ', hints: h, factor: one, select: target?.id ?? null };
   if (key(next) === key(e)) return { error: 'Already as simple as it gets.' };
   const keep = target && find(next, target.id) ? target.id : null;
   return { eq: next, label: 'simplify', hints: h, factor: one, select: target ? keep : null };
@@ -737,8 +749,35 @@ function changed(before: Node, after: Node): [Node, Node] | null {
   return changed(kb[i], ka[i]);
 }
 
+/** a written-out Σ or ∏ shows how a pattern carries on: its ⋯ stays in its sum, and the terms around
+ *  it keep their order (only [ ] { } change how much is written, b folds it back, o crosses out).
+ *  Asked here, so no move, form or shortcut can move it (user 2026-11-27, 2026-11-28) */
+function dotsMoved(e: Eq, after: Eq): string | null {
+  const where = (root: Node) => {
+    const m = new Map<string, Node | null>();
+    walk(root, (n, up) => { if (n.k === 'sum' && n.dots) m.set(n.id, up); });
+    return m;
+  };
+  const was = where(e), now = where(after);
+  for (const [d, up] of was) {
+    if (!now.has(d) || !up) continue;
+    const up2 = now.get(d);
+    const fixed = 'The ⋯ stays where it is: it shows how the pattern carries on. [ and ] write more terms out, { and } put them back.';
+    if (!up2 || up2.k !== up.k || (up.k !== 'add' && up.k !== 'mul')) return fixed;
+    const ids = (h: Node) => children(h).map(c => c.id);
+    const b = ids(up), a = ids(up2);
+    const shared = b.filter(id => a.includes(id));
+    const order = a.filter(id => shared.includes(id));
+    if (shared.join() === order.join()) continue;
+    return shared.indexOf(d) !== order.indexOf(d) ? fixed : 'A written-out sum keeps its order, so the pattern stays readable. Fold it back into one Σ first (C, then b).';
+  }
+  return null;
+}
+
 export function checked(e: Eq, r: MoveResult): CheckedResult {
   if (isErr(r)) return r;
+  const moved = dotsMoved(e, r.eq);
+  if (moved) return { error: moved };
   const rel = relAfter(e, r);
   if (typeof rel !== 'string') return rel;
   if (relOf(r.eq) !== rel) r = { ...r, eq: eq(r.eq.lhs, r.eq.rhs, rel) };

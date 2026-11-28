@@ -31,8 +31,12 @@ function pass(n: Node, h: Hints): Node {
     return r;
   });
   const m = changed ? withChildren(n, next) : n;
+  // a written-out Σ or ∏ shows a pattern: its terms are not added up or reordered, and its ⋯ stays a ⋯
+  // (s folds it back into the Σ instead, in moves.ts)
+  if (writtenOut(m)) return m;
   return rule(m, h) ?? m;
 }
+const writtenOut = (n: Node) => (n.k === 'sum' && n.dots) || ((n.k === 'add' || n.k === 'mul') && children(n).some(c => c.k === 'sum' && c.dots));
 
 /** a function you defined, at a number, worked out when it comes out a number: f(3) = 10 with
  *  f(x) = x² + 1. Anything else (f(a), or I(0) with I(t) = ∫ …) stays for Tab u to unfold */
