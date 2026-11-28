@@ -370,14 +370,15 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 | 0 | Baseline: record tests, e2e, chaos, menu-open times, bundle size (below). | numbers in this file |
 | 1 | **Done.** `e2e/menus.e2e.mjs`: for each menu on a corpus, cards never overlap or get cut, every card is reachable by arrows, ↓ goes down a line, open under budget. Today's breaks are listed in its `KNOWN` set (issues 2 and 3, Tab's chips and f's i b - chips unreachable, slow Tab and C on I(t)); the list may only shrink. | each later slice takes entries off `KNOWN` |
 | 2 | **Done.** `Checked` gate (8.3). | types enforce it; four unchecked steps now checked |
-| T1 | Player, first cut (8.7 points 1, 2, 5): hands and shortcuts settings on the current bank, triage report grouped by signature. | coverage numbers for the 366 problems, grouped causes |
+| T1 | **Done.** Player, first cut (8.7 points 1, 2, 5): `npm run player` (hands) and `MODE=shortcuts`, triage grouped by signature in `playtest/PLAYER.md`. 2026-11-28: hands 178/344, shortcuts 326/344; found three wrong-maths bugs the bank missed (the bank runs engine routes, not keys), fixed. | coverage numbers, grouped causes |
 | T2 | Problem scouting: 500+ new problems with sympy-checked answers and routes for the competition ones. | bank grows, every answer checked outside Algebrix |
 | T3 | Recorder of your play (8.7 point 4) and weird play (point 3). | your traces replay as tests |
 | 3 | **Done.** The `techniques.ts` split (8.6); the context stays put (8.4). | moves only |
 | 4 | **Done.** `ui/menu/model.ts`: state, key reducer, `nextCard`, with unit tests (`tests/menu.test.ts`). | pure tests pass |
 | 5 | **Done.** `ui/menu/view.ts` + one CSS block; **f** ported. i, b, - are cards (drawn beside the tabs, reached by arrows). | f e2e tests pass unchanged |
 | 6 | **Done.** **C** ported (sections, asking). ↑ ↓ work across wrapped rows. | issue 3 fixed, C e2e pass |
-| 7 | Port **Tab** onto it; technique cards show their result as math; `offer()` everywhere. | issue 2 fixed, Tab opens under 16 ms |
+| 7 | **Done (port).** **Tab** on the model; cards wrap and never shrink, techniques reachable. | issue 2 cut cards fixed |
+| 7b | Tab and C open in one frame: forms and techniques worked out lazily (`offer()`), technique cards show their result as math. | Tab opens under 16 ms on I(t) (183 ms today) |
 | 8 | One `Ask` box (8.2) and the `Mode` union. | box fields gone from App |
 | 9 | Fixed pieces (8.5). | issue 1 fixed |
 | 10 | Series UI: microdesign pass with screenshots for your review, then build it. | issue 4, your call |
