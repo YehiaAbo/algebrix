@@ -304,6 +304,28 @@ function boundAt(e: Eq, m: Node, v: string): boolean {
 
 /** ∫ f dX with a·dX = b·dW (from differentiating a name): dX = (b/a) dW, so ∫ f·(b/a) dW.
  *  Bounds move with the name when the new letter is named from the old (u = g(x): g(lo), g(hi)). */
+/** n with the letter x gone, when n doesn't change with x at all (sampled): x set to a value where n
+ *  is defined. null when it does change with x */
+function without(n: Node, x: string): Node | null {
+  const others = symbols(n).filter(v => v !== x);
+  const at = (env: Record<string, number>, xv: number) => evaluate(n, { ...env, [x]: xv });
+  let seen = 0;
+  for (let i = 0; i < 12; i++) {
+    const env: Record<string, number> = {};
+    for (const v of others) env[v] = 0.3 + 2.7 * ((i * 0.618 + others.indexOf(v) * 0.29) % 1);
+    const a = at(env, 0.37 + i * 0.41), b = at(env, -1.9 + i * 0.73);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    if (Math.abs(a - b) > 1e-9 * (1 + Math.abs(a))) return null;
+    seen++;
+  }
+  if (seen < 6) return null;
+  for (const v of [0, 1, 2, 3]) {
+    const m = tidy(substitute(cloneFresh(n), x, num(v)));
+    if (Number.isFinite(evaluate(m, Object.fromEntries(others.map(o => [o, 1.3]))))) return m;
+  }
+  return null;
+}
+
 function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: string, named: { g?: Node; h?: Node } = {}): CheckedResult {
   const X = dX.slice(1), W = dW.slice(1);
   // src is linear in the two differentials: lhs − rhs = A·dX + B·dW
@@ -321,6 +343,9 @@ function changeVariable(e: Eq, T: Int, src: Eq, dX: string, dW: string, name: st
     if (dependsOn(integrand, X) && named.h) integrand = tidy(substitute(integrand, X, named.h));
     if (dependsOn(integrand, X)) return { error: `Couldn't write the integral all in ${W}: ${X} is left over. Name ${W} the other way round (${X} = …${W}…).` };
   }
+  // what is left of the old letter often cancels ((x + 1)/(2x + 2) after du = (2x + 2) dx): when the
+  // integrand doesn't change with it at all, any value of it gives the same, and it is all in the new one
+  if (dependsOn(integrand, X)) { const flat = without(integrand, X); if (flat) integrand = flat; }
   let lo: Node | undefined, hi: Node | undefined;
   if (T.lo && T.hi) {
     const g = named.g ?? LETS.get(W), h = named.h ?? LETS.get(X);

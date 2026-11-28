@@ -269,12 +269,8 @@ export function intStep(e: Eq, sel: string | null): CheckedResult {
   if (holdsCalc(T) && !ftc) return { error: 'Work out what is inside the integral first.' };
   if (!(T.lo && T.hi) && findPath(e, T.id)?.some(n => n !== T && n.k === 'int' && n.lo && n.hi)) return { error: 'The inside integral has no bounds, so its + C would end up inside the outer one. Give it bounds too.' };
   const v = T.v, def = !!(T.lo && T.hi);
-  // a named letter tied to v (u = x² inside ∫ … dx) isn't a constant: finish the substitution first.
-  // A letter also written outside the integral is a parameter of it (a in I′(a) = ∫ … du with
-  // u = ax): it stays put while u runs
-  const outside = symbols(replace(e, T.id, num(0)) as Eq);
-  const tied = linkedTo(v).filter(w => symbols(T.arg).includes(w) && !outside.includes(w));
-  if (tied.length) return { error: `${tied[0]} changes with ${v} (${letDef(tied[0], v)}), so it isn't a constant here. Sub in d${v} too, so the integral is all in one letter.` };
+  const tied = tiedIn(e, T);
+  if (tied) return tied;
   const wrap = (F: Node): Node => (def ? at(v, F, fresh(T.lo!), fresh(T.hi!)) : F);
   const piece = (w: Node): Node => { const q = quick(w, v); return q ? wrap(q.F) : int(v, fresh(w), T.lo && fresh(T.lo), T.hi && fresh(T.hi)); };
   const u = T.arg;
@@ -362,6 +358,17 @@ function absPieces(T: Int): { next: Node; label: string } | null {
 }
 const sqrtCut = (x: number): Node | null => { const s = ratNode(Math.round(x * x * 1e9) / 1e9); return s && s.k === 'num' ? (x > 0 ? sqrtN(s) : neg(sqrtN(s))) : null; };
 
+/** every move on an integral asks this first: a named letter tied to its letter (x inside ∫ … du with
+ *  u = x² + 1) changes with it, so it is not a constant there; finish the substitution first. A letter
+ *  also written outside the integral is a parameter of it (a in I′(a) = ∫ … du with u = ax): it stays
+ *  put while u runs */
+export function tiedIn(e: Eq, T: Int): { error: string } | null {
+  const v = T.v;
+  const outside = symbols(replace(e, T.id, num(0)) as Eq);
+  const tied = linkedTo(v).filter(w => symbols(T.arg).includes(w) && !outside.includes(w));
+  return tied.length ? { error: `${tied[0]} changes with ${v} (${letDef(tied[0], v)}), so it isn't a constant here. Sub in d${v} too, so the integral is all in one letter.` } : null;
+}
+
 /** how u and v are tied, for messages: u = x² */
 const letDef = (u: string, v: string) => (LETS.has(u) ? `${u} = ${toText(LETS.get(u)!)}` : LETS.has(v) ? `${v} = ${toText(LETS.get(v)!)}` : `${u} depends on ${v}`);
 
@@ -384,6 +391,8 @@ function finish(e: Eq, T: Int, next: Node, label: string, extra: Partial<MoveOk>
 export function uSub(e: Eq, sel: string | null): { move: CheckedResult; side?: Eq; u?: string; g?: Node } {
   const T = target(e, sel, 'int');
   if (!T) return { move: { error: 'No integral here.' } };
+  const tied = tiedIn(e, T);
+  if (tied) return { move: tied };
   const v = T.v, f = T.arg;
   const used = new Set(symbols(e));
   const u = ['u', 'w', 's'].find(n => !used.has(n) && n !== v) ?? 'u';
@@ -743,6 +752,8 @@ const LIATE = (n: Node): number => {
 export function byParts(e: Eq, sel: string | null): CheckedResult {
   const T = target(e, sel, 'int');
   if (!T) return { error: 'No integral here.' };
+  const tied = tiedIn(e, T);
+  if (tied) return tied;
   const v = T.v;
   // x/cos²x is x·(1/cos²x): a fraction with the letter top and bottom is a product too
   const A = T.arg;

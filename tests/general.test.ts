@@ -258,3 +258,13 @@ describe('∫ both sides only follows from an equation true for every value (pla
     expect(isErr(integrateBoth(parseEquation("y' = 2x"), 'x'))).toBe(false);
   });
 });
+
+describe('sub in du cancels what is left of the old letter (player, 2026-11-28)', () => {
+  it('∫ (x + 1)/(x² + 2x + 5) dx with u = x² + 2x + 5 becomes ∫ 1/(2u) du', () => {
+    LETS.set('u', parseExpr('x^2 + 2x + 5'));
+    try {
+      const r = subIn(parseEquation('F = int (x + 1)/u dx'), parseEquation('du = (2x + 2) dx'), null, 'the name');
+      expect(isErr(r) ? r.error : toText(r.eq)).toMatch(/^F = ∫ 1\/\(2u\) du$/);
+    } finally { LETS.delete('u'); }
+  });
+});

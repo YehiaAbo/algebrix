@@ -16,7 +16,10 @@ export const tests = {
   async 'stacked integrals type and work out, with one + C'({ key, type, until, p, assert }) {
     await key('i');
     await type('int int x y dx');
-    const shown = await p.evaluate(() => window.toText(window.algebrix.preview));
+    // the box hands over what was typed a moment later (MathQuill reads its textarea on a timer)
+    let shown = ''; const t0 = Date.now();
+    for (let i = 0; i < 20 && shown !== '∫ ∫ xy dx d□'; i++) { shown = await p.evaluate(() => window.toText(window.algebrix.preview)); if (shown !== '∫ ∫ xy dx d□') await new Promise(r => setTimeout(r, 50)); }
+    if (process.env.MENU_MS) console.log(`      preview after ${Date.now() - t0} ms`);
     assert(shown === '∫ ∫ xy dx d□', `the outer one waits for its d□: ${shown}`);
     await type(' dy'); await key('Enter');
     await until(s => s.eq === '∫ ∫ xy dx dy', 'typed');

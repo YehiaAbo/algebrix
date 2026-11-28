@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseEquation, parseExpr } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
-import { evaluate, Node } from '../src/engine/ast';
+import { evaluate, Node, LETS } from '../src/engine/ast';
 import { intStep, uSub, byParts, plugBounds, geometric, taylor, ratioTest, writeOut } from '../src/engine/integrate';
 import { finishCalc } from '../src/engine/calcmoves';
 import { isErr, MoveResult } from '../src/engine/moves';
@@ -110,4 +110,16 @@ describe('products and finite sums', () => {
   it('a product is not a geometric series', () => expect(isErr(geometric(ex('prod_{n=0}^{∞} (1/2)^n'), null))).toBe(true));
   it('e works out a sum of products', () => expect(done('sum_{i=1}^{2} prod_{j=0}^{3} (i + j)')).toBe('144'));
   it('e works out a finite sum', () => expect(done('sum_{k=1}^{4} k')).toBe('10'));
+});
+
+describe('a letter tied to the integral\'s letter is never a constant (player, 2026-11-28)', () => {
+  it('u-sub, by parts and the step all refuse ∫ (x + 1)/((2x + 2)u) du while u = x² + 2x + 5', () => {
+    LETS.set('u', parseExpr('x^2 + 2x + 5'));
+    try {
+      const e = parseEquation('F = int (x + 1)/((2x + 2)u) du');
+      expect(isErr(uSub(e, null).move)).toBe(true);
+      expect(isErr(intStep(e, null))).toBe(true);
+      expect(isErr(byParts(e, null))).toBe(true);
+    } finally { LETS.delete('u'); }
+  });
 });
