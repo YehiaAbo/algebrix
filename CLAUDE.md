@@ -21,6 +21,16 @@ Hard rules:
 - Done means: unit tests, build, e2e and chaos all pass, and the change was tried in the real build
   (skill `edge-cases`). Every new UI behaviour gets an e2e test that presses the real keys.
 
+How to decide (the user, 2026-11-28: "if I don't tell you exactly, you take the worst option"):
+1. What the user reported is fixed first, before any plan of your own. Never park a reported bug
+   behind a refactor slice.
+2. No change to how keys or menus behave unless the user asked for it. A refactor keeps behaviour
+   exactly; a behaviour you think would help is a question on a decision card, not a surprise.
+3. Every visible change: screenshot it at the user's window (1250 × 850, dark), next to what the user
+   already likes (today: the f menu's outlined cards), before sending a build.
+4. When unsure, copy what the user already likes rather than inventing something new. Fewer options
+   on screen beats more.
+
 Skills in `.claude/skills/`: `microdesign` (before any visible behaviour), `edge-cases` (before calling
 anything done), `playtest` (book problems by keyboard; `playtest/`), `design-review` (polish rounds).
 Sound sets and looks: one file in `src/packs/` (`docs/EXTENDING.md`).
