@@ -539,6 +539,10 @@ export function integrateBoth(e: Eq, v: string): CheckedResult {
   if (relOf(e) !== '=') return { error: 'Integrate both sides of an equation (=).' };
   // already in differentials (dy/y = x dx): each side carries its own d
   if (hasDifferentials(e)) return integrateDifferentials(e);
+  // integrating is about how the sides change with v, so they must agree for every v (an identity, or an
+  // equation about y(x) or other letters); one solved by particular values (eˣ = 3) says nothing about
+  // the areas under its sides
+  if (!holdsForEvery(e, v) && !sameEverywhere(e, v)) return { error: `This holds only at some ${v} (it is solved by particular values), so ∫ of both sides doesn't follow from it. ∫ both sides is for an equation true for every ${v}, like y′ = 2${v}.` };
   const next = eq(int(v, cloneFresh(e.lhs)), int(v, cloneFresh(e.rhs)));
   // the new sides' slope in v is what the old sides were
   const slope = derivative(add([next.lhs, neg(next.rhs)]), v);

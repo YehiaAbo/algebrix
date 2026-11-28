@@ -247,3 +247,14 @@ describe('sub in a value of a function (K42)', () => {
     expect(appearsIn(parseEquation('y = 2x'), parseEquation('z = 4'))).toBe(false);
   });
 });
+
+describe('∫ both sides only follows from an equation true for every value (player, 2026-11-28)', () => {
+  it('refuses on an equation solved by particular x: e^(2x) − e^x − 132 = 0 is not an identity', () => {
+    const r = integrateBoth(parseEquation('e^(2x) - e^x - 132 = 0'), 'x');
+    expect(isErr(r) && r.error).toMatch(/only at some x/);
+  });
+  it('still takes an identity in x, and an equation about y(x)', () => {
+    expect(isErr(integrateBoth(parseEquation('2x + 2 = 2(x + 1)'), 'x'))).toBe(false);
+    expect(isErr(integrateBoth(parseEquation("y' = 2x"), 'x'))).toBe(false);
+  });
+});

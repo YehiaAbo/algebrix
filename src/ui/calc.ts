@@ -101,7 +101,7 @@ export function calcTechniques(this: App): Tech[] {
     add('Integrals', { key: 'u', label: u ? `u-substitution: u = ${toText(u)}` : 'u-substitution', shortcut: true, ok: !!u, why: u ? undefined : (() => { const m = uSub(eq, this.sel).move; return isErr(m) ? m.error : undefined; })(), run: () => this.uSubShortcut() });
   } else if (isEq && !diffs && bv) {
     const r = integrateBoth(eq, bv);
-    add('Integrals', { key: 'i', label: `∫ both sides d${bv}`, ok: !isErr(r), move: r, run: () => this.integrateBothKey() });
+    add('Integrals', { key: 'i', label: `∫ both sides d${bv}`, ok: !isErr(r), why: isErr(r) ? r.error : undefined, move: r, run: () => this.integrateBothKey() });
   } else if (fresh || multi) {
     const iv = fresh ? v! : (aimed?.k === 'sym' && vs.includes(aimed.name) ? aimed.name : vs[0]);
     add('Integrals', { key: 'i', label: `antiderivative ∫ d${iv}`, ok: true, makes: () => eqOf(int(iv, cloneFresh(body(eq)))), run: () => this.addWork(eqOf(int(iv, cloneFresh(body(this.eq)))), 'antiderivative') });
