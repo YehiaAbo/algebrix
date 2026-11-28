@@ -58,6 +58,7 @@ Every line holds on messy input too (divergent integrals, pieces with no value, 
 - Free but guarded: "entire thing shoudl be free but not too free".
 - Every menu works by arrow keys alone.
 - No bloat. Fix "the big reason why it was happening", not the one symptom.
+- Never a strictness bottleneck (2026-11-28): informal maths (physics derivations, odd notation, re-indexing) must work, "free, relaxed, mechanical and fast". Strictness is a label on each step, never a wall: proved / checked / ≈ in a regime / assumed / notation. The app never stops you; it tells the truth about each step. (Planned, not built: today a step that fails the check is refused.)
 - Algebra and mechanics first; proofs later. Small changes; ask before big refactors; never break a core mechanic; quality over a 20-minute cadence.
 
 ## Rejected or disliked
