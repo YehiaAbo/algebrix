@@ -1,4 +1,5 @@
-// The contract every menu (Tab, C, f) keeps, on any equation: its cards never overlap or get cut,
+// The contract every menu (Tab, C, f) keeps, on any equation: its cards never overlap or get cut, the
+// whole menu fits without scrolling (at the user's 1250 × 850 too),
 // every card can be reached by the arrow keys alone, ↓ moves down a line of cards when there is
 // one, and the menu opens within a frame budget. See docs/ARCHITECTURE.md (8.1).
 //
@@ -15,6 +16,8 @@ const CORPUS = [
   { id: 'series', src: 'S = sum_{n=1}^inf 1/(n(n+1))' },
   { id: 'derivative', src: 'y = d/dx (x^2 sin(x))' },
   { id: 'log', src: 'y = ln(x)' },
+  // the user's screen (2026-11-28): a tall Σ whose C cards wrap into two lines; the menu was capped and scrolled
+  { id: 'tall sum', src: 'sum_{k=4}^{499} k^2 + 250014' },
 ];
 
 /** ms from the key press to the menu drawn, first open, dev build. The target is 16 (one frame); this
@@ -35,10 +38,11 @@ const MENUS = [
 const read = p => p.evaluate(() => {
   const host = document.getElementById('forms');
   if (!host || host.hidden) return null;
+  const capped = host.scrollHeight > host.clientHeight + 1;
   const cards = [...host.querySelectorAll('button')].filter(b => !b.classList.contains('pal-tab') && !b.classList.contains('pal-eg') && b.offsetParent);
   return cards.map(b => {
     const r = b.getBoundingClientRect();
-    return { x: r.left, y: r.top, w: r.width, h: r.height, cut: b.scrollWidth > b.clientWidth + 1, on: b.classList.contains('on'), text: (b.textContent ?? '').trim().slice(0, 40) };
+    return { x: r.left, y: r.top, w: r.width, h: r.height, cut: b.scrollWidth > b.clientWidth + 1, on: b.classList.contains('on'), capped, text: (b.textContent ?? '').trim().slice(0, 40) };
   });
 });
 
@@ -65,6 +69,8 @@ async function check(h, menu, c) {
   if (ms > BUDGET) broken.push("slow");
   if (cards.some((a, i) => cards.some((b, j) => j > i && overlap(a, b)))) broken.push('overlap');
   if (cards.some(a => a.cut)) broken.push('cut');
+  // the whole menu fits: nothing to scroll to see
+  if (cards.some(a => a.capped)) broken.push('capped');
   // arrows alone: step in, then → through the line(s); every card must light up on the way
   for (const k of menu.enter) await key(k);
   const seen = new Set();
@@ -72,6 +78,8 @@ async function check(h, menu, c) {
     const now = await read(p);
     if (!now) break;
     now.forEach((a, j) => { if (a.on) seen.add(j); });
+    // browsing plays each card on the equation, which can grow it: the menu must still fit
+    if (now.some(a => a.capped) && !broken.includes('capped')) broken.push('capped');
     await key('ArrowRight');
   }
   if (cards.length && seen.size < cards.length) broken.push('unreachable');
@@ -97,7 +105,9 @@ async function check(h, menu, c) {
 
 async function contract(h, menu) {
   const found = [];
-  for (const c of CORPUS) found.push(...await check(h, menu, c));
+  // the user's window (2026-11-28 screenshot): narrower than the suite's, so cards wrap more
+  await h.p.setViewportSize({ width: 1250, height: 850 });
+  try { for (const c of CORPUS) found.push(...await check(h, menu, c)); } finally { await h.p.setViewportSize({ width: 1440, height: 860 }); }
   const fresh = found.filter(f => !KNOWN.has(f));
   const fixed = [...KNOWN].filter(k => k.startsWith(menu.id + '|') && !found.includes(k));
   const msg = [];

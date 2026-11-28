@@ -355,6 +355,13 @@ kbd.wide { padding: 0 7px; }
 .menu-line { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .menu-line > * { flex: none; }
 .tab-forms { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 2px; }
+/* a menu that wouldn't fit beside the equation even after it glides (App.place) draws itself tighter:
+   smaller gaps and math, no key tip. Scrolling is the last resort */
+.forms.tight .pal-tab { padding: 4px 8px 5px; }
+.forms.tight .menu-cards, .forms.tight .menu-line { gap: 2px; }
+.forms.tight .form-card { padding: 4px 8px 5px; gap: 3px; }
+.forms.tight .mini { zoom: .82; }
+.forms.tight .forms-tip { display: none; }
 .pal-lead { margin-left: auto; display: flex; gap: 5px; padding-bottom: 4px; }
 .pal-lead .chip { height: 26px; font-size: 12px; }
 .forms.calc { min-width: min(560px, calc(100% - 24px)); max-width: min(760px, calc(100% - 24px)); }

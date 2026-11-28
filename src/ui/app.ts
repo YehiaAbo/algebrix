@@ -1114,6 +1114,10 @@ export class App {
         this.room = top >= bottom ? bottom : -top;
         this.renderMain({ quick: true });
         return this.place(host);
+      } else if (!host.classList.contains('tight')) {
+        // still no room: the menu draws itself tighter and tries again
+        host.classList.add('tight');
+        return this.place(host);
       } else {
         const room = Math.max(top, bottom, 120);
         host.style.maxHeight = `${room}px`;
