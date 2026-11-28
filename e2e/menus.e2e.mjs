@@ -25,8 +25,6 @@ const BUDGET = 100;
 const KNOWN = new Set([
   // issue 2: Tab's form row doesn't wrap and its cards shrink below their content
   'tab|written-out sum|cut',
-  // issue 3: C's cards wrap to a second line but ↓ doesn't go there
-  'calc|written-out sum|down', 'calc|series|down',
   // Tab's technique chips can't be reached by arrows (only ← → over the forms)
   ...['written-out sum', 'linear', 'quadratic', 'feynman', 'series', 'derivative', 'log'].map(id => `tab|${id}|unreachable`),
   // Tab and C work out and check every form and technique before they draw (about 170 ms here)

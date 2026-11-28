@@ -1,5 +1,7 @@
 // The algebra hub (Tab): techniques by key, and forms to browse and apply.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
+import { Card, MenuSpec, MenuState, Effect, menuKey, menuRelease, pickCard } from './menu/model';
+import { tabsEl, cardsEl, rectsOf, cardAt } from './menu/view';
 import { find, symbols, relOf, DEFS, Eq, Node } from '../engine/ast';
 import { unfold, fold } from '../engine/goals';
 import { applyMove, isErr } from '../engine/moves';
@@ -88,7 +90,7 @@ export function openHub(this: App, sticky: boolean, calc = false) {
   // C opens on the section with something to do (the first one, if nothing applies)
   const first = techs.find(t => t.lead && t.ok) ?? techs.find(t => t.ok) ?? techs[0];
   const tab = calc ? Math.max(0, CALC_GROUPS.findIndex(g => g.name === first?.group)) : 0;
-  this.hub = { forms, techs, i: 0, sticky, moved: false, awaitVar: false, calc, tab };
+  this.hub = { forms, techs, i: 0, sticky, moved: false, awaitVar: false, calc, menu: calc ? { section: tab, at: null, sticky, chordUsed: false } : undefined };
   this.chordUsed = false;
   this.setMode('hub');
   if (this.slots.length > 1) this.renderTree();
@@ -185,9 +187,8 @@ export function cardMath(n: Node, size = 15, maxW = 240): HTMLElement {
 }
 
 /** C, browsing: the stage plays what the technique would do, as Tab does for forms */
-export function peekTech(this: App) {
-  const h = this.hub!;
-  const t = h.moved ? groupTechs(h)[h.i] : null;
+export function peekTech(this: App, card: Card | null) {
+  const t = card ? TECH.get(card) : null;
   const m = t?.ok && t.move && !isErr(t.move) ? t.move : null;
   if (m) {
     this.peek = m.eq;
@@ -203,7 +204,6 @@ export function peekTech(this: App) {
 export function applyForm(this: App) {
   const h = this.hub;
   if (!h) return;
-  if (h.calc) { const t = groupTechs(h)[h.i]; return t ? this.runTech(t) : this.closeHub(true); }
   const form = h.forms[h.i];
   this.closeHub(false);
   this.apply(form, 1.15);
@@ -223,51 +223,74 @@ export function closeHub(this: App, animateBack: boolean) {
 
 /* ---------- the calculus hub: sections like the f palette ---------- */
 
-const groupTechs = (h: Hub) => h.techs.filter(t => t.group === CALC_GROUPS[h.tab ?? 0].name);
-
-/** C's keys: ← → sections, ↓ into one, ← → its items, Enter or release applies; a key applies at once */
 export function calcKey(this: App, e: KeyboardEvent) {
   const h = this.hub!;
-  const k = e.key;
   if (h.asking) return;
-  if (k === 'Escape') { if (h.moved) { h.moved = false; sound.tick(1); return this.peekTech(); } return this.closeHub(true); }
-  if (e.repeat) return;
-  const items = groupTechs(h);
-  const dx = k === 'ArrowRight' ? 1 : k === 'ArrowLeft' ? -1 : 0;
-  if (dx && !h.moved) { h.tab = ((h.tab ?? 0) + dx + CALC_GROUPS.length) % CALC_GROUPS.length; sound.tick(1); return this.renderHub(); }
-  if (dx && h.moved) { if (items.length) h.i = (h.i + dx + items.length) % items.length; sound.tick(2); return this.peekTech(); }
-  if (k === 'ArrowDown' && !h.moved) {
-    if (!items.length) return this.refuse(`Nothing in ${CALC_GROUPS[h.tab ?? 0].name} applies here. Try ${CALC_GROUPS[h.tab ?? 0].example}.`);
-    h.moved = true; h.i = Math.max(0, items.findIndex(t => t.ok)); sound.tick(2); return this.peekTech();
-  }
-  if (k === 'ArrowUp' && h.moved) { h.moved = false; sound.tick(1); return this.peekTech(); }
-  if (k === 'Enter' || ((k === 'c' || k === 'C') && h.moved)) {
-    if (!h.moved) { if (!items.length) return this.refuse(`Nothing in ${CALC_GROUPS[h.tab ?? 0].name} applies here.`); h.moved = true; h.i = 0; return this.peekTech(); }
-    return this.runTech(items[h.i]);
-  }
-  if (k === 'c' || k === 'C') return this.closeHub(true);
-  // a key straight away: the one that applies, if two sections share it
-  const all = h.techs.filter(t => t.key === k);
-  const tech = all.find(t => t.ok) ?? all[0];
-  if (tech) return this.runTech(tech);
-  // opened with a tap and left open: a key it doesn't offer closes it and does its usual job (K2)
-  if (h.sticky && !h.moved) { this.closeHub(true); return this.key(e); }
-  return this.refuse(h.techs.length ? `Press one of ${[...new Set(h.techs.map(t => t.key))].join(', ')}, or ← → for the sections.` : 'No calculus here yet. ← → shows what each section takes.');
+  if (e.repeat && e.key !== 'Escape') return;
+  const spec = calcSpec(h);
+  const st = h.menu!, sec = spec.sections[st.section];
+  // a section with nothing in it says what to type to get some
+  if ((e.key === 'ArrowDown' || e.key === 'Enter') && st.at === null && !sec.rows.flat().length) return this.refuse(`Nothing in ${sec.name} applies here. Try ${CALC_GROUPS[st.section].example}.`);
+  this.calcEffect(menuKey(spec, { ...st, chordUsed: this.chordUsed }, e.key, rectsOf(document.querySelector('#forms .calc-items'))), e);
 }
 
-/** run a technique from C, asking for input first when it needs some */
-export function runTech(this: App, t: Tech) {
+/** what a key, a click or the release did to C, carried out */
+export function calcEffect(this: App, r: { state: MenuState; effect: Effect }, e?: KeyboardEvent) {
   const h = this.hub!;
-  if (!t.ok) return this.refuse(t.why ?? `${t.label[0].toUpperCase()}${t.label.slice(1)} doesn't apply here.`);
-  if (t.ask) {
-    h.asking = t; h.sticky = true; h.moved = true;
-    h.tab = CALC_GROUPS.findIndex(g => g.name === t.group);
-    h.i = groupTechs(h).indexOf(t);
-    sound.tick(2);
-    return this.renderHub();
+  const was = h.menu!;
+  h.menu = r.state;
+  h.sticky = r.state.sticky;
+  const f = r.effect;
+  switch (f.k) {
+    case 'none':
+      if (was.section !== r.state.section) sound.tick(1);
+      if (was.section !== r.state.section || was.at !== r.state.at || was.sticky !== r.state.sticky) this.renderHub();
+      return;
+    case 'peek': sound.tick(f.card ? 2 : 1); return this.peekTech(f.card);
+    case 'run': this.closeHub(false); return f.card.run();
+    case 'ask': {
+      h.asking = TECH.get(f.card); h.sticky = true; h.menu = { ...r.state, sticky: true };
+      sound.tick(2);
+      return this.renderHub();
+    }
+    case 'refuse': return this.refuse(f.why);
+    case 'close': return this.closeHub(true);
+    case 'pass': this.closeHub(true); if (e) this.key(e); return;
   }
-  this.closeHub(false);
-  t.run();
+}
+
+/** C let go: what was browsed applies, a chord closes it, a tap keeps it open */
+export function calcRelease(this: App) {
+  const h = this.hub!;
+  if (h.asking) return;
+  this.calcEffect(menuRelease(calcSpec(h), { ...h.menu!, chordUsed: this.chordUsed }));
+}
+
+/** a click on one of C's cards */
+export function calcClick(this: App, el: Element) {
+  const h = this.hub!;
+  const hit = cardAt(calcSpec(h), h.menu!, el);
+  if (hit) this.calcEffect({ state: { ...h.menu!, at: hit.at }, effect: pickCard(hit.card) });
+}
+
+/** the technique each C card stands for (the cards are built fresh with the menu) */
+const TECH = new WeakMap<Card, Tech>();
+const SPEC = new WeakMap<Hub, MenuSpec>();
+
+/** C as cards of the menu model: one section per group, its techniques in the order they came */
+function calcSpec(h: Hub): MenuSpec {
+  const had = SPEC.get(h);
+  if (had) return had;
+  const spec: MenuSpec = { id: 'calc', openKey: 'c', sections: CALC_GROUPS.map(g => {
+    const ts = h.techs.filter(t => t.group === g.name);
+    return { name: g.name, live: ts.some(t => t.ok), rows: [ts.map(t => {
+      const c: Card = { key: t.key, label: t.label, ok: t.ok, why: t.why, run: t.run, tag: t.shortcut ? 'chain' : undefined, ask: t.ask && { prompt: t.ask.prompt, hint: t.ask.hint, commit: t.ask.run } };
+      TECH.set(c, t);
+      return c;
+    })] };
+  }) };
+  SPEC.set(h, spec);
+  return spec;
 }
 
 /** what a C card draws: the equation the step gives, or the new one it adds (worked out once) */
@@ -285,24 +308,16 @@ function techShows(t: Tech): { n: Node; note: string } | null {
 
 function renderCalcHub(this: App, host: HTMLElement) {
   const h = this.hub!;
+  const spec = calcSpec(h), st = h.menu!;
   host.classList.add('pal', 'calc');
-  const tabs = document.createElement('div');
-  tabs.className = 'pal-tabs' + (h.moved ? '' : ' focus');
-  tabs.innerHTML = CALC_GROUPS.map((g, j) => {
-    const live = h.techs.some(t => t.group === g.name && t.ok);
-    return `<button class="pal-tab${j === h.tab ? ' on' : ''}${live ? ' live' : ''}" data-tab="${j}">${g.name}</button>`;
-  }).join('');
-  host.append(tabs);
-  const items = groupTechs(h);
-  const row = document.createElement('div');
-  row.className = 'hub-forms calc-items';
-  if (!items.length) row.innerHTML = `<span class="calc-empty">Nothing here for this one. Type ${escapeHtml(CALC_GROUPS[h.tab ?? 0].example)}.</span>`;
+  host.append(tabsEl(spec, st));
+  const sec = spec.sections[st.section];
   // each one a card: its name, and what it gives drawn as math (the new equation, or the step)
-  items.forEach((t, j) => {
+  const face = (c: Card) => {
+    const t = TECH.get(c)!;
     const card = document.createElement('button');
-    card.className = 'form-card' + (t.ok ? '' : ' off') + (h.moved && j === h.i ? ' on' : '');
+    card.className = 'form-card';
     card.dataset.k = t.key;
-    card.dataset.i = String(j);
     const name = document.createElement('span');
     name.className = 'form-name';
     name.innerHTML = `<kbd>${t.key}</kbd>`;
@@ -311,8 +326,10 @@ function renderCalcHub(this: App, host: HTMLElement) {
     card.append(name);
     const shows = t.ok ? techShows(t) : null;
     if (shows) { const sub = document.createElement('span'); sub.className = 'form-sub'; sub.append(mathLabel(shows.note, 11)); card.append(cardMath(shows.n, 15, 230), sub); }
-    row.append(card);
-  });
+    return card;
+  };
+  const row = cardsEl(sec, st, face, 'calc-items');
+  if (!sec.rows.flat().length) row.innerHTML = `<span class="calc-empty">Nothing here for this one. Type ${escapeHtml(CALC_GROUPS[st.section].example)}.</span>`;
   host.append(row);
   if (h.asking) {
     const ask = document.createElement('div');
@@ -323,8 +340,8 @@ function renderCalcHub(this: App, host: HTMLElement) {
   const tip = document.createElement('div');
   tip.className = 'forms-tip';
   tip.innerHTML = h.asking ? '<kbd>Enter</kbd> apply <kbd>Esc</kbd> back'
-    : h.moved ? `<kbd>←</kbd><kbd>→</kbd> pick <kbd>↑</kbd> sections ${h.sticky ? '<kbd>Enter</kbd> applies <kbd>Esc</kbd> closes' : 'release <kbd>C</kbd> to apply'}`
-    : `<kbd>←</kbd><kbd>→</kbd> sections <kbd>↓</kbd> open one, or press a key. ${h.sticky ? '<kbd>Esc</kbd> closes' : ''}`;
+    : st.at !== null ? `<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> pick <kbd>Esc</kbd> sections ${st.sticky ? '<kbd>Enter</kbd> applies' : 'release <kbd>C</kbd> to apply'}`
+    : `<kbd>←</kbd><kbd>→</kbd> sections <kbd>↓</kbd> open one, or press a key. ${st.sticky ? '<kbd>Esc</kbd> closes' : ''}`;
   host.append(tip);
   if (h.asking) {
     const input = mathField($('calc-input'), {

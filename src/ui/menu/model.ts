@@ -130,7 +130,8 @@ export function menuKey(spec: MenuSpec, st: MenuState, key: string, rects: Rect[
   // the open key again: apply what is browsed, or close
   if (key === spec.openKey || key.toLowerCase() === spec.openKey) return keep(st, at !== null ? pickCard(cards[at]) : { k: 'close' });
   const hit = cardFor(spec, st.section, key);
-  if (hit) return keep({ ...st, section: hit.section, at: hit.at }, pickCard(hit.card));
+  // a card that refuses leaves you where you were (letting go of the open key mustn't try it again)
+  if (hit) { const f = pickCard(hit.card); return keep(f.k === 'refuse' ? st : { ...st, section: hit.section, at: hit.at }, f); }
   // opened with a tap and not browsed: a key it doesn't offer closes it and does its usual job
   if (st.sticky && at === null) return keep(st, { k: 'pass' });
   const keys = [...new Set(spec.sections.flatMap(s => cardsOf(s).map(c => c.key).filter(Boolean)))];

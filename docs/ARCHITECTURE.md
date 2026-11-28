@@ -177,6 +177,9 @@ Ranked by how much each slows down every future change. Each has evidence from t
    marked as definitions.
 5. **Hidden global state in the engine.** `DEFS`, `LETS`, `DOMAINS` and friends live in module scope and
    are synced by the UI. Results depend on what was synced last; caches need `defsSig`.
+   They are synced inside `renderAll` (a drawing function): the player, which turns drawing off,
+   found that naming a piece then left `LETS` empty. Rule for new code: bring the context up to date
+   where the slots change, never only where they are drawn.
 6. **Files grouped by history, not by concept** (`techniques.ts` split in slice 3). `techniques.ts` held the f menu's UI list, solving,
    systems and the simplify spot. Tests are named by round (`polish17`, `round6b`, `bookround`), so it is
    hard to find the tests for a feature.
@@ -240,7 +243,7 @@ interface Card {
 }
 interface Section { name: string; rows: Card[][]; live: boolean }   // C sections, f families; Tab has one
 interface MenuSpec { id: 'tab' | 'calc' | 'fn'; openKey: string; sections: Section[]; input?: Ask }
-interface MenuState { section: number; at: { row: number; col: number } | null; sticky: boolean; chordUsed: boolean; asking?: Ask }
+interface MenuState { section: number; at: number | null; sticky: boolean; chordUsed: boolean; asking?: Card }  // at: index into the section's cards
 ```
 
 **One set of keys for every menu.**
@@ -371,9 +374,9 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 | T2 | Problem scouting: 500+ new problems with sympy-checked answers and routes for the competition ones. | bank grows, every answer checked outside Algebrix |
 | T3 | Recorder of your play (8.7 point 4) and weird play (point 3). | your traces replay as tests |
 | 3 | **Done.** The `techniques.ts` split (8.6); the context stays put (8.4). | moves only |
-| 4 | `ui/menu/model.ts`: state, key reducer, `nextCard`, with unit tests. | pure tests pass |
-| 5 | `ui/menu/view.ts` + one CSS block; port **f** first (the one you like best). | f e2e tests pass unchanged |
-| 6 | Port **C** onto it (sections, asking). ↑ ↓ work across wrapped rows. | issue 3 fixed, C e2e pass |
+| 4 | **Done.** `ui/menu/model.ts`: state, key reducer, `nextCard`, with unit tests (`tests/menu.test.ts`). | pure tests pass |
+| 5 | **Done.** `ui/menu/view.ts` + one CSS block; **f** ported. i, b, - are cards (drawn beside the tabs, reached by arrows). | f e2e tests pass unchanged |
+| 6 | **Done.** **C** ported (sections, asking). ↑ ↓ work across wrapped rows. | issue 3 fixed, C e2e pass |
 | 7 | Port **Tab** onto it; technique cards show their result as math; `offer()` everywhere. | issue 2 fixed, Tab opens under 16 ms |
 | 8 | One `Ask` box (8.2) and the `Mode` union. | box fields gone from App |
 | 9 | Fixed pieces (8.5). | issue 1 fixed |

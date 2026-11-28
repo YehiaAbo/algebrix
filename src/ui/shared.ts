@@ -1,4 +1,5 @@
 // Types, constants and small helpers shared by the app and its parts.
+import type { MenuState } from './menu/model';
 import { Eq } from '../engine/ast';
 import { Domain, MoveResult } from '../engine/moves';
 import { parseEquation } from '../engine/parse';
@@ -53,9 +54,9 @@ export interface Tech {
   /** a new equation it adds instead (a derivative, a gradient): drawn on its card */
   makes?: () => Eq | { error: string } | null;
 }
-/** calc: the calculus hub (C) rather than the algebra hub (Tab); there, tab is the section shown and
- *  asking the technique waiting for typed input */
-export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; pending?: string; calc?: boolean; tab?: number; asking?: Tech }
+/** calc: the calculus hub (C) rather than the algebra hub (Tab); there, menu is where you are in it
+ *  (ui/menu/model.ts) and asking the technique waiting for typed input */
+export interface Hub { forms: Form[]; techs: Tech[]; i: number; sticky: boolean; moved: boolean; awaitVar: boolean; pending?: string; calc?: boolean; asking?: Tech; menu?: MenuState }
 
 /** words that are on their way while you type them: their first letters shouldn't show as a·b */
 const WORDS = ['int', 'integral', 'iint', 'iiint', 'lim', 'sum', 'prod', 'sqrt', 'cbrt', 'arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'abs', 'exp', 'ln', 'log', 'pi', 'grad', 'div', 'curl', 'inf',

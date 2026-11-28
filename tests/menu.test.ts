@@ -104,6 +104,12 @@ describe('one section (Tab): no tabs to go back to', () => {
 describe('letting go of the open key', () => {
   const F: MenuSpec = { id: 'fn', openKey: 'f', sections: [{ name: 'Powers', rows: [[card('s')]] }] };
   it('applies what was browsed', () => expect(menuRelease(F, st({ sticky: false, at: 0 })).effect.k).toBe('run'));
+  it('a card key that refused is not tried again on letting go', () => {
+    const G: MenuSpec = { id: 'calc', openKey: 'c', sections: [{ name: 'Limits', rows: [[card('p', false, { why: '0/0' })]] }] };
+    const a = menuKey(G, st({ sticky: false }), 'p', [{ x: 0, y: 0, w: 90, h: 40 }]);
+    expect(a.effect).toEqual({ k: 'refuse', why: '0/0' });
+    expect(menuRelease(G, { ...a.state, chordUsed: true }).effect).toEqual({ k: 'close' });
+  });
   it('closes after a key was pressed while holding', () => expect(menuRelease(F, st({ sticky: false, chordUsed: true })).effect).toEqual({ k: 'close' }));
   it('stays open (sticky) after a plain tap', () => expect(menuRelease(F, st({ sticky: false })).state.sticky).toBe(true));
 });
