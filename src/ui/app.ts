@@ -226,7 +226,8 @@ export class App {
 
   renderSelection() {
     const el = $('sel');
-    const browsing = this.hub && this.hub.moved ? this.hub.forms[this.hub.i] : null;
+    const at = this.hub && !this.hub.calc ? this.hub.menu.at : null;
+    const browsing = at !== null && at < this.hub!.forms.length ? this.hub!.forms[at] : null;
     const id = browsing ? browsing.select ?? 'eq' : this.mode === 'op' && this.peek ? null : this.sel;
     const r = id ? this.stage.box(id) : null;
     if (!r || this.mode === 'write') { el.classList.remove('on'); return; }

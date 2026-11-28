@@ -23,10 +23,6 @@ const CORPUS = [
 const BUDGET = 100;
 
 const KNOWN = new Set([
-  // issue 2: Tab's form row doesn't wrap and its cards shrink below their content
-  'tab|written-out sum|cut',
-  // Tab's technique chips can't be reached by arrows (only ← → over the forms)
-  ...['written-out sum', 'linear', 'quadratic', 'feynman', 'series', 'derivative', 'log'].map(id => `tab|${id}|unreachable`),
   // Tab and C work out and check every form and technique before they draw (about 170 ms here)
   'tab|feynman|slow', 'calc|feynman|slow',
 ]);

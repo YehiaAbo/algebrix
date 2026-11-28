@@ -354,6 +354,7 @@ kbd.wide { padding: 0 7px; }
 .menu-cards { display: flex; flex-direction: column; gap: 5px; }
 .menu-line { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .menu-line > * { flex: none; }
+.tab-forms { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 2px; }
 .pal-lead { margin-left: auto; display: flex; gap: 5px; padding-bottom: 4px; }
 .pal-lead .chip { height: 26px; font-size: 12px; }
 .forms.calc { min-width: min(560px, calc(100% - 24px)); max-width: min(760px, calc(100% - 24px)); }

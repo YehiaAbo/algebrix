@@ -60,19 +60,14 @@ export function bind(this: App) {
     if (e.key.toLowerCase() === 'f' && this.mode === 'fnpal') {
       this.palRelease(); return;
     }
-    if (this.mode === 'hub' && this.hub?.calc && e.key.toLowerCase() === 'c') return this.calcRelease();
-    if (this.mode !== 'hub' || !this.hub || this.hub.calc || this.hub.sticky || e.key !== 'Tab') return;
-    if (this.hub.moved) this.applyForm();
-    else if (this.chordUsed && !this.hub.awaitVar) this.closeHub(true);
-    else { this.hub.sticky = true; this.renderHub(); }
+    if (this.mode === 'hub' && this.hub && (this.hub.calc ? e.key.toLowerCase() === 'c' : e.key === 'Tab')) return this.hubRelease();
   });
   $('theme').addEventListener('click', () => this.toggleTheme());
   $('forms').addEventListener('mousedown', e => {
     e.stopPropagation();
     const t = e.target as HTMLElement;
     const card = t.closest<HTMLElement>('.form-card');
-    if (card && this.hub?.calc) return this.calcClick(card);
-    if (card && this.hub) { this.hub.i = Number(card.dataset.i); return this.applyForm(); }
+    if (card && this.hub) return this.hubClick(card);
     const chip = t.closest<HTMLElement>('.chip');
     if (chip) {
       const ev = new KeyboardEvent('keydown', { key: chip.dataset.k! });
@@ -81,7 +76,7 @@ export function bind(this: App) {
     }
     const tab = t.closest<HTMLElement>('.pal-tab');
     if (tab && this.mode === 'fnpal') { this.pal.menu = { ...this.pal.menu, section: Number(tab.dataset.tab), at: null, sticky: true }; this.renderPal(); }
-    if (tab && this.mode === 'hub' && this.hub?.calc) { this.hub.menu = { ...this.hub.menu!, section: Number(tab.dataset.tab), at: null, sticky: true }; this.hub.sticky = true; this.renderHub(); }
+    if (tab && this.mode === 'hub' && this.hub?.calc) { this.hub.menu = { ...this.hub.menu, section: Number(tab.dataset.tab), at: null, sticky: true }; this.hub.sticky = true; this.renderHub(); }
   });
 }
 
