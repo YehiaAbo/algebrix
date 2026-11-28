@@ -5,7 +5,7 @@ import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { walk } from '../src/engine/ast';
 import { isErr } from '../src/engine/moves';
-import { moveAny } from '../src/engine/techniques';
+import { moveAny } from '../src/engine/wrap';
 
 const m = (src: string, piece: string) => {
   const e = parseEquation(src); let id = '';

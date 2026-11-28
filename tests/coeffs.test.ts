@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
-import { compareCoefficients } from '../src/engine/techniques';
+import { compareCoefficients } from '../src/engine/systems';
 import { isErr, MoveOk } from '../src/engine/moves';
 
 describe('compare coefficients', () => {

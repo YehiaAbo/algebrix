@@ -3,7 +3,7 @@
 // Used by the "done enough" problem set to measure the algebra engine.
 import { Eq, evaluate, symbols, relOf, isIneq } from './ast';
 import { solvedFor } from './moves';
-import { isolate, splitCases, tidy } from './techniques';
+import { isolate, splitCases, tidy } from './isolate';
 import { solveInequality } from './inequality';
 
 export interface Solved { values: number[]; text?: string; steps: number }

@@ -11,7 +11,7 @@ import { isErr, solvedFor, checked, Checked, CheckedResult, introduced } from '.
 import { newHints } from '../engine/simplify';
 import { absorbConstant, shareExponential, renameConstant } from '../engine/ode';
 import { negate } from '../engine/terms';
-import { isolate, splitCases, tidy, Cases, impossible, leadPositive, everyTrigSolution } from '../engine/techniques';
+import { isolate, splitCases, tidy, Cases, impossible, leadPositive, everyTrigSolution } from '../engine/isolate';
 import { evaluate } from '../engine/ast';
 import { sound } from './sound';
 import { ms } from './prefs';

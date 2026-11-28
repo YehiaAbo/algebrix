@@ -10,7 +10,7 @@ import { strictly, Checked, CheckedResult, MoveOk, relAfter, isErr, neverZero } 
 import { toText } from './print';
 import { isLeibniz, toLeibniz, toPrime, toDifferentials, letters } from './leibniz';
 import { gcd } from './terms';
-import { combineLogs } from './techniques';
+import { combineLogs } from './isolate';
 import { sumForms } from './sums';
 import { seriesForms } from './series';
 import { longDivide, partialFractions, rationalize, rationalizeTop, trigForms, completeSquare, Range, factorFully, primeFactors } from './polytools';

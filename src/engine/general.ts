@@ -7,7 +7,7 @@ import { Node, Eq, Int, num, sym, add, neg, mul, frac, call, deriv, int, eq, fin
 import { CheckedResult, Checked, introduced, checked, isErr, solvedFor, applyBothChecked, applyMove, sampleIn } from './moves';
 import { derivative, dependsOn, substitute } from './calculus';
 import { newHints, simplify } from './simplify';
-import { solvedForm } from './techniques';
+import { solvedForm } from './systems';
 import { parseExpr } from './parse';
 import { fold } from './goals';
 import { toText } from './print';

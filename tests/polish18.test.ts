@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
-import { isolate } from '../src/engine/techniques';
+import { isolate } from '../src/engine/isolate';
 import { formsFor } from '../src/engine/forms';
 import '../src/engine/calculus';
 import { parseExpr } from '../src/engine/parse';

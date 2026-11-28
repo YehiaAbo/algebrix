@@ -4,7 +4,7 @@ import { parseEquation } from '../src/engine/parse';
 import { DEFS } from '../src/engine/ast';
 import { isErr, checked, direction, MoveOk } from '../src/engine/moves';
 import { toText } from '../src/engine/print';
-import { fnTemplate, applyFn } from '../src/engine/techniques';
+import { fnTemplate, applyFn } from '../src/engine/wrap';
 
 const run = (src: string, text: string) => {
   const F = fnTemplate(text);

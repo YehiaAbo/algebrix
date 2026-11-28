@@ -40,7 +40,7 @@ keys and mouse), `stress/chaos.mjs` (seeded random play of the built app), `stre
 Example: the aim is on `3` in `2x + 3 = 7` and the person presses `m`.
 
 1. `ui/keys.ts key()` routes by mode. In solve mode `m` is in `MOVE_KEYS` (`ui/shared.ts`).
-2. It calls `moveAny(eq, sel)` (`engine/techniques.ts`), which builds a `MoveOk`: the new `Eq`,
+2. It calls `moveAny(eq, sel)` (`engine/wrap.ts`), which builds a `MoveOk`: the new `Eq`,
    a label ("move across"), `hints` (which glyphs merge into which, which fly where), `factor`
    (how lhs − rhs scaled), optional `conditions`, `select` (what to aim at after).
 3. The engine runs `checked(before, result)` (`engine/moves.ts`): the relation is recomputed and
@@ -83,7 +83,10 @@ Undo plays the same step's stored `fx` backwards (`Step.fx`), so it shows the me
 | `simplify.ts`, `rewrite.ts`, `terms.ts` | Simplify (with hints), distribute, factor, combine fractions, standard order, rational coefficients. |
 | `forms.ts` | Tab's forms: every equal rewrite of the aimed piece (expanded, factored, one fraction, log rules …), each verified. |
 | `polytools.ts` | Long division, partial fractions, completing the square, trig forms, prime factors. |
-| `techniques.ts` | A mix: the f menu's function list (`FN_TABS`), wrapping both sides, peel/inverse, solving (isolate, quadratic, cases, impossible), substitution, elimination, compare coefficients, the simplify spot. |
+| `wrap.ts` | Functions on both sides (√, ln, sin⁻¹, your own), peel the outer one off a side, move anything across (`m`). |
+| `isolate.ts` | Solving for a letter as a chain of moves: clear fractions, factor, quadratic formula, cases, tidy, every trig solution. |
+| `systems.ts` | Several equations: substitution, elimination, compare coefficients. |
+| `spot.ts` | The simplify spot (the dashed box `s` takes). |
 | `general.ts` | The general moves: name it (b), sub in, put in a value (p), calculus to both sides, rewrite as, multiply by 1, and shortcuts as chains of them. |
 | `calculus.ts` | The kernel the safety net uses: plain derivative, substitute, numeric limits, numeric integrals. |
 | `calcmoves.ts` | Step-by-step calculus rules (next derivative rule, plug in, L'Hôpital, limits forms), kept apart from `calculus.ts` so each checks the other. |
@@ -134,7 +137,7 @@ equation; the equation glides to make room). Everything else differs:
 
 | | Tab (algebra) | C (calculus) | f (functions) |
 |---|---|---|---|
-| Content | `techniques()` in `hub.ts` + `formsFor` + `calcForms` | `calcTechniques()` in `calc.ts` (about 40 hand-written entries) | `FN_TABS` (engine) + Yours + typed box |
+| Content | `techniques()` in `hub.ts` + `formsFor` + `calcForms` | `calcTechniques()` in `calc.ts` (about 40 hand-written entries) | `FN_TABS` (`ui/fntabs.ts`) + Yours + typed box |
 | Layout | chips row (words) + one card row that does not wrap | section tabs + card row that wraps | box + tabs + chip row |
 | Card DOM | `.form-card` showing the changed piece | `.form-card` showing the whole result | `.chip` with the result filled in over frames |
 | Keys | `hubKey`: ← → over forms only | `calcKey`: ← → sections, ↓ in, ← → items, ↑ out | `palKey`: same as C but its own copy |
@@ -174,7 +177,7 @@ Ranked by how much each slows down every future change. Each has evidence from t
    marked as definitions.
 5. **Hidden global state in the engine.** `DEFS`, `LETS`, `DOMAINS` and friends live in module scope and
    are synced by the UI. Results depend on what was synced last; caches need `defsSig`.
-6. **Files grouped by history, not by concept.** `techniques.ts` holds the f menu's UI list, solving,
+6. **Files grouped by history, not by concept** (`techniques.ts` split in slice 3). `techniques.ts` held the f menu's UI list, solving,
    systems and the simplify spot. Tests are named by round (`polish17`, `round6b`, `bookround`), so it is
    hard to find the tests for a feature.
 7. **Tests check features, not contracts.** Nothing asserts that every card in every menu is reachable
@@ -298,9 +301,9 @@ Still to do (slice 7): menus preview and apply the same checked object instead o
 
 ### 8.4 Engine context in one place
 
-The registries move into `engine/context.ts` with one documented way to set them
-(`setContext({ defs, lets, domains })`) and one signature for caches. No change of behaviour, and no
-change to the hundred function signatures for now; passing it explicitly can come later if it pays.
+Decided in slice 3: they stay where they are, listed in section 4. Moving them into one file would
+change imports in 13 files and fix nothing; `evaluate` needs `DEFS` in `ast.ts` either way. Revisit
+only if one of them causes a bug (a result that depends on what was synced last).
 
 ### 8.5 Fixed pieces
 
@@ -309,11 +312,10 @@ The reordering moves and forms (slides, standard order, move across of a ⋯) as
 refuse with a reason ("the ⋯ stays where it is: [ ] { } change how much is written out"). Aiming still
 works, so [ ] { } b o keep working on it.
 
-### 8.6 Files by concept
+### 8.6 Files by concept (done, slice 3)
 
-`techniques.ts` splits into `engine/solve.ts` (isolate, quadratic, cases, impossible), `engine/systems.ts`
-(substitution, elimination, compare coefficients) and `engine/wrap.ts` (functions of both sides, peel);
-the f menu's list moves to `ui/menus/fn.ts`. Code moves only; no logic change in the same commit.
+`techniques.ts` is split into `engine/wrap.ts`, `engine/isolate.ts`, `engine/systems.ts` and
+`engine/spot.ts`, and the f menu's list moved to `ui/fntabs.ts`. Code moved only.
 
 ### 8.7 Testing the way a person plays
 
@@ -368,7 +370,7 @@ keyboard mechanics in `docs/CORE.md` still work in the built app. One commit per
 | T1 | Player, first cut (8.7 points 1, 2, 5): hands and shortcuts settings on the current bank, triage report grouped by signature. | coverage numbers for the 366 problems, grouped causes |
 | T2 | Problem scouting: 500+ new problems with sympy-checked answers and routes for the competition ones. | bank grows, every answer checked outside Algebrix |
 | T3 | Recorder of your play (8.7 point 4) and weird play (point 3). | your traces replay as tests |
-| 3 | Engine context (8.4) and the `techniques.ts` split (8.6). | moves only |
+| 3 | **Done.** The `techniques.ts` split (8.6); the context stays put (8.4). | moves only |
 | 4 | `ui/menu/model.ts`: state, key reducer, `nextCard`, with unit tests. | pure tests pass |
 | 5 | `ui/menu/view.ts` + one CSS block; port **f** first (the one you like best). | f e2e tests pass unchanged |
 | 6 | Port **C** onto it (sections, asking). ↑ ↓ work across wrapped rows. | issue 3 fixed, C e2e pass |
@@ -395,7 +397,7 @@ than listed, the architecture is missing something: say so instead of patching a
   and a chord in its `CHORDS` table if it gets a key.
 - **A new calculus technique (C):** today an entry in `calcTechniques()` (`ui/calc.ts`) under its
   section; after slice 7, one `offer()` in `ui/menus/calc.ts`.
-- **A new function family (f):** today `FN_TABS` in `engine/techniques.ts`; after slice 3, `ui/menus/fn.ts`.
+- **A new function family (f):** `FN_TABS` in `ui/fntabs.ts`, and its wrap in `engine/wrap.ts` if it is a new kind.
 - **A new typed input:** today a new `opKind` plus open/result/commit functions; after slice 8, one `Ask`.
 - **A sound set or look:** one file in `src/packs/`, listed in `src/packs/index.ts` (`docs/EXTENDING.md`).
 - **A new UI behaviour:** microdesign skill first, then an e2e test in `e2e/` that presses the real keys.

@@ -10,7 +10,8 @@ describe('forms with nothing aimed', () => {
   });
 });
 
-import { moveAny, eliminate } from '../src/engine/techniques';
+import { moveAny } from '../src/engine/wrap';
+import { eliminate } from '../src/engine/systems';
 import { applyBothChecked, isErr, MoveOk } from '../src/engine/moves';
 import { relOf, walk, Node } from '../src/engine/ast';
 

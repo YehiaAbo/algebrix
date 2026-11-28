@@ -1,7 +1,7 @@
 // Input: mouse and keyboard bindings, and the key dispatcher.
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { applyMove, isErr } from '../engine/moves';
-import { moveAny } from '../engine/techniques';
+import { moveAny } from '../engine/wrap';
 import { sound } from './sound';
 import { cycleGraph } from './panels';
 import { $, MOVE_KEYS, OP_KEYS, escapeHtml } from './shared';

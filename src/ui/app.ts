@@ -7,7 +7,9 @@ import { applyMove, previewMove, isErr, CheckedResult, Checked, solvedFor } from
 import { formsFor } from '../engine/forms';
 import { substitute } from '../engine/calculus';
 import { simplify, newHints } from '../engine/simplify';
-import { moveAny, WrapItem, simplifySpot, Spot } from '../engine/techniques';
+import { moveAny } from '../engine/wrap';
+import { WrapItem } from './fntabs';
+import { simplifySpot, Spot } from '../engine/spot';
 import { layout, Rect } from '../render/layout';
 import { Stage, Transition, SMOOTH } from '../render/stage';
 import { Graph } from './graph';

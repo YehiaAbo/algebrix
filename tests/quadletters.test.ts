@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
-import { quadraticFormula } from '../src/engine/techniques';
+import { quadraticFormula } from '../src/engine/isolate';
 import { simplify, newHints } from '../src/engine/simplify';
 
 const qf = (src: string, v: string) => quadraticFormula(parseEquation(src), v);

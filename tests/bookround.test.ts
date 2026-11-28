@@ -75,7 +75,8 @@ describe('|g| between bounds, and ends where it has no value (K24)', () => {
 
 describe('played by hand (K25–K27)', () => {
   it('log₂ stays log₂: shown that way, its logs combine, 2^ undoes it, log₂ 8 is 3', async () => {
-    const { combineLogs, inverseOf } = await import('../src/engine/techniques');
+    const { combineLogs } = await import('../src/engine/isolate');
+    const { inverseOf } = await import('../src/engine/wrap');
     const { simplify, newHints } = await import('../src/engine/simplify');
     const e = parseEquation('log_2(x) + log_2(x - 2) = 3');
     expect(T(e)).toBe('log_2(x) + log_2(x − 2) = 3');

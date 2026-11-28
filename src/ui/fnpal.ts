@@ -2,7 +2,9 @@
 // Methods of App, kept in their own file; app.ts puts them on App.prototype.
 import { Node, Eq, findPath, find, DEFS, eq, cloneFresh, evaluate, symbols, paramsOf, argsOf, call, vec, sym, children, withChildren, walk, CALC, relOf } from '../engine/ast';
 import { checked, isErr, MoveResult } from '../engine/moves';
-import { peel, wrapBoth, inverseOf, yourCall, FN_TABS, WRAPS, WrapItem, fnTemplate, applyFn, tidy } from '../engine/techniques';
+import { peel, wrapBoth, inverseOf, yourCall, fnTemplate, applyFn } from '../engine/wrap';
+import { FN_TABS, WRAPS, WrapItem } from './fntabs';
+import { tidy } from '../engine/isolate';
 import { ms } from './prefs';
 import { parseExpr } from '../engine/parse';
 import { simplify, newHints } from '../engine/simplify';

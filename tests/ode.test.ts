@@ -7,7 +7,7 @@ import { evaluate } from '../src/engine/ast';
 import { separate, linearSteps, characteristic, generalSolution, odeKind } from '../src/engine/ode';
 import { finishCalc } from '../src/engine/calcmoves';
 import { isErr, MoveResult } from '../src/engine/moves';
-import { tidy } from '../src/engine/techniques';
+import { tidy } from '../src/engine/isolate';
 
 const ex = (src: string) => parseEquation(src, true);
 const txt = (r: MoveResult) => (isErr(r) ? `error: ${r.error}` : toText(r.eq));

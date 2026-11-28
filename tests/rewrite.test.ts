@@ -43,7 +43,7 @@ describe('rewrite as', () => {
 
 describe('q keeps a form: the simplify marks skip it', () => {
   it('offers the next piece, or nothing, once a form is kept', async () => {
-    const { simplifySpot } = await import('../src/engine/techniques');
+    const { simplifySpot } = await import('../src/engine/spot');
     const { key, find } = await import('../src/engine/ast');
     const e = parseEquation('y = 2·3 x + x/1');
     const first = simplifySpot(e)!;

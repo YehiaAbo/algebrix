@@ -5,7 +5,7 @@ import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { formsFor } from '../src/engine/forms';
 import { applyMove, MoveOk, isErr } from '../src/engine/moves';
-import { quadraticFormula } from '../src/engine/techniques';
+import { quadraticFormula } from '../src/engine/isolate';
 import { evaluate } from '../src/engine/ast';
 
 const form = (src: string, name: string, aim = false) => {

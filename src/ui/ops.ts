@@ -4,7 +4,7 @@ import { Node, find, findPath } from '../engine/ast';
 import { toText } from '../engine/print';
 import { applyBothChecked, isErr, CheckedResult, checked } from '../engine/moves';
 import { areCases } from './sheet';
-import { wrapBoth, Wrap, fnTemplate, applyFn } from '../engine/techniques';
+import { wrapBoth, Wrap, fnTemplate, applyFn } from '../engine/wrap';
 import { parseExpr } from '../engine/parse';
 import { absOf, coefOf } from '../engine/terms';
 import { $, OP_SHOW } from './shared';

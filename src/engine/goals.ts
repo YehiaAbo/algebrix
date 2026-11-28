@@ -1,7 +1,7 @@
 // What a piece of work is for: an identity to prove, a function to unfold or invert.
 import { Node, Eq, eq, sym, neg, call, cloneFresh, find, findPath, key, walk, evaluate, symbols, replace, Env, children, withChildren, paramsOf, argsOf } from './ast';
 import { CheckedResult, checked, sampleIn, solvedFor, domainOf } from './moves';
-import { isolate } from './techniques';
+import { isolate } from './isolate';
 import { newHints } from './simplify';
 import { toText } from './print';
 

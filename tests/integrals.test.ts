@@ -6,7 +6,7 @@ import { evaluate, Node } from '../src/engine/ast';
 import { intStep, uSub, byParts, plugBounds, geometric, taylor, ratioTest, writeOut } from '../src/engine/integrate';
 import { finishCalc } from '../src/engine/calcmoves';
 import { isErr, MoveResult } from '../src/engine/moves';
-import { tidy } from '../src/engine/techniques';
+import { tidy } from '../src/engine/isolate';
 
 const ex = (src: string) => parseEquation(src, true);
 const val = (src: string, env: Record<string, number> = {}) => evaluate(parseExpr(src), env);

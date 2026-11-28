@@ -10,7 +10,7 @@ import { simplify, newHints } from '../engine/simplify';
 import { frac } from '../engine/ast';
 import { formsFor } from '../engine/forms';
 import { asPrime, hasDifferentials, integrateDifferentials, toDifferentials, letters, slopeVar } from '../engine/leibniz';
-import { tidy } from '../engine/techniques';
+import { tidy } from '../engine/isolate';
 import { derivStep, plugIn, lhopital, expLog, asQuotient, divideHighest, conjugateLim, finishCalc, hasCalc, calcVar, derivativeOf, criticalOf, bothSides, definitionForm, calcVars, partialOf, gradStep, dotStep, gradientZero, lagrange, components } from '../engine/calcmoves';
 import { intStep, uSub, uCandidate, byParts, plugBounds, ratioTest, taylor } from '../engine/integrate';
 import { bothVar, differentialsBoth, integrateBoth } from '../engine/general';

@@ -7,7 +7,7 @@ import { toText } from '../src/engine/print';
 import { Eq, walk } from '../src/engine/ast';
 import { isErr, MoveOk, neverZero } from '../src/engine/moves';
 import { simplify, newHints } from '../src/engine/simplify';
-import { isolate, tidy, splitCases, everyTrigSolution } from '../src/engine/techniques';
+import { isolate, tidy, splitCases, everyTrigSolution } from '../src/engine/isolate';
 import { finishCalc, plugIn } from '../src/engine/calcmoves';
 import { formsFor } from '../src/engine/forms';
 import { absorbConstant, renameConstant, shareExponential, generalSolution, odeKind, separate } from '../src/engine/ode';

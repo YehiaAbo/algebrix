@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { parseEquation } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { formsFor } from '../src/engine/forms';
-import { peel } from '../src/engine/techniques';
+import { peel } from '../src/engine/wrap';
 import { simplify, newHints } from '../src/engine/simplify';
 import { walk } from '../src/engine/ast';
 import { isErr } from '../src/engine/moves';

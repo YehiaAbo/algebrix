@@ -4,7 +4,7 @@ import { toText } from '../src/engine/print';
 import { applyMove, MoveOk } from '../src/engine/moves';
 import { Eq, Node, walk } from '../src/engine/ast';
 import { group, ungroup, rangeOf } from '../src/engine/select';
-import { moveAny } from '../src/engine/techniques';
+import { moveAny } from '../src/engine/wrap';
 
 const T = (e: Node) => toText(e);
 const idOf = (e: Eq, text: string): string => {
@@ -52,7 +52,7 @@ describe('partial selections', () => {
 });
 
 import { direction } from '../src/engine/moves';
-import { wrapBoth } from '../src/engine/techniques';
+import { wrapBoth } from '../src/engine/wrap';
 describe('step records', () => {
   it('marks squaring both sides as one-way', () => {
     const r = ok(wrapBoth(parseEquation('sqrt(x) = x - 2'), 'square'));
@@ -133,7 +133,7 @@ describe('new forms in the e menu', () => {
 });
 
 import { applyBothChecked } from '../src/engine/moves';
-import { eliminate } from '../src/engine/techniques';
+import { eliminate } from '../src/engine/systems';
 describe('elimination', () => {
   const two = parseEquation('x - y = 1');
   it('adds a multiple of another equation', () => {
@@ -156,7 +156,7 @@ describe('elimination', () => {
 });
 
 import { solveInequality } from '../src/engine/inequality';
-import { isolate } from '../src/engine/techniques';
+import { isolate } from '../src/engine/isolate';
 describe('inequalities', () => {
   it.each([
     ['x < 3', 'x < 3'], ['2x >= 5', '2x ≥ 5'], ['x <= 1', 'x ≤ 1'], ['\\frac{1}{x} \\geq 2', '1/x ≥ 2'],

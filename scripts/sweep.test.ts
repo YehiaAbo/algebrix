@@ -5,7 +5,8 @@ import { toText } from '../src/engine/print';
 import { applyMove, applyBothChecked, isErr, MoveName } from '../src/engine/moves';
 import { walk, Eq, symbols } from '../src/engine/ast';
 import { formsFor } from '../src/engine/forms';
-import { moveAny, tidy, isolate, peel } from '../src/engine/techniques';
+import { moveAny, peel } from '../src/engine/wrap';
+import { tidy, isolate } from '../src/engine/isolate';
 
 const EQS = [
   '7y + 3x = 20', '2(x + 3) = 10', 'x/2 + x/3 = 5', '3x - 7 = 2x + 4', '-x = 4', '-(x - 2) = 3', '5 - x = 2',

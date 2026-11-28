@@ -10,7 +10,7 @@ import '../src/engine/calculus';
 import { parseEquation } from '../src/engine/parse';
 import { walk, find, key, DEFS, Eq } from '../src/engine/ast';
 import { toText } from '../src/engine/print';
-import { moveAny } from '../src/engine/techniques';
+import { moveAny } from '../src/engine/wrap';
 import { isErr } from '../src/engine/moves';
 
 const ENV: Record<string, string | undefined> = (globalThis as { process?: { env: Record<string, string> } }).process?.env ?? {};

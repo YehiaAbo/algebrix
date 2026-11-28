@@ -6,7 +6,7 @@ import { toText } from '../src/engine/print';
 import { evaluate, eq as mkEq, num } from '../src/engine/ast';
 import { derivStep, finishCalc, gradStep, dotStep, components, partialOf, gradientZero, lagrange, calcVars } from '../src/engine/calcmoves';
 import { isErr, MoveResult } from '../src/engine/moves';
-import { tidy } from '../src/engine/techniques';
+import { tidy } from '../src/engine/isolate';
 import { intStep } from '../src/engine/integrate';
 
 const intStepOf = (src: string) => intStep(ex(src), null);

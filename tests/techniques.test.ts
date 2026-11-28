@@ -3,7 +3,10 @@ import { parseEquation, parseExpr } from '../src/engine/parse';
 import { toText } from '../src/engine/print';
 import { isErr, MoveOk, applyBothChecked } from '../src/engine/moves';
 import { Eq, Node, walk } from '../src/engine/ast';
-import { isolate, substitute, wrapBoth, peel, moveAny, tidy, splitAbs, splitCases, simplifySpot } from '../src/engine/techniques';
+import { isolate, tidy, splitAbs, splitCases } from '../src/engine/isolate';
+import { substitute } from '../src/engine/systems';
+import { wrapBoth, peel, moveAny } from '../src/engine/wrap';
+import { simplifySpot } from '../src/engine/spot';
 import { evaluate } from '../src/engine/ast';
 
 const T = (e: Node) => toText(e);

@@ -8,7 +8,9 @@ import { unfold, inverseFunction } from '../src/engine/goals';
 import { toText } from '../src/engine/print';
 import { nameIt, putValue, tryValue, integrateBoth, holdsForEvery, sameEverywhere } from '../src/engine/general';
 import { intStep } from '../src/engine/integrate';
-import { simplifySpot, moveAny, applyFn, fnTemplate, tidy, peel, wrapBoth } from '../src/engine/techniques';
+import { simplifySpot } from '../src/engine/spot';
+import { moveAny, applyFn, fnTemplate, peel, wrapBoth } from '../src/engine/wrap';
+import { tidy } from '../src/engine/isolate';
 import { bothSides, finishCalc } from '../src/engine/calcmoves';
 
 const T = (e: Eq) => toText(e);

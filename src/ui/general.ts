@@ -11,7 +11,7 @@ import { isErr, Checked, CheckedResult, checked } from '../engine/moves';
 import { nameIt, subIn, putValue, tryValue, valueParts, valueVar, holdsForEvery, integrateBoth, differentialsBoth, bothVar, Named, separateChain, characteristicChain, brief, timesOne, rewriteAs } from '../engine/general';
 import { uCandidate, uSub } from '../engine/integrate';
 import { letters, asPrime } from '../engine/leibniz';
-import { compareCoefficients } from '../engine/techniques';
+import { compareCoefficients } from '../engine/systems';
 import { ms } from './prefs';
 import * as sheet from './sheet';
 import { sound } from './sound';
